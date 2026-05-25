@@ -10,6 +10,7 @@ import { getLoginMethod, setLoginMethod as saveLoginMethod } from "@/utils/stora
 
 import styles from "./index.module.scss";
 import LoginForm from "./LoginForm";
+import type { LoginMethod } from "./LoginForm";
 import ModifyForm from "./ModifyForm";
 import RegisterForm from "./RegisterForm";
 
@@ -18,11 +19,13 @@ export type FormType = 0 | 1 | 2;
 export const Login = () => {
   // 0login 1resetPassword 2register
   const [formType, setFormType] = useState<FormType>(0);
-  const [loginMethod, setLoginMethod] = useState<"phone" | "email">(getLoginMethod());
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>(
+    getLoginMethod() as LoginMethod,
+  );
 
   const [_, copyToClipboard] = useCopyToClipboard();
 
-  const updateLoginMethod = useCallback((method: "phone" | "email") => {
+  const updateLoginMethod = useCallback((method: LoginMethod) => {
     setLoginMethod(method);
     saveLoginMethod(method);
   }, []);

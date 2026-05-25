@@ -12,6 +12,9 @@ export const setPhoneNumber = (account: string) =>
 export const setEmail = (email: string) => localStorage.setItem("IM_EMAIL", email);
 export const setLoginMethod = (method: string) =>
   localStorage.setItem("IM_LOGIN_METHOD", method);
+export const setAdUsername = (username: string) =>
+  localStorage.setItem("IM_AD_USERNAME", username);
+export const getAdUsername = () => localStorage.getItem("IM_AD_USERNAME") ?? "";
 export const setTMToken = (token: string) => localForage.setItem("IM_TOKEN", token);
 export const setChatToken = (token: string) =>
   localForage.setItem("IM_CHAT_TOKEN", token);

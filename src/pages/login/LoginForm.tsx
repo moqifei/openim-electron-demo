@@ -4,10 +4,12 @@ import md5 from "md5";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useLogin, useSendSms } from "@/api/login";
+import { useADLogin, useLogin, useSendSms } from "@/api/login";
 import {
+  getAdUsername,
   getEmail,
   getPhoneNumber,
+  setAdUsername,
   setAreaCode,
   setEmail,
   setIMProfile,
@@ -18,6 +20,8 @@ import { areaCode } from "./areaCode";
 import type { FormType } from "./index";
 import styles from "./index.module.scss";
 
+export type LoginMethod = "phone" | "email" | "ad";
+
 // 0login 1resetPassword 2register
 enum LoginType {
   Password,
@@ -26,8 +30,8 @@ enum LoginType {
 
 type LoginFormProps = {
   setFormType: (type: FormType) => void;
-  loginMethod: "phone" | "email";
-  updateLoginMethod: (method: "phone" | "email") => void;
+  loginMethod: LoginMethod;
+  updateLoginMethod: (method: LoginMethod) => void;
 };
 
 const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormProps) => {
@@ -35,6 +39,7 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
   const [form] = Form.useForm();
   const [loginType, setLoginType] = useState<LoginType>(LoginType.Password);
   const { mutate: login, isLoading: loginLoading } = useLogin();
+  const { mutate: adLogin, isLoading: adLoginLoading } = useADLogin();
   const { mutate: semdSms } = useSendSms();
 
   const [countdown, setCountdown] = useState(0);
@@ -52,7 +57,11 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
     }
   }, [countdown]);
 
-  const onFinish = (params: API.Login.LoginParams) => {
+  const onFinish = (params: any) => {
+    if (loginMethod === "ad") {
+      handleAdLogin(params);
+      return;
+    }
     if (loginType === 0) {
       params.password = md5(params.password ?? "");
     }
@@ -70,6 +79,20 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
         navigate("/chat");
       },
     });
+  };
+
+  const handleAdLogin = (params: { username: string; password: string }) => {
+    setAdUsername(params.username);
+    adLogin(
+      { username: params.username, password: params.password },
+      {
+        onSuccess: (data) => {
+          const { chatToken, imToken, userID } = data.data;
+          setIMProfile({ chatToken, imToken, userID });
+          navigate("/chat");
+        },
+      },
+    );
   };
 
   const sendSmsHandle = () => {
@@ -95,7 +118,7 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
   };
 
   const onLoginMethodChange = (key: string) => {
-    updateLoginMethod(key as "phone" | "email");
+    updateLoginMethod(key as LoginMethod);
   };
 
   return (
@@ -109,6 +132,7 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
         items={[
           { key: "phone", label: t("placeholder.phoneNumber") },
           { key: "email", label: t("placeholder.email") },
+          { key: "ad", label: t("placeholder.adLogin") },
         ]}
         onChange={onLoginMethodChange}
       />
@@ -122,92 +146,130 @@ const LoginForm = ({ loginMethod, setFormType, updateLoginMethod }: LoginFormPro
           areaCode: "+86",
           phoneNumber: getPhoneNumber() ?? "",
           email: getEmail() ?? "",
+          username: getAdUsername(),
         }}
       >
-        {loginMethod === "phone" ? (
-          <Form.Item label={t("placeholder.phoneNumber")}>
-            <Space.Compact className="w-full">
-              <Form.Item name="areaCode" noStyle>
-                <Select options={areaCode} className="!w-28" />
-              </Form.Item>
-              <Form.Item name="phoneNumber" noStyle>
-                <Input allowClear placeholder={t("toast.inputPhoneNumber")} />
-              </Form.Item>
-            </Space.Compact>
-          </Form.Item>
-        ) : (
-          <Form.Item
-            label={t("placeholder.email")}
-            name="email"
-            rules={[{ type: "email", message: t("toast.inputCorrectEmail") }]}
-          >
-            <Input allowClear placeholder={t("toast.inputEmail")} />
-          </Form.Item>
-        )}
-
-        {loginType === LoginType.VerifyCode ? (
-          <Form.Item label={t("placeholder.verifyCode")} name="verifyCode">
-            <Space.Compact className="w-full">
-              <Input
-                allowClear
-                placeholder={t("toast.inputVerifyCode")}
-                className="w-full"
-              />
-              <Button type="primary" onClick={sendSmsHandle} loading={countdown > 0}>
-                {countdown > 0
-                  ? t("date.second", { num: countdown })
-                  : t("placeholder.sendVerifyCode")}
+        {loginMethod === "ad" ? (
+          <>
+            <Form.Item
+              label={t("placeholder.adUsername")}
+              name="username"
+              rules={[{ required: true, message: t("placeholder.inputAdUsername") }]}
+            >
+              <Input allowClear placeholder={t("placeholder.inputAdUsername")} />
+            </Form.Item>
+            <Form.Item
+              label={t("placeholder.password")}
+              name="password"
+              rules={[{ required: true, message: t("placeholder.inputAdPassword") }]}
+            >
+              <Input.Password allowClear placeholder={t("placeholder.inputAdPassword")} />
+            </Form.Item>
+            <Form.Item className="mb-4 mt-10">
+              <Button type="primary" htmlType="submit" block loading={adLoginLoading}>
+                {t("placeholder.login")}
               </Button>
-            </Space.Compact>
-          </Form.Item>
+            </Form.Item>
+            <div className="flex flex-row items-center justify-center">
+              <span className="text-sm text-gray-400">
+                {t("placeholder.registerToast")}
+              </span>
+              <span
+                className="cursor-pointer text-sm text-blue-500"
+                onClick={() => setFormType(2)}
+              >
+                {t("placeholder.toRegister")}
+              </span>
+            </div>
+          </>
         ) : (
-          <Form.Item label={t("placeholder.password")} name="password">
-            <Input.Password allowClear placeholder={t("toast.inputPassword")} />
-          </Form.Item>
+          <>
+            {loginMethod === "phone" ? (
+              <Form.Item label={t("placeholder.phoneNumber")}>
+                <Space.Compact className="w-full">
+                  <Form.Item name="areaCode" noStyle>
+                    <Select options={areaCode} className="!w-28" />
+                  </Form.Item>
+                  <Form.Item name="phoneNumber" noStyle>
+                    <Input allowClear placeholder={t("toast.inputPhoneNumber")} />
+                  </Form.Item>
+                </Space.Compact>
+              </Form.Item>
+            ) : (
+              <Form.Item
+                label={t("placeholder.email")}
+                name="email"
+                rules={[{ type: "email", message: t("toast.inputCorrectEmail") }]}
+              >
+                <Input allowClear placeholder={t("toast.inputEmail")} />
+              </Form.Item>
+            )}
+
+            {loginType === LoginType.VerifyCode ? (
+              <Form.Item label={t("placeholder.verifyCode")} name="verifyCode">
+                <Space.Compact className="w-full">
+                  <Input
+                    allowClear
+                    placeholder={t("toast.inputVerifyCode")}
+                    className="w-full"
+                  />
+                  <Button type="primary" onClick={sendSmsHandle} loading={countdown > 0}>
+                    {countdown > 0
+                      ? t("date.second", { num: countdown })
+                      : t("placeholder.sendVerifyCode")}
+                  </Button>
+                </Space.Compact>
+              </Form.Item>
+            ) : (
+              <Form.Item label={t("placeholder.password")} name="password">
+                <Input.Password allowClear placeholder={t("toast.inputPassword")} />
+              </Form.Item>
+            )}
+
+            <div className="mb-10 flex flex-row justify-between">
+              <span
+                className="cursor-pointer text-sm text-gray-400"
+                onClick={() => setFormType(1)}
+              >
+                {t("placeholder.forgetPassword")}
+              </span>
+              <span
+                className="cursor-pointer text-sm text-[var(--primary)]"
+                onClick={() =>
+                  setLoginType(
+                    loginType === LoginType.Password
+                      ? LoginType.VerifyCode
+                      : LoginType.Password,
+                  )
+                }
+              >
+                {`${
+                  loginType === LoginType.Password
+                    ? t("placeholder.verifyCode")
+                    : t("placeholder.password")
+                }${t("placeholder.login")}`}
+              </span>
+            </div>
+
+            <Form.Item className="mb-4">
+              <Button type="primary" htmlType="submit" block loading={loginLoading}>
+                {t("placeholder.login")}
+              </Button>
+            </Form.Item>
+
+            <div className="flex flex-row items-center justify-center">
+              <span className="text-sm text-gray-400">
+                {t("placeholder.registerToast")}
+              </span>
+              <span
+                className="cursor-pointer text-sm text-blue-500"
+                onClick={() => setFormType(2)}
+              >
+                {t("placeholder.toRegister")}
+              </span>
+            </div>
+          </>
         )}
-
-        <div className="mb-10 flex flex-row justify-between">
-          <span
-            className="cursor-pointer text-sm text-gray-400"
-            onClick={() => setFormType(1)}
-          >
-            {t("placeholder.forgetPassword")}
-          </span>
-          <span
-            className="cursor-pointer text-sm text-[var(--primary)]"
-            onClick={() =>
-              setLoginType(
-                loginType === LoginType.Password
-                  ? LoginType.VerifyCode
-                  : LoginType.Password,
-              )
-            }
-          >
-            {`${
-              loginType === LoginType.Password
-                ? t("placeholder.verifyCode")
-                : t("placeholder.password")
-            }${t("placeholder.login")}`}
-          </span>
-        </div>
-
-        <Form.Item className="mb-4">
-          <Button type="primary" htmlType="submit" block loading={loginLoading}>
-            {t("placeholder.login")}
-          </Button>
-        </Form.Item>
-
-        <div className="flex flex-row items-center justify-center">
-          <span className="text-sm text-gray-400">
-            {t("placeholder.registerToast")}
-          </span>
-          <span
-            className="cursor-pointer text-sm text-blue-500"
-            onClick={() => setFormType(2)}
-          >
-            {t("placeholder.toRegister")}
-          </span>
-        </div>
       </Form>
     </>
   );

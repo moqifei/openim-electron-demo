@@ -146,6 +146,28 @@ export const useLogin = () => {
   );
 };
 
+// AD login
+export const useADLogin = () => {
+  return useMutation(
+    (params: API.Login.AdLoginParams) =>
+      request.post<{ chatToken: string; imToken: string; userID: string }>(
+        "/account/login/ad",
+        {
+          ...params,
+          platform,
+        },
+        {
+          headers: {
+            operationID: uuidv4(),
+          },
+        },
+      ),
+    {
+      onError: errorHandle,
+    },
+  );
+};
+
 // Get user information
 export interface BusinessUserInfo {
   userID: string;

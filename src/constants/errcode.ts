@@ -8,6 +8,9 @@ export const ErrCodeMap: Record<number, string> = {
   20005: t("errCode.operationTooFrequent"),
   20012: t("errCode.operationRestriction"),
   20014: t("errCode.accountRegistered"),
+  20201: t("errCode.adDisabled"),
+  20202: t("errCode.adAuthFailed"),
+  20203: t("errCode.adUserNotExist"),
 };
 
 export enum SendFailedErrCode {

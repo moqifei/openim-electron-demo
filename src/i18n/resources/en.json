@@ -28,6 +28,7 @@
   "toast": {
     "accessSuccess": "Operation successful!",
     "accessFailed": "Operation failed!",
+    "adLoginFailed": "AD authentication failed, please check your username and password!",
     "getConversationFailed": "Failed to get conversation list!",
     "getGroupInfoFailed": "Failed to get group information!",
     "getGroupMemberFailed": "Failed to get group member information!",
@@ -199,6 +200,10 @@
     "remark": "Remark",
     "email": "Email",
     "phoneNumber": "Phone Number",
+    "adLogin": "AD Enterprise Login",
+    "adUsername": "AD Username",
+    "inputAdUsername": "Enter AD username",
+    "inputAdPassword": "Enter AD password",
     "verifyPhoneNumber": "Verify phone number",
     "verifyEmail": "Verify email",
     "birth": "Birthday",
@@ -473,6 +478,9 @@
     "verificationCodeUsed": "Verification code already used",
     "invitationCodeUsed": "Invitation code already used",
     "invitationCodeNotExist": "Invitation code does not exist",
-    "operationRestriction": "Operation restricted"
+    "operationRestriction": "Operation restricted",
+    "adDisabled": "AD login is disabled",
+    "adAuthFailed": "AD authentication failed, please check your username and password",
+    "adUserNotExist": "AD user does not exist"
   }
 }

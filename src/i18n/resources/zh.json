@@ -28,6 +28,7 @@
   "toast": {
     "accessSuccess": "操作成功！",
     "accessFailed": "操作失败！",
+    "adLoginFailed": "AD域认证失败，请检查用户名和密码！",
     "getConversationFailed": "获取会话列表失败！",
     "getGroupInfoFailed": "获取群信息失败！",
     "getGroupMemberFailed": "获取群成员信息失败！",
@@ -200,6 +201,10 @@
     "remark": "备注",
     "email": "邮箱",
     "phoneNumber": "手机号",
+    "adLogin": "AD企业登录",
+    "adUsername": "AD用户名",
+    "inputAdUsername": "请输入AD域用户名",
+    "inputAdPassword": "请输入AD域密码",
     "verifyPhoneNumber": "验证手机号",
     "verifyEmail": "验证邮箱",
     "birth": "生日",
@@ -474,6 +479,9 @@
     "verificationCodeUsed": "验证码已被使用",
     "invitationCodeUsed": "邀请码已被使用",
     "invitationCodeNotExist": "邀请码不存在",
-    "operationRestriction": "操作限制"
+    "operationRestriction": "操作限制",
+    "adDisabled": "AD域登录未启用",
+    "adAuthFailed": "AD域认证失败，请检查用户名和密码",
+    "adUserNotExist": "AD域用户不存在"
   }
 }

@@ -59,5 +59,11 @@ declare namespace API {
       usedFor: UsedFor;
       invitationCode?: string;
     };
+    type AdLoginParams = {
+      username: string;
+      password: string;
+      platform?: number;
+      deviceID?: string;
+    };
   }
 }
