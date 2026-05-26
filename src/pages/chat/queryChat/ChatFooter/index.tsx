@@ -26,7 +26,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [html, setHtml] = useState("");
   const latestHtml = useLatest(html);
 
-  const { getImageMessage } = useFileMessage();
+  const { getImageMessage, getFileMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
 
   const onChange = (value: string) => {
@@ -45,7 +45,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   return (
     <footer className="relative h-full bg-white py-px">
       <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
-        <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} />
+        <SendActionBar sendMessage={sendMessage} getImageMessage={getImageMessage} getFileMessage={getFileMessage} />
         <div className="relative flex flex-1 flex-col overflow-hidden">
           <CKEditor value={html} onEnter={enterToSend} onChange={onChange} />
           <div className="flex items-center justify-end py-2 pr-3">

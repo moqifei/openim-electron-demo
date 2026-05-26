@@ -247,6 +247,12 @@ export const formatMessageByType = (message?: MessageItem): string => {
         return message.textElem!.content;
       case MessageType.PictureMessage:
         return t("messageDescription.imageMessage");
+      case MessageType.FileMessage:
+        return t("messageDescription.fileMessage", {
+          file: message.fileElem?.fileName,
+        });
+      case MessageType.VideoMessage:
+        return t("messageDescription.videoMessage");
       case MessageType.FriendAdded:
         return t("messageDescription.alreadyFriendMessage");
       case MessageType.MemberEnter:

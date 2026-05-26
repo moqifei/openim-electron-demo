@@ -48,7 +48,26 @@ export function useFileMessage() {
     });
 
 
+  const getFileMessage = async (file: FileWithPath) => {
+    if (window.electronAPI) {
+      return (await IMSDK.createFileMessageFromFullPath({
+        filePath: file.path!,
+        fileName: file.name,
+      } as any)).data;
+    }
+    const options = {
+      filePath: file.name,
+      fileName: file.name,
+      uuid: uuidV4(),
+      sourceUrl: "",
+      fileSize: file.size,
+      file,
+    };
+    return (await IMSDK.createFileMessageByFile(options)).data;
+  };
+
   return {
-    getImageMessage
+    getImageMessage,
+    getFileMessage,
   };
 }
