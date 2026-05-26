@@ -9,7 +9,7 @@ import launch_group from "@/assets/images/chatHeader/launch_group.png";
 import settings from "@/assets/images/chatHeader/settings.png";
 import OIMAvatar from "@/components/OIMAvatar";
 import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
-import { useConversationStore, useUserStore } from "@/store";
+import { useConversationStore, useContactStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
 
 import GroupSetting from "../GroupSetting";
@@ -57,6 +57,15 @@ const ChatHeader = () => {
   // locale re render
   useUserStore((state) => state.appSettings.locale);
 
+  const isSingleSession = currentConversation?.conversationType === SessionType.Single;
+  const isGroupSession = currentConversation?.conversationType === SessionType.Group;
+
+  const displayName = useContactStore((state) => {
+    if (!isSingleSession) return currentConversation?.showName;
+    const friend = state.friendList.find((f) => f.userID === currentConversation?.userID);
+    return friend?.remark || friend?.nickname || currentConversation?.showName;
+  });
+
   useEffect(() => {
     if (singleSettingRef.current?.isOverlayOpen) {
       singleSettingRef.current?.closeOverlay();
@@ -89,16 +98,13 @@ const ChatHeader = () => {
     }
   };
 
-  const isSingleSession = currentConversation?.conversationType === SessionType.Single;
-  const isGroupSession = currentConversation?.conversationType === SessionType.Group;
-
   return (
     <Layout.Header className="relative border-b border-b-[var(--gap-text)] !bg-white !px-3">
       <div className="flex h-full items-center leading-none">
         <div className="flex flex-1 items-center overflow-hidden">
           <OIMAvatar
             src={currentConversation?.faceURL}
-            text={currentConversation?.showName}
+            text={displayName}
             isgroup={Boolean(currentConversation?.groupID)}
           />
           <div
@@ -107,7 +113,7 @@ const ChatHeader = () => {
             )}
           >
             <div className="truncate text-base font-semibold">
-              {currentConversation?.showName}
+              {displayName}
             </div>
             {isGroupSession && currentUserIsInGroup && (
               <div className="flex items-center text-xs text-[var(--sub-text)]">

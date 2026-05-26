@@ -9,7 +9,7 @@ import { t } from "i18next";
 import { memo, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import OIMAvatar from "@/components/OIMAvatar";
-import { useConversationStore, useUserStore } from "@/store";
+import { useConversationStore, useContactStore, useUserStore } from "@/store";
 import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
 
 import styles from "./conversation-item.module.scss";
@@ -25,6 +25,12 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
     (state) => state.updateCurrentConversation,
   );
   const currentUser = useUserStore((state) => state.selfInfo.userID);
+
+  const displayName = useContactStore((state) => {
+    if (conversation.groupID) return conversation.showName;
+    const friend = state.friendList.find((f) => f.userID === conversation.userID);
+    return friend?.remark || friend?.nickname || conversation.showName;
+  });
 
   const toSpecifiedConversation = async () => {
     if (isActive) {
@@ -64,13 +70,13 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
         <OIMAvatar
           src={conversation.faceURL}
           isgroup={Boolean(conversation.groupID)}
-          text={conversation.showName}
+          text={displayName}
         />
       </Badge>
 
       <div className="ml-3 flex h-11 flex-1 flex-col justify-between overflow-hidden">
         <div className="flex items-center justify-between">
-          <div className="flex-1 truncate font-medium">{conversation.showName}</div>
+          <div className="flex-1 truncate font-medium">{displayName}</div>
           <div className="ml-2 text-xs text-[var(--sub-text)]">{latestMessageTime}</div>
         </div>
 

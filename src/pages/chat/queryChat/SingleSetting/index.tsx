@@ -30,6 +30,11 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
     (friend) => currentConversation?.userID === friend.userID,
   );
 
+  const friend = useContactStore((state) =>
+    state.friendList.find((f) => f.userID === currentConversation?.userID),
+  );
+  const displayName = friend?.remark || friend?.nickname || currentConversation?.showName;
+
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
 
   const updateBlack = async () => {
@@ -104,9 +109,9 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         <div className="flex items-center">
           <OIMAvatar
             src={currentConversation?.faceURL}
-            text={currentConversation?.showName}
+            text={displayName}
           />
-          <div className="ml-3">{currentConversation?.showName}</div>
+          <div className="ml-3">{displayName}</div>
         </div>
         <RightOutlined rev={undefined} />
       </div>
