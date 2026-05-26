@@ -253,6 +253,10 @@ export const formatMessageByType = (message?: MessageItem): string => {
         });
       case MessageType.VideoMessage:
         return t("messageDescription.videoMessage");
+      case MessageType.CardMessage:
+        return t("messageDescription.addtionalCardMessage", {
+          additional: message.cardElem?.nickname,
+        });
       case MessageType.FriendAdded:
         return t("messageDescription.alreadyFriendMessage");
       case MessageType.MemberEnter:

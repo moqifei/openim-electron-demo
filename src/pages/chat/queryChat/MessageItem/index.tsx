@@ -6,6 +6,7 @@ import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore } from "@/store";
 import { formatMessageTime } from "@/utils/imCommon";
 
+import CardMessageRender from "./CardMessageRender";
 import CatchMessageRender from "./CatchMsgRenderer";
 import FileMessageRender from "./FileMessageRender";
 import MediaMessageRender from "./MediaMessageRender";
@@ -26,6 +27,7 @@ const components: Record<number, FC<IMessageItemProps>> = {
   [MessageType.TextMessage]: TextMessageRender,
   [MessageType.PictureMessage]: MediaMessageRender,
   [MessageType.FileMessage]: FileMessageRender,
+  [MessageType.CardMessage]: CardMessageRender,
 };
 
 const MessageItem: FC<IMessageItemProps> = ({

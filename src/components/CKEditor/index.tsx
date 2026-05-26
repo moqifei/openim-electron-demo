@@ -15,6 +15,7 @@ import {
 
 export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
+  insertText: (text: string) => void;
 };
 
 interface CKEditorProps {
@@ -58,6 +59,17 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     }
   };
 
+  const insertText = (text: string) => {
+    const editor = ckEditor.current;
+    if (!editor) return;
+    editor.model.change((writer) => {
+      const insertPosition = editor.model.document.selection.getFirstPosition();
+      writer.insertText(text, insertPosition!);
+    });
+    editor.editing.view.focus();
+    onChange?.(editor.getData());
+  };
+
   const listenKeydown = (editor: ClassicEditor) => {
     editor.editing.view.document.on(
       "keydown",
@@ -88,6 +100,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     ref,
     () => ({
       focus,
+      insertText,
     }),
     [],
   );

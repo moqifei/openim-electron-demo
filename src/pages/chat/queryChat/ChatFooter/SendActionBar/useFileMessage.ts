@@ -66,8 +66,24 @@ export function useFileMessage() {
     return (await IMSDK.createFileMessageByFile(options)).data;
   };
 
+  const getCardMessage = async (user: {
+    userID: string;
+    nickname: string;
+    faceURL: string;
+  }) => {
+    return (
+      await IMSDK.createCardMessage({
+        userID: user.userID,
+        nickname: user.nickname || "",
+        faceURL: user.faceURL || "",
+        ex: "",
+      })
+    ).data;
+  };
+
   return {
     getImageMessage,
     getFileMessage,
+    getCardMessage,
   };
 }

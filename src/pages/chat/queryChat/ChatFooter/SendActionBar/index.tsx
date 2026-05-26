@@ -1,19 +1,20 @@
 import { MessageItem } from "@openim/wasm-client-sdk";
-import { Popover, PopoverProps, Upload } from "antd";
-import { TooltipPlacement } from "antd/es/tooltip";
+import { FriendUserItem } from "@openim/wasm-client-sdk/lib/types/entity";
+import { Popover, Upload } from "antd";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
-import { memo, ReactNode, useState } from "react";
-import React from "react";
+import { memo, ReactNode, RefObject, useState } from "react";
 
+import cardIcon from "@/assets/images/chatFooter/card.png";
+import emojiIcon from "@/assets/images/chatFooter/emoji.png";
 import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
-import rtc from "@/assets/images/chatFooter/rtc.png";
+import { CKEditorRef } from "@/components/CKEditor";
 
 import { SendMessageParams } from "../useSendMessage";
-import CallPopContent from "./CallPopContent";
-import { useConversationStore } from "@/store";
+import EmojiPicker from "./EmojiPicker";
+import ShareCardModal from "./ShareCardModal";
 
 const sendActionList = [
   {
@@ -21,48 +22,47 @@ const sendActionList = [
     icon: image,
     key: "image",
     accept: "image/*",
-    comp: null,
-    placement: undefined,
   },
   {
     title: t("placeholder.file"),
     icon: fileIcon,
     key: "file",
     accept: "*",
-    comp: null,
-    placement: undefined,
   },
   {
-    title: t("placeholder.call"),
-    icon: rtc,
-    key: "rtc",
-    accept: undefined,
-    comp: <CallPopContent />,
-    placement: "top",
+    title: t("placeholder.emoji"),
+    icon: emojiIcon,
+    key: "emoji",
+  },
+  {
+    title: t("placeholder.card"),
+    icon: cardIcon,
+    key: "card",
   },
 ];
 
 i18n.on("languageChanged", () => {
   sendActionList[0].title = t("placeholder.image");
   sendActionList[1].title = t("placeholder.file");
-  sendActionList[2].title = t("placeholder.call");
+  sendActionList[2].title = t("placeholder.emoji");
+  sendActionList[3].title = t("placeholder.card");
 });
 
 const SendActionBar = ({
   sendMessage,
   getImageMessage,
   getFileMessage,
+  getCardMessage,
+  editorRef,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
   getImageMessage: (file: File) => Promise<MessageItem>;
   getFileMessage: (file: File) => Promise<MessageItem>;
+  getCardMessage: (user: FriendUserItem) => Promise<MessageItem>;
+  editorRef: RefObject<CKEditorRef>;
 }) => {
-  const [visibleState, setVisibleState] = useState(false);
-  const isGroupSession = useConversationStore(
-    (state) => !!state.currentConversation?.groupID,
-  );
-
-  const closePop = () => setVisibleState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [cardModalOpen, setCardModalOpen] = useState(false);
 
   const fileHandle = async (options: UploadRequestOption, key: string) => {
     let message: MessageItem;
@@ -76,46 +76,57 @@ const SendActionBar = ({
     sendMessage({ message });
   };
 
-  return (
-    <div className="flex items-center px-4.5 pt-2">
-      {sendActionList.map((action) => {
-        if (action.key === "rtc" && isGroupSession) {
-          return null;
-        }
-        const popProps: PopoverProps = {
-          placement: action.placement as TooltipPlacement,
-          content:
-            action.comp &&
-            React.cloneElement(action.comp as React.ReactElement, {
-              closePop,
-            }),
-          title: null,
-          arrow: false,
-          trigger: "click",
-          // @ts-ignore
-          open: action.comp ? visibleState : false,
-          onOpenChange: (visible) => setVisibleState(visible),
-        };
+  const handleEmojiSelect = (emoji: string) => {
+    editorRef.current?.insertText(emoji);
+    setEmojiOpen(false);
+  };
 
-        return (
-          <ActionWrap
-            popProps={popProps}
-            key={action.key}
-            actionKey={action.key}
-            accept={action.accept}
-            fileHandle={fileHandle}
-          >
-            <div
-              className={clsx("flex cursor-pointer items-center last:mr-0", {
-                "mr-5": !action.accept,
-              })}
-            >
-              <img src={action.icon} width={20} alt={action.title} />
-            </div>
-          </ActionWrap>
-        );
-      })}
-    </div>
+  const handleCardSelect = async (user: FriendUserItem) => {
+    const message = await getCardMessage(user);
+    sendMessage({ message });
+    setCardModalOpen(false);
+  };
+
+  return (
+    <>
+      <div className="flex items-center px-4.5 pt-2">
+        {sendActionList.map((action) => {
+          const isEmoji = action.key === "emoji";
+          const isCard = action.key === "card";
+
+          const wrapProps = {
+            accept: action.accept,
+            actionKey: action.key,
+            fileHandle,
+            onClick: isCard ? () => setCardModalOpen(true) : undefined,
+            popoverContent: isEmoji ? (
+              <EmojiPicker onSelect={handleEmojiSelect} />
+            ) : undefined,
+            popoverOpen: isEmoji ? emojiOpen : undefined,
+            onPopoverOpenChange: isEmoji
+              ? (v: boolean) => setEmojiOpen(v)
+              : undefined,
+          };
+
+          return (
+            <ActionWrap key={action.key} {...wrapProps}>
+              <div
+                className={clsx("flex cursor-pointer items-center last:mr-0", {
+                  "mr-5": !action.accept,
+                })}
+              >
+                <img src={action.icon} width={20} alt={action.title} />
+              </div>
+            </ActionWrap>
+          );
+        })}
+      </div>
+      <ShareCardModal
+        open={cardModalOpen}
+        onCancel={() => setCardModalOpen(false)}
+        onConfirm={handleCardSelect}
+      />
+    </>
   );
 };
 
@@ -123,28 +134,56 @@ export default memo(SendActionBar);
 
 const ActionWrap = ({
   accept,
-  popProps,
+  actionKey,
   children,
   fileHandle,
-  actionKey,
+  onClick,
+  popoverContent,
+  popoverOpen,
+  onPopoverOpenChange,
 }: {
   accept?: string;
   children: ReactNode;
-  popProps?: PopoverProps;
-  fileHandle: (options: UploadRequestOption, key: string) => void;
   actionKey: string;
+  fileHandle: (options: UploadRequestOption, key: string) => void;
+  onClick?: () => void;
+  popoverContent?: ReactNode;
+  popoverOpen?: boolean;
+  onPopoverOpenChange?: (open: boolean) => void;
 }) => {
-  return accept ? (
-    <Upload
-      showUploadList={false}
-      customRequest={(options) => fileHandle(options, actionKey)}
-      accept={accept}
-      multiple
-      className="mr-5 flex"
-    >
+  if (accept) {
+    return (
+      <Upload
+        showUploadList={false}
+        customRequest={(options) => fileHandle(options, actionKey)}
+        accept={accept}
+        multiple
+        className="mr-5 flex"
+      >
+        {children}
+      </Upload>
+    );
+  }
+
+  if (popoverContent) {
+    return (
+      <Popover
+        placement="top"
+        content={popoverContent}
+        title={null}
+        arrow={false}
+        trigger="click"
+        open={popoverOpen}
+        onOpenChange={onPopoverOpenChange}
+      >
+        {children}
+      </Popover>
+    );
+  }
+
+  return (
+    <div className="flex" onClick={onClick}>
       {children}
-    </Upload>
-  ) : (
-    <Popover {...popProps}>{children}</Popover>
+    </div>
   );
 };
