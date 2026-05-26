@@ -69,10 +69,7 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
           data: { total, users },
         } = await searchBusinessUserInfo(keyword);
         setLoading(false);
-        if (
-          !total ||
-          (users[0].userID !== keyword && users[0].phoneNumber !== keyword)
-        ) {
+        if (!total) {
           message.warning(t("empty.noSearchResults"));
           return;
         }

@@ -441,7 +441,10 @@ export const getConversationContent = (message: MessageItem) => {
   ) {
     return formatMessageByType(message);
   }
-  return `${message.senderNickname}：${formatMessageByType(message)}`;
+  // Look up sender's display name from friend list first.
+  const from = useContactStore.getState().friendList.find((f) => f.userID === message.sendID);
+  const senderNickname = from?.remark || from?.nickname || message.senderNickname;
+  return `${senderNickname}：${formatMessageByType(message)}`;
 };
 
 export const uploadFile = async (file: FileWithPath, path?: string) => {

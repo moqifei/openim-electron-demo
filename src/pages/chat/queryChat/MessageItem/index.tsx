@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { FC, memo, useCallback, useRef, useState } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
+import { useContactStore } from "@/store";
 import { formatMessageTime } from "@/utils/imCommon";
 
 import CatchMessageRender from "./CatchMsgRenderer";
@@ -35,6 +36,12 @@ const MessageItem: FC<IMessageItemProps> = ({
   const [showMessageMenu, setShowMessageMenu] = useState(false);
   const MessageRenderComponent = components[message.contentType] || CatchMessageRender;
 
+  // Look up sender's display name from friend list (remark > nickname > senderNickname).
+  const senderName = useContactStore((state) => {
+    const friend = state.friendList.find((f) => f.userID === message.sendID);
+    return friend?.remark || friend?.nickname || message.senderNickname;
+  });
+
   const closeMessageMenu = useCallback(() => {
     setShowMessageMenu(false);
   }, []);
@@ -56,19 +63,19 @@ const MessageItem: FC<IMessageItemProps> = ({
           <OIMAvatar
             size={36}
             src={message.senderFaceUrl}
-            text={message.senderNickname}
+            text={senderName}
           />
 
           <div className={styles["message-wrap"]} ref={messageWrapRef}>
             <div className={styles["message-profile"]}>
               <div
-                title={message.senderNickname}
+                title={senderName}
                 className={clsx(
                   "max-w-[30%] truncate text-[var(--sub-text)]",
                   isSender ? "ml-2" : "mr-2",
                 )}
               >
-                {message.senderNickname}
+                {senderName}
               </div>
               <div className="text-[var(--sub-text)]">
                 {formatMessageTime(message.sendTime)}
