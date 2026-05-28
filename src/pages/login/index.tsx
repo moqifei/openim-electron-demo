@@ -3,20 +3,17 @@ import { useCallback, useState } from "react";
 
 import login_bg from "@/assets/images/login/login_bg.png";
 import WindowControlBar from "@/components/WindowControlBar";
-import { getLoginMethod, setLoginMethod as saveLoginMethod } from "@/utils/storage";
 
 import styles from "./index.module.scss";
 import LoginForm from "./LoginForm";
 import type { LoginMethod } from "./LoginForm";
 
 export const Login = () => {
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>(
-    getLoginMethod() as LoginMethod,
-  );
+  // Always use AD login (phone/email removed)
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>("ad");
 
-  const updateLoginMethod = useCallback((method: LoginMethod) => {
-    setLoginMethod(method);
-    saveLoginMethod(method);
+  const updateLoginMethod = useCallback((_method: LoginMethod) => {
+    // No-op: login method is fixed to AD
   }, []);
 
   return (

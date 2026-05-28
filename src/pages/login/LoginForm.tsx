@@ -1,32 +1,13 @@
-import { Button, Form, Input, QRCode, Select, Space, Tabs } from "antd";
+import { Button, Form, Input, Tabs } from "antd";
 import { t } from "i18next";
-import md5 from "md5";
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useADLogin, useLogin, useSendSms } from "@/api/login";
-import {
-  getAdUsername,
-  getEmail,
-  getPhoneNumber,
-  setAdUsername,
-  setAreaCode,
-  setEmail,
-  setIMProfile,
-  setPhoneNumber,
-} from "@/utils/storage";
+import { useADLogin } from "@/api/login";
+import { getAdUsername, setAdUsername, setIMProfile } from "@/utils/storage";
 
-import { areaCode } from "./areaCode";
-import type { FormType } from "./index";
 import styles from "./index.module.scss";
 
 export type LoginMethod = "phone" | "email" | "ad";
-
-// 0login 1resetPassword 2register
-enum LoginType {
-  Password,
-  VerifyCode,
-}
 
 type LoginFormProps = {
   loginMethod: LoginMethod;
@@ -36,48 +17,11 @@ type LoginFormProps = {
 const LoginForm = ({ loginMethod, updateLoginMethod }: LoginFormProps) => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
-  const [loginType, setLoginType] = useState<LoginType>(LoginType.Password);
-  const { mutate: login, isLoading: loginLoading } = useLogin();
   const { mutate: adLogin, isLoading: adLoginLoading } = useADLogin();
-  const { mutate: semdSms } = useSendSms();
-
-  const [countdown, setCountdown] = useState(0);
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown((prevCountdown) => prevCountdown - 1);
-        if (countdown === 1) {
-          clearTimeout(timer);
-          setCountdown(0);
-        }
-      }, 1000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [countdown]);
 
   const onFinish = (params: any) => {
-    if (loginMethod === "ad") {
-      handleAdLogin(params);
-      return;
-    }
-    if (loginType === 0) {
-      params.password = md5(params.password ?? "");
-    }
-    if (params.phoneNumber) {
-      setAreaCode(params.areaCode);
-      setPhoneNumber(params.phoneNumber);
-    }
-    if (params.email) {
-      setEmail(params.email);
-    }
-    login(params, {
-      onSuccess: (data) => {
-        const { chatToken, imToken, userID } = data.data;
-        setIMProfile({ chatToken, imToken, userID });
-        navigate("/chat");
-      },
-    });
+    // Always use AD login (phone/email removed)
+    handleAdLogin(params);
   };
 
   const handleAdLogin = (params: { username: string; password: string }) => {
@@ -92,32 +36,6 @@ const LoginForm = ({ loginMethod, updateLoginMethod }: LoginFormProps) => {
         },
       },
     );
-  };
-
-  const sendSmsHandle = () => {
-    const options = {
-      phoneNumber: form.getFieldValue("phoneNumber"),
-      email: form.getFieldValue("email"),
-      areaCode: form.getFieldValue("areaCode"),
-      usedFor: 3,
-    };
-    if (loginMethod === "phone") {
-      delete options.email;
-    }
-    if (loginMethod === "email") {
-      delete options.phoneNumber;
-      delete options.areaCode;
-    }
-
-    semdSms(options, {
-      onSuccess() {
-        setCountdown(60);
-      },
-    });
-  };
-
-  const onLoginMethodChange = (key: string) => {
-    updateLoginMethod(key as LoginMethod);
   };
 
   return (
