@@ -48,6 +48,7 @@ export interface ConversationStore {
   unReadCount: number;
   currentGroupInfo?: GroupItem;
   currentMemberInGroup?: GroupMemberItem;
+  quoteMessage?: MessageItem;
   getConversationListByReq: (
     isOffset?: boolean
   ) => Promise<boolean>;
@@ -66,6 +67,7 @@ export interface ConversationStore {
   getCurrentMemberInGroupByReq: (groupID: string) => Promise<void>;
   setCurrentMemberInGroup: (memberInfo?: GroupMemberItem) => void;
   tryUpdateCurrentMemberInGroup: (member: GroupMemberItem) => void;
+  setQuoteMessage: (message?: MessageItem) => void;
   clearConversationStore: () => void;
 }
 

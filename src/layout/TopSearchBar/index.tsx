@@ -110,11 +110,10 @@ const TopSearchBar = () => {
   const actionClick = (idx: number) => {
     switch (idx) {
       case 0:
-      case 1:
-        setIsSearchGroup(Boolean(idx));
+        setIsSearchGroup(false);
         searchModalRef.current?.openOverlay();
         break;
-      case 2:
+      case 1:
         setChooseModalState({ type: "CRATE_GROUP" });
         chooseModalRef.current?.openOverlay();
         break;
@@ -189,11 +188,6 @@ const actionMenuList = [
   },
   {
     idx: 1,
-    title: t("placeholder.addGroup"),
-    icon: add_group,
-  },
-  {
-    idx: 2,
     title: t("placeholder.createGroup"),
     icon: create_group,
   },
@@ -201,8 +195,7 @@ const actionMenuList = [
 
 i18n.on("languageChanged", () => {
   actionMenuList[0].title = t("placeholder.addFriends");
-  actionMenuList[1].title = t("placeholder.addGroup");
-  actionMenuList[2].title = t("placeholder.createGroup");
+  actionMenuList[1].title = t("placeholder.createGroup");
 });
 
 const ActionPopContent = ({ actionClick }: { actionClick: (idx: number) => void }) => {

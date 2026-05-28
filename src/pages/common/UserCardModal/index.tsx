@@ -204,7 +204,8 @@ const UserCardModal: ForwardRefRenderFunction<
     setIsSendRequest(false);
   };
 
-  const showAddFriend = !isFriendUser && !isSelf && !notAdd;
+  // Enterprise scenario: no mandatory friend-add mode; messaging is always allowed.
+  const showAddFriend = false;
 
   return (
     <DraggableModalWrap

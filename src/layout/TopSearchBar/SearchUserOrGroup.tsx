@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { message } from "@/AntdGlobalComp";
-import { searchBusinessUserInfo } from "@/api/login";
+import { searchADMembers } from "@/api/organization";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { CardInfo } from "@/pages/common/UserCardModal";
@@ -66,20 +66,27 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
     } else {
       try {
         const {
-          data: { total, users },
-        } = await searchBusinessUserInfo(keyword);
+          data: { total, members },
+        } = await searchADMembers({
+          keyword,
+          pagination: { pageNumber: 1, showNumber: 20 },
+        });
         setLoading(false);
         if (!total) {
           message.warning(t("empty.noSearchResults"));
           return;
         }
+        const member = members[0];
+        const userID = member.userID || member.username;
         const friendInfo = useContactStore
           .getState()
-          .friendList.find((friend) => friend.userID === users[0].userID);
+          .friendList.find((friend) => friend.userID === userID);
 
         openUserCardWithData({
           ...(friendInfo ?? {}),
-          ...users[0],
+          userID,
+          nickname: member.nickname || member.displayName || member.username,
+          faceURL: "",
         });
       } catch (error) {
         setLoading(false);

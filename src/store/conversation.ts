@@ -22,6 +22,7 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
   unReadCount: 0,
   currentGroupInfo: undefined,
   currentMemberInGroup: undefined,
+  quoteMessage: undefined,
   getConversationListByReq: async (isOffset?: boolean) => {
     let tmpConversationList = [] as ConversationItem[];
     try {
@@ -145,6 +146,9 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
     ) {
       set(() => ({ currentMemberInGroup: { ...member } }));
     }
+  },
+  setQuoteMessage: (message?: MessageItem) => {
+    set(() => ({ quoteMessage: message }));
   },
   clearConversationStore: () => {
     set(() => ({

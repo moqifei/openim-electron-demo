@@ -15,7 +15,13 @@ const MenuItem = ({
     onClick={() => menuClick(menu.idx)}
   >
     <div className="flex items-center">
-      <img width={42} src={menu.icon} alt="" />
+      {typeof menu.icon === "string" ? (
+        <img width={42} src={menu.icon} alt="" />
+      ) : (
+        <div className="flex h-[42px] w-[42px] items-center justify-center">
+          {menu.icon}
+        </div>
+      )}
       <div className="ml-3.5">{menu.title}</div>
     </div>
     <RightOutlined className="text-[var(--sub-text)]" rev={undefined} />

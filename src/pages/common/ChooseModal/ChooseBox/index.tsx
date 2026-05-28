@@ -1,13 +1,12 @@
-import { SearchOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, RightOutlined, SearchOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
 import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useDebounceFn, useLatest } from "ahooks";
-import { Breadcrumb, Input, Spin } from "antd";
+import { Breadcrumb, Empty, Input, Spin } from "antd";
 import { BreadcrumbItemType } from "antd/es/breadcrumb/Breadcrumb";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import {
-  ChangeEvent,
   FC,
   forwardRef,
   ForwardRefRenderFunction,
@@ -15,14 +14,12 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useRef,
   useState,
 } from "react";
 import { Virtuoso } from "react-virtuoso";
 
-import friend from "@/assets/images/chooseModal/friend.png";
+import { getADDepartmentList, getADDepartmentMembers, searchADMembers } from "@/api/organization";
 import group from "@/assets/images/chooseModal/group.png";
-import recently from "@/assets/images/chooseModal/recently.png";
 import { useCurrentMemberRole } from "@/hooks/useCurrentMemberRole";
 import useGroupMembers from "@/hooks/useGroupMembers";
 import { IMSDK } from "@/layout/MainContentWrap";
@@ -36,13 +33,19 @@ import MenuItem from "./MenuItem";
 const menuList = [
   {
     idx: 0,
-    title: t("placeholder.myFriend"),
-    icon: friend,
+    title: t("placeholder.enterpriseMember") || "企业成员",
+    icon: <ApartmentOutlined className="text-xl text-[#ff4d4f]" />,
+  },
+  {
+    idx: 1,
+    title: t("placeholder.myGroup"),
+    icon: group,
   },
 ];
 
 i18n.on("languageChanged", () => {
-  menuList[0].title = t("placeholder.myFriend");
+  menuList[0].title = t("placeholder.enterpriseMember") || "企业成员";
+  menuList[1].title = t("placeholder.myGroup");
 });
 
 export type ChooseMenuItem = (typeof menuList)[0];
@@ -181,15 +184,17 @@ const CommonLeft: FC<ICommonLeftProps> = ({
 }) => {
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItemType[]>([]);
   const [checkList, setCheckList] = useState<CheckListItem[]>([]);
-
-  const breadcrumbClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
-    e.preventDefault();
-    setBreadcrumb([]);
-  };
+  const [adMode, setAdMode] = useState(false);
+  const [adDepartments, setAdDepartments] = useState<ADDepartment[]>([]);
+  const [currentDeptId, setCurrentDeptId] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [adLoading, setAdLoading] = useState(false);
 
   const checkInGroup = async (list: CheckListItem[]) => {
     const currentGroupID = useConversationStore.getState().currentConversation?.groupID;
+    console.log("[checkInGroup] isCheckInGroup:", isCheckInGroup, "currentGroupID:", currentGroupID, "list.length:", list.length);
     if (!isCheckInGroup || !currentGroupID) {
+      console.log("[checkInGroup] early return, list:", JSON.stringify(list));
       return list;
     }
     const tmpList = JSON.parse(JSON.stringify(list)) as CheckListItem[];
@@ -210,6 +215,141 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     return tmpList;
   };
 
+  const loadADDepartments = async () => {
+    setAdLoading(true);
+    try {
+      const resp = await getADDepartmentList();
+      // API wrapper may return { errCode, errMsg, data: { departments: [...] } }
+      // or directly { departments: [...] } depending on interceptor behavior.
+      const body = (resp && (resp as any).data) ? (resp as any).data : resp;
+      const depts = (body?.departments || []) as ADDepartment[];
+      setAdDepartments(depts.filter((d: ADDepartment) => d.level === 0));
+      console.debug("loadADDepartments response:", resp, "parsed:", body);
+    } catch (error) {
+      feedbackToast({ error });
+    } finally {
+      setAdLoading(false);
+    }
+  };
+
+  const loadADMembers = async (deptId: string) => {
+    setAdLoading(true);
+    try {
+      const resp = await getADDepartmentMembers({
+        departmentID: deptId,
+        pagination: { pageNumber: 1, showNumber: 1000 },
+      });
+      const body = (resp && (resp as any).data) ? (resp as any).data : resp;
+      const members = (body?.members || []).map((m: ADMember) => ({
+        userID: m.userID || m.username,
+        nickname: m.nickname || m.displayName || m.username,
+        faceURL: "",
+      }));
+      console.debug("loadADMembers response:", resp, "parsed members:", members);
+      setCheckList(await checkInGroup(members));
+    } catch (error) {
+      feedbackToast({ error });
+    } finally {
+      setAdLoading(false);
+    }
+  };
+
+  const searchAD = useCallback(
+    async (keyword: string) => {
+      if (!keyword.trim()) {
+        if (currentDeptId) {
+          await loadADMembers(currentDeptId);
+        } else {
+          await loadADDepartments();
+        }
+        return;
+      }
+      setAdLoading(true);
+      try {
+        const resp = await searchADMembers({
+          keyword,
+          pagination: { pageNumber: 1, showNumber: 1000 },
+        });
+        const body = (resp && (resp as any).data) ? (resp as any).data : resp;
+        const members = (body?.members || []).map((m: ADMember) => ({
+          userID: m.userID || m.username,
+          nickname: m.nickname || m.displayName || m.username,
+          faceURL: "",
+        }));
+        console.log("[searchAD] raw:", JSON.stringify(resp), "members:", members.length, members);
+        const checked = await checkInGroup(members);
+        console.log("[searchAD] after checkInGroup, result:", JSON.stringify(checked));
+        setCheckList(checked);
+      } catch (error) {
+        feedbackToast({ error });
+      } finally {
+        setAdLoading(false);
+      }
+    },
+    [currentDeptId, isCheckInGroup],
+  );
+
+  const { run: runSearchAD } = useDebounceFn(searchAD, { wait: 300 });
+
+  const breadcrumbClick = (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+    e.preventDefault();
+    setBreadcrumb([]);
+    setAdMode(false);
+    setCurrentDeptId("");
+    setSearchKeyword("");
+  };
+
+  const onDeptClick = async (dept: ADDepartment) => {
+    // Check if department has sub-departments
+    const hasSubDepts = dept.subDepartmentCount > 0;
+    if (hasSubDepts) {
+      // Navigate into department: show sub-departments + members
+      setCurrentDeptId(dept.departmentID);
+      setBreadcrumb((state) => [
+        ...state,
+        { title: dept.name, className: "text-xs text-[var(--primary)]" },
+      ]);
+      // Load sub-departments of this department
+      setAdLoading(true);
+      try {
+        const resp = await getADDepartmentList();
+        const body = (resp && (resp as any).data) ? (resp as any).data : resp;
+        const subDepts = (body?.departments || []).filter(
+          (d: ADDepartment) => d.parentID === dept.departmentID,
+        );
+        setAdDepartments(subDepts);
+        // Also load members
+        const memberRes = await getADDepartmentMembers({
+          departmentID: dept.departmentID,
+          pagination: { pageNumber: 1, showNumber: 1000 },
+        });
+        const memberBody = (memberRes && (memberRes as any).data) ? (memberRes as any).data : memberRes;
+        const members = (memberBody?.members || []).map((m: ADMember) => ({
+          userID: m.userID || m.username,
+          nickname: m.nickname || m.displayName || m.username,
+          faceURL: "",
+        }));
+        console.debug("onDeptClick members:", memberRes, "parsed:", members);
+        if (members.length > 0) {
+          setCheckList(await checkInGroup(members));
+        } else {
+          setCheckList([]);
+        }
+      } catch (error) {
+        feedbackToast({ error });
+      }
+      setAdLoading(false);
+    } else {
+      // Leaf department: show members
+      setCurrentDeptId(dept.departmentID);
+      setBreadcrumb((state) => [
+        ...state,
+        { title: dept.name, className: "text-xs text-[var(--primary)]" },
+      ]);
+      await loadADMembers(dept.departmentID);
+    }
+  };
+
   const menuClick = useCallback(async (idx: number) => {
     const pushItem = {
       title: "",
@@ -217,10 +357,16 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     };
     switch (idx) {
       case 0:
-        setCheckList(await checkInGroup(useContactStore.getState().friendList));
-        pushItem.title = t("placeholder.myFriend");
+        setAdMode(true);
+        setCurrentDeptId("");
+        setSearchKeyword("");
+        await loadADDepartments();
+        pushItem.title = t("placeholder.enterpriseMember") || "企业成员";
         break;
       case 1:
+        setAdMode(false);
+        setCurrentDeptId("");
+        setSearchKeyword("");
         setCheckList(await checkInGroup(useContactStore.getState().groupList));
         pushItem.title = t("placeholder.myGroup");
         break;
@@ -240,6 +386,24 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     );
   }
 
+  const showSearch = adMode;
+  const showDeptList = adMode && adDepartments.length > 0 && !searchKeyword.trim();
+
+  console.log(
+    "[ChooseBox render] adMode:",
+    adMode,
+    "showDeptList:",
+    showDeptList,
+    "checkList.length:",
+    checkList.length,
+    "adDepartments.length:",
+    adDepartments.length,
+    "searchKeyword:",
+    searchKeyword,
+    "adLoading:",
+    adLoading,
+  );
+
   return (
     <div className="flex flex-1 flex-col">
       <Breadcrumb
@@ -255,20 +419,76 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           ...breadcrumb,
         ]}
       />
-      <div className="mb-3 flex-1 overflow-y-auto">
-        <Virtuoso
-          className="h-full"
-          data={checkList}
-          itemContent={(_, item) => (
-            <CheckItem
-              showCheck
-              isChecked={isChecked(item)}
-              data={item}
-              key={item.userID || item.groupID}
-              itemClick={checkClick}
-            />
-          )}
-        />
+      {showSearch && (
+        <div className="mx-5.5 mb-2 mt-2">
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder={t("placeholder.search") || "搜索"}
+            value={searchKeyword}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSearchKeyword(val);
+              runSearchAD(val);
+            }}
+            allowClear
+          />
+        </div>
+      )}
+      <div className="relative mb-3 flex-1 min-h-0 overflow-y-auto">
+        {adLoading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+            <Spin />
+          </div>
+        )}
+        {showDeptList ? (
+          <Virtuoso
+            className="h-full"
+            data={adDepartments}
+            itemContent={(_, dept) => (
+              <div
+                className="mx-2 flex cursor-pointer items-center justify-between rounded-md px-3.5 py-2.5 hover:bg-[var(--primary-active)]"
+                onClick={() => onDeptClick(dept)}
+              >
+                <div className="flex items-center">
+                  <ApartmentOutlined className="mr-3 text-lg text-[var(--primary)]" />
+                  <div className="truncate">{dept.name}</div>
+                  {dept.memberCount > 0 && (
+                    <span className="ml-2 text-xs text-[var(--sub-text)]">
+                      ({dept.memberCount})
+                    </span>
+                  )}
+                </div>
+                <RightOutlined className="text-[var(--sub-text)]" rev={undefined} />
+              </div>
+            )}
+          />
+        ) : checkList.length === 0 ? (
+          <Empty
+            className="mt-[20%]"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              searchKeyword.trim()
+                ? "未找到匹配人员"
+                : currentDeptId
+                  ? "暂无人员"
+                  : ""
+            }
+          />
+        ) : (
+          <Virtuoso
+            className="h-full"
+            data={checkList}
+            itemContent={(_, item) => (
+              <CheckItem
+                showCheck
+                isChecked={isChecked(item)}
+                data={item}
+                key={item.userID || item.groupID}
+                itemClick={checkClick}
+              />
+            )}
+          />
+        )}
       </div>
     </div>
   );
@@ -334,3 +554,25 @@ const GroupMemberList: FC<IGroupMemberListProps> = ({
 };
 
 const ForwardMemberList = memo(GroupMemberList);
+
+// ────────── AD Organization helpers ──────────
+
+interface ADDepartment {
+  departmentID: string;
+  name: string;
+  parentID: string;
+  level: number;
+  memberCount: number;
+  subDepartmentCount: number;
+}
+
+interface ADMember {
+  userID: string;
+  username: string;
+  nickname: string;
+  displayName: string;
+  email: string;
+  departmentID: string;
+  position: string;
+  phone: string;
+}

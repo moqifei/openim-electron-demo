@@ -27,6 +27,13 @@ const contactRoutes = [
       return { Component: NewFriends };
     },
   },
+  {
+    path: "organization",
+    async lazy() {
+      const { Organization } = await import("@/pages/contact/organization");
+      return { Component: Organization };
+    },
+  },
 ];
 
 export default contactRoutes;
