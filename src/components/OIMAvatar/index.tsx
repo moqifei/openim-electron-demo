@@ -30,12 +30,14 @@ const OIMAvatar: React.FC<IOIMAvatarProps> = (props) => {
   const [errorHolder, setErrorHolder] = React.useState<string>();
 
   const getAvatarUrl = useMemo(() => {
+    console.log("[OIMAvatar] getAvatarUrl, src:", JSON.stringify(src), "isgroup:", isgroup);
     if (src) {
       if (default_avatars.includes(src as string))
         return getDefaultAvatar(src as string);
 
       return src;
     }
+    console.log("[OIMAvatar] src is falsy, returning", isgroup ? "default_group" : "undefined");
     return isgroup ? default_group : undefined;
   }, [src, isgroup, isnotification]);
 

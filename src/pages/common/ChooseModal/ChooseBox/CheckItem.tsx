@@ -21,13 +21,22 @@ interface ICheckItemProps {
 }
 
 export type CheckListItem = Partial<
-  FriendUserItem & ConversationItem & GroupItem & { disabled?: boolean }
+  FriendUserItem &
+    ConversationItem &
+    GroupItem & { disabled?: boolean; departmentName?: string; position?: string }
 >;
 
 const CheckItem: FC<ICheckItemProps> = (props) => {
   const { data, isChecked, showCheck, disabled, itemClick, cancelClick } = props;
   const showName = data.remark || data.nickname || data.groupName || data.showName;
   const isDisabled = disabled ?? data.disabled;
+  console.log(
+    "[CheckItem] showName:", showName,
+    "faceURL:", JSON.stringify(data.faceURL),
+    "departmentName:", JSON.stringify(data.departmentName),
+    "position:", JSON.stringify(data.position),
+    "userID:", data.userID,
+  );
   return (
     <div
       className={clsx(
@@ -48,7 +57,14 @@ const CheckItem: FC<ICheckItemProps> = (props) => {
             data.conversationType === SessionType.WorkingGroup
           }
         />
-        <div className="ml-3 max-w-[120px] truncate">{showName}</div>
+        <div className="ml-3 max-w-[180px] overflow-hidden">
+          <div className="truncate">{showName}</div>
+          {(data.departmentName || data.position) && (
+            <div className="truncate text-xs text-[var(--sub-text)]">
+              {[data.departmentName, data.position].filter(Boolean).join(" - ")}
+            </div>
+          )}
+        </div>
       </div>
       {showCheck ? (
         <RightOutlined

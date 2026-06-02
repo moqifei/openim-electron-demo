@@ -13,7 +13,7 @@ interface IMessageMenuProps {
   onForward: () => void;
   onReply: () => void;
   onMultiSelect: () => void;
-  onDelete: () => void;
+  onRevoke: () => void;
 }
 
 const MessageMenu: FC<IMessageMenuProps> = ({
@@ -25,7 +25,7 @@ const MessageMenu: FC<IMessageMenuProps> = ({
   onForward,
   onReply,
   onMultiSelect,
-  onDelete,
+  onRevoke,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -60,7 +60,7 @@ const MessageMenu: FC<IMessageMenuProps> = ({
     { label: t("placeholder.reply"), onClick: onReply },
     ...(isTextMessage ? [{ label: t("placeholder.copy"), onClick: handleCopy }] : []),
     { label: t("placeholder.check"), onClick: onMultiSelect },
-    { label: t("placeholder.delete"), onClick: onDelete },
+    { label: t("placeholder.revoke"), onClick: onRevoke },
   ];
 
   // Adjust position to keep menu within viewport

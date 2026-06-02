@@ -71,3 +71,33 @@
   word-break: break-word;
   white-space: pre-wrap;
 }
+
+// At-text message styles
+.atBubble {
+  background: rgba(22, 119, 255, 0.05);
+  border: 1px solid rgba(22, 119, 255, 0.12);
+}
+
+.atSelfBubble {
+  background: rgba(22, 119, 255, 0.1);
+  border-color: rgba(22, 119, 255, 0.25);
+}
+
+.atBadge {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--primary, #1677ff);
+  background: rgba(22, 119, 255, 0.08);
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+.atContent {
+  color: var(--text, #333);
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+}

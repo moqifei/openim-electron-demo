@@ -1,12 +1,11 @@
 import { MessageItem } from "@openim/wasm-client-sdk";
-import { FriendUserItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Popover, Upload } from "antd";
-import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, RefObject, useState } from "react";
 
 import cardIcon from "@/assets/images/chatFooter/card.png";
+import cutIcon from "@/assets/images/chatFooter/cut.png";
 import emojiIcon from "@/assets/images/chatFooter/emoji.png";
 import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
@@ -35,6 +34,11 @@ const sendActionList = [
     key: "emoji",
   },
   {
+    title: t("placeholder.screenshot"),
+    icon: cutIcon,
+    key: "screenshot",
+  },
+  {
     title: t("placeholder.card"),
     icon: cardIcon,
     key: "card",
@@ -45,7 +49,8 @@ i18n.on("languageChanged", () => {
   sendActionList[0].title = t("placeholder.image");
   sendActionList[1].title = t("placeholder.file");
   sendActionList[2].title = t("placeholder.emoji");
-  sendActionList[3].title = t("placeholder.card");
+  sendActionList[3].title = t("placeholder.screenshot");
+  sendActionList[4].title = t("placeholder.card");
 });
 
 const SendActionBar = ({
@@ -54,15 +59,22 @@ const SendActionBar = ({
   getFileMessage,
   getCardMessage,
   editorRef,
+  onScreenshot,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
   getImageMessage: (file: File) => Promise<MessageItem>;
   getFileMessage: (file: File) => Promise<MessageItem>;
-  getCardMessage: (user: FriendUserItem) => Promise<MessageItem>;
+  getCardMessage: (user: { userID: string; nickname: string; faceURL: string }) => Promise<MessageItem>;
   editorRef: RefObject<CKEditorRef>;
+  onScreenshot: (hideWindow: boolean) => void;
 }) => {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [hideWindowConfig, setHideWindowConfig] = useState(() => {
+    const v = localStorage.getItem("screenshotHideWindow");
+    return v === null ? true : v === "true";
+  });
+  const [configOpen, setConfigOpen] = useState(false);
 
   const fileHandle = async (options: UploadRequestOption, key: string) => {
     let message: MessageItem;
@@ -81,18 +93,89 @@ const SendActionBar = ({
     setEmojiOpen(false);
   };
 
-  const handleCardSelect = async (user: FriendUserItem) => {
+  const handleCardSelect = async (user: {
+    userID: string;
+    nickname: string;
+    faceURL: string;
+  }) => {
     const message = await getCardMessage(user);
     sendMessage({ message });
     setCardModalOpen(false);
   };
 
+  const handleScreenshotClick = () => {
+    onScreenshot(hideWindowConfig);
+  };
+
+  const toggleHideWindow = () => {
+    const next = !hideWindowConfig;
+    setHideWindowConfig(next);
+    localStorage.setItem("screenshotHideWindow", String(next));
+  };
+
+  const screenshotConfigContent = (
+    <div
+      className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm"
+      onClick={(e) => {
+        e.stopPropagation();
+        toggleHideWindow();
+      }}
+    >
+      <div
+        className={`flex h-4 w-4 items-center justify-center rounded border text-xs ${
+          hideWindowConfig
+            ? "border-[var(--primary)] bg-[var(--primary)] text-white"
+            : "border-gray-300"
+        }`}
+      >
+        {hideWindowConfig && "✓"}
+      </div>
+      <span>截图时隐藏窗口</span>
+    </div>
+  );
+
   return (
     <>
-      <div className="flex items-center px-4.5 pt-2">
+      <div className="flex items-center gap-5 px-4.5 pt-2">
         {sendActionList.map((action) => {
           const isEmoji = action.key === "emoji";
           const isCard = action.key === "card";
+          const isScreenshot = action.key === "screenshot";
+
+          if (isScreenshot) {
+            return (
+              <div key={action.key} className="flex cursor-pointer items-center">
+                <img
+                  src={cutIcon}
+                  width={20}
+                  alt={t("placeholder.screenshot")}
+                  onClick={handleScreenshotClick}
+                />
+                <Popover
+                  placement="bottomRight"
+                  content={screenshotConfigContent}
+                  trigger="click"
+                  open={configOpen}
+                  onOpenChange={setConfigOpen}
+                  arrow={false}
+                >
+                  <div
+                    className="ml-0.5 flex h-3.5 items-center border-l border-gray-300 pl-0.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <svg
+                      width="8"
+                      height="8"
+                      viewBox="0 0 8 8"
+                      className="text-gray-400"
+                    >
+                      <path d="M0 2 L4 6 L8 2 Z" fill="currentColor" />
+                    </svg>
+                  </div>
+                </Popover>
+              </div>
+            );
+          }
 
           const wrapProps = {
             accept: action.accept,
@@ -110,11 +193,7 @@ const SendActionBar = ({
 
           return (
             <ActionWrap key={action.key} {...wrapProps}>
-              <div
-                className={clsx("flex cursor-pointer items-center last:mr-0", {
-                  "mr-5": !action.accept,
-                })}
-              >
+              <div className="flex cursor-pointer items-center">
                 <img src={action.icon} width={20} alt={action.title} />
               </div>
             </ActionWrap>
@@ -158,7 +237,7 @@ const ActionWrap = ({
         customRequest={(options) => fileHandle(options, actionKey)}
         accept={accept}
         multiple
-        className="mr-5 flex"
+        className="flex"
       >
         {children}
       </Upload>

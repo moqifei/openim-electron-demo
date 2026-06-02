@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DataPath, IElectronAPI } from "./../../src/types/globalExpose.d";
+import { IpcRenderToMain } from "../constants";
 import { contextBridge, ipcRenderer } from "electron";
 import { isProd } from "../utils";
 import "@openim/electron-client-sdk/lib/preload";
@@ -101,6 +102,14 @@ const saveFileToDisk = async ({
   return uniqueSavePath;
 };
 
+const startScreenshot = (hideWindow?: boolean): Promise<string> => {
+  return ipcRenderer.invoke(IpcRenderToMain.startScreenshot, hideWindow);
+};
+
+const saveScreenshotFile = (base64: string): Promise<string> => {
+  return ipcRenderer.invoke(IpcRenderToMain.saveScreenshotFile, base64);
+};
+
 const Api: IElectronAPI = {
   getDataPath,
   getVersion: () => process.version,
@@ -113,6 +122,8 @@ const Api: IElectronAPI = {
   ipcSendSync,
   getFileByPath,
   saveFileToDisk,
+  startScreenshot,
+  saveScreenshotFile,
 };
 
 contextBridge.exposeInMainWorld("electronAPI", Api);

@@ -3,12 +3,10 @@ import { useMutation } from "react-query";
 import { v4 as uuidv4 } from "uuid";
 
 import { useUserStore } from "@/store";
-import createAxiosInstance from "@/utils/request";
+import { getChatAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
 import { errorHandle } from "./errorHandle";
-
-const request = createAxiosInstance(import.meta.env.VITE_CHAT_URL as string);
 
 const platform = window.electronAPI?.getPlatform() ?? 5;
 
@@ -19,7 +17,7 @@ const getAreaCode = (code?: string) =>
 export const useSendSms = () => {
   return useMutation(
     (params: API.Login.SendSmsParams) =>
-      request.post(
+      getChatAxios().post(
         "/account/code/send",
         {
           ...params,
@@ -40,7 +38,7 @@ export const useSendSms = () => {
 export const useVerifyCode = () => {
   return useMutation(
     (params: API.Login.VerifyCodeParams) =>
-      request.post(
+      getChatAxios().post(
         "/account/code/verify",
         {
           ...params,
@@ -62,7 +60,7 @@ export const useVerifyCode = () => {
 export const useRegister = () => {
   return useMutation(
     (params: API.Login.DemoRegisterType) =>
-      request.post<{ chatToken: string; imToken: string; userID: string }>(
+      getChatAxios().post<{ chatToken: string; imToken: string; userID: string }>(
         "/account/register",
         {
           ...params,
@@ -88,7 +86,7 @@ export const useRegister = () => {
 export const useReset = () => {
   return useMutation(
     (params: API.Login.ResetParams) =>
-      request.post(
+      getChatAxios().post(
         "/account/password/reset",
         {
           ...params,
@@ -109,7 +107,7 @@ export const useReset = () => {
 // change password
 export const modifyPassword = async (params: API.Login.ModifyParams) => {
   const token = (await getChatToken()) as string;
-  return request.post(
+  return getChatAxios().post(
     "/account/password/change",
     {
       ...params,
@@ -127,7 +125,7 @@ export const modifyPassword = async (params: API.Login.ModifyParams) => {
 export const useLogin = () => {
   return useMutation(
     (params: API.Login.LoginParams) =>
-      request.post<{ chatToken: string; imToken: string; userID: string }>(
+      getChatAxios().post<{ chatToken: string; imToken: string; userID: string }>(
         "/account/login",
         {
           ...params,
@@ -150,7 +148,7 @@ export const useLogin = () => {
 export const useADLogin = () => {
   return useMutation(
     (params: API.Login.AdLoginParams) =>
-      request.post<{ chatToken: string; imToken: string; userID: string }>(
+      getChatAxios().post<{ chatToken: string; imToken: string; userID: string }>(
         "/account/login/ad",
         {
           ...params,
@@ -194,7 +192,7 @@ export enum BusinessAllowType {
 
 export const getBusinessUserInfo = async (userIDs: string[]) => {
   const token = (await getChatToken()) as string;
-  return request.post<{ users: BusinessUserInfo[] }>(
+  return getChatAxios().post<{ users: BusinessUserInfo[] }>(
     "/user/find/full",
     {
       userIDs,
@@ -210,13 +208,42 @@ export const getBusinessUserInfo = async (userIDs: string[]) => {
 
 export const searchBusinessUserInfo = async (keyword: string) => {
   const token = (await getChatToken()) as string;
-  return request.post<{ total: number; users: BusinessUserInfo[] }>(
+  return getChatAxios().post<{ total: number; users: BusinessUserInfo[] }>(
     "/user/search/full",
     {
       keyword,
       pagination: {
         pageNumber: 1,
         showNumber: 1,
+      },
+    },
+    {
+      headers: {
+        operationID: uuidv4(),
+        token,
+      },
+    },
+  );
+};
+
+// Agent / bot search — uses the chat user table at port 10008, same as the
+// existing user search. Bots are users with platformID=12 and userID prefix "bot_".
+export interface AgentInfo {
+  userID: string;
+  nickname: string;
+  faceURL: string;
+  registerType: number;
+}
+
+export const searchAgents = async (keyword: string) => {
+  const token = (await getChatToken()) as string;
+  return getChatAxios().post<{ total: number; users: AgentInfo[] }>(
+    "/user/search/full",
+    {
+      keyword,
+      pagination: {
+        pageNumber: 1,
+        showNumber: 200,
       },
     },
     {
@@ -244,7 +271,7 @@ export const updateBusinessUserInfo = async (
   params: Partial<UpdateBusinessUserInfoParams>,
 ) => {
   const token = (await getChatToken()) as string;
-  return request.post<unknown>(
+  return getChatAxios().post<unknown>(
     "/user/update",
     {
       ...params,

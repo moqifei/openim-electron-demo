@@ -5,7 +5,7 @@ import { FC, useCallback, useState } from "react";
 import { t } from "i18next";
 import { IMessageItemProps } from "./index";
 
-const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "isSelected" | "onToggleSelect" | "onForward" | "onReply" | "onMultiSelect" | "onDelete">> = ({
+const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "isSelected" | "onToggleSelect" | "onForward" | "onReply" | "onMultiSelect" | "onRevoke">> = ({
   message,
 }) => {
   const quoteElem = message.quoteElem;

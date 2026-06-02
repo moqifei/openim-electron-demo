@@ -6,6 +6,7 @@ import WindowControlBar from "@/components/WindowControlBar";
 
 import styles from "./index.module.scss";
 import LoginForm from "./LoginForm";
+import ServerConfig from "./ServerConfig";
 import type { LoginMethod } from "./LoginForm";
 
 export const Login = () => {
@@ -23,14 +24,19 @@ export const Login = () => {
       </div>
       <div className="flex flex-1 items-center justify-center">
         <LeftBar />
-        <div
-          className={`${styles.login} mr-14 h-[450px] w-[350px] rounded-md p-11`}
-          style={{ boxShadow: "0 0 30px rgba(0,0,0,.1)" }}
-        >
-          <LoginForm
-            loginMethod={loginMethod}
-            updateLoginMethod={updateLoginMethod}
-          />
+        <div className="relative">
+          <div className="absolute right-0 top-[-12px] z-10 app-no-drag">
+            <ServerConfig />
+          </div>
+          <div
+            className={`${styles.login} mr-14 h-[450px] w-[350px] rounded-md p-11`}
+            style={{ boxShadow: "0 0 30px rgba(0,0,0,.1)" }}
+          >
+            <LoginForm
+              loginMethod={loginMethod}
+              updateLoginMethod={updateLoginMethod}
+            />
+          </div>
         </div>
       </div>
     </div>

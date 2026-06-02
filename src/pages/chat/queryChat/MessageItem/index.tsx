@@ -20,6 +20,7 @@ import MessageItemErrorBoundary from "./MessageItemErrorBoundary";
 import MessageSuffix from "./MessageSuffix";
 import QuoteMessageRender from "./QuoteMessageRender";
 import TextMessageRender from "./TextMessageRender";
+import AtTextMessageRender from "./AtTextMessageRender";
 
 export interface IMessageItemProps {
   message: MessageItemType;
@@ -34,7 +35,7 @@ export interface IMessageItemProps {
   onForward?: (message: MessageItemType) => void;
   onReply?: (message: MessageItemType) => void;
   onMultiSelect?: (message: MessageItemType) => void;
-  onDelete?: (message: MessageItemType) => void;
+  onRevoke?: (message: MessageItemType) => void;
 }
 
 const components: Record<number, FC<IMessageItemProps>> = {
@@ -44,6 +45,7 @@ const components: Record<number, FC<IMessageItemProps>> = {
   [MessageType.CardMessage]: CardMessageRender,
   [MessageType.QuoteMessage]: QuoteMessageRender,
   [MessageType.MergeMessage]: MergeMessageRender,
+  [MessageType.AtTextMessage]: AtTextMessageRender,
 };
 
 const MessageItem: FC<IMessageItemProps> = ({
@@ -57,7 +59,7 @@ const MessageItem: FC<IMessageItemProps> = ({
   onForward,
   onReply,
   onMultiSelect,
-  onDelete,
+  onRevoke,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -92,7 +94,7 @@ const MessageItem: FC<IMessageItemProps> = ({
         ]
       : []),
     { key: "check", label: t("placeholder.check"), onClick: () => onMultiSelect?.(message) },
-    { key: "delete", label: t("placeholder.delete"), onClick: () => onDelete?.(message) },
+    { key: "revoke", label: t("placeholder.revoke"), onClick: () => onRevoke?.(message) },
   ];
 
   return (

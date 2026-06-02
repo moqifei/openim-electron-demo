@@ -146,7 +146,41 @@ export const ChooseContact: FC<ChooseContactProps> = ({
 
   const confirmChoose = async () => {
     const choosedList = chooseBoxRef.current?.getCheckedList() ?? [];
-    if (!choosedList?.length && type !== "SELECT_USER")
+
+    // Separate directly-selected users from selected groups
+    const directUsers = choosedList.filter((item) => Boolean(item.userID));
+    const selectedGroups = choosedList.filter(
+      (item) => !item.userID && item.groupID,
+    );
+
+    // Expand groups into their member user IDs
+    let expandedUserIDs: string[] = [];
+    if (selectedGroups.length > 0) {
+      for (const g of selectedGroups) {
+        try {
+          const { data } = await IMSDK.getGroupMemberList({
+            groupID: g.groupID!,
+            filter: 0,
+            offset: 0,
+            count: 1000,
+          });
+          expandedUserIDs.push(
+            ...data.map((m) => m.userID).filter(Boolean),
+          );
+        } catch {
+          // skip groups we can't fetch
+        }
+      }
+    }
+
+    const allUserIDs = [
+      ...new Set([
+        ...directUsers.map((item) => item.userID!),
+        ...expandedUserIDs,
+      ]),
+    ];
+
+    if (!allUserIDs.length && type !== "SELECT_USER")
       return message.warning(t("toast.selectLeastOne"));
 
     if (!groupBaseInfo.groupName.trim() && type === "CRATE_GROUP")
@@ -156,9 +190,9 @@ export const ChooseContact: FC<ChooseContactProps> = ({
     try {
       switch (type) {
         case "CRATE_GROUP":
-          if (choosedList.length === 1) {
+          if (directUsers.length + selectedGroups.length === 1 && directUsers.length === 1) {
             toSpecifiedConversation({
-              sourceID: choosedList[0].userID!,
+              sourceID: directUsers[0].userID!,
               sessionType: SessionType.Single,
             });
             break;
@@ -169,34 +203,57 @@ export const ChooseContact: FC<ChooseContactProps> = ({
               groupName: groupBaseInfo.groupName,
               faceURL: groupBaseInfo.groupAvatar,
             },
-            memberUserIDs: choosedList.map((item) => item.userID!),
+            memberUserIDs: allUserIDs,
             adminUserIDs: [],
           });
           break;
-        case "INVITE_TO_GROUP":
-          await IMSDK.inviteUserToGroup({
-            groupID: extraData as string,
-            userIDList: choosedList.map((item) => item.userID!),
-            reason: "",
-          });
+        case "INVITE_TO_GROUP": {
+          const targetGroupID = extraData as string;
+          // 获取目标群组现有的成员列表，过滤掉已是成员的 userID
+          let existingMemberIDs: string[] = [];
+          try {
+            const { data } = await IMSDK.getGroupMemberList({
+              groupID: targetGroupID,
+              filter: 0,
+              offset: 0,
+              count: 1000,
+            });
+            existingMemberIDs = data.map((m) => m.userID).filter(Boolean);
+          } catch {
+            // 忽略获取成员列表失败的情况
+          }
+          const newUserIDs = allUserIDs.filter(
+            (uid) => !existingMemberIDs.includes(uid),
+          );
+          if (newUserIDs.length > 0) {
+            await IMSDK.inviteUserToGroup({
+              groupID: targetGroupID,
+              userIDList: newUserIDs,
+              reason: "",
+            });
+          }
           break;
+        }
         case "KICK_FORM_GROUP":
           await IMSDK.kickGroupMember({
             groupID: extraData as string,
-            userIDList: choosedList.map((item) => item.userID!),
+            userIDList: allUserIDs,
             reason: "",
           });
           break;
-        case "TRANSFER_IN_GROUP":
+        case "TRANSFER_IN_GROUP": {
+          const singleUser = allUserIDs[0];
+          if (!singleUser) break;
           await IMSDK.transferGroupOwner({
             groupID: extraData as string,
-            newOwnerUserID: choosedList[0].userID!,
+            newOwnerUserID: singleUser,
           });
           break;
+        }
         case "SELECT_USER":
           emit("SELECT_USER", {
             notConversation: (extraData as SelectUserExtraData).notConversation,
-            choosedList,
+            choosedList: directUsers,
           });
           break;
         default:

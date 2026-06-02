@@ -188,6 +188,34 @@ export const notificationMessageFormat = (msg: MessageItem) => {
             name: getName(dismissUser),
           }),
         });
+      case MessageType.RevokeMessage: {
+        const detail = JSON.parse(msg.notificationElem!.detail);
+        const isSelfRevoke = detail.revokerID === selfID;
+        const revokerName = isSelfRevoke
+          ? t("you")
+          : detail.revokerNickname ||
+            detail.sourceMessageSenderNickname ||
+            detail.revokerID;
+
+        // Admin / operator revoked someone else's message
+        if (detail.revokerID !== detail.sourceMessageSendID) {
+          const senderName =
+            detail.sourceMessageSenderNickname || detail.sourceMessageSendID;
+          return t("messageDescription.advanceRevokeMessage", {
+            operator: revokerName,
+            revoker: senderName,
+          });
+        }
+
+        // Normal self-revoke or peer-revoke
+        let text = t("messageDescription.revokeMessage", {
+          revoker: revokerName,
+        });
+        if (isSelfRevoke) {
+          text += ` <span class="link-el cursor-pointer" onclick="window.editRevoke?.('${detail.clientMsgID}')">${t("placeholder.reEdit")}</span>`;
+        }
+        return text;
+      }
       default:
         return "";
     }

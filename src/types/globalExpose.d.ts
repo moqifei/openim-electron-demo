@@ -14,6 +14,8 @@ export interface IElectronAPI {
   ipcSendSync: <T = unknown>(channel: string, ...arg: any) => T;
   saveFileToDisk: (params: { file: File; sync?: boolean }) => Promise<string>;
   getFileByPath: (filePath: string) => Promise<File | null>;
+  startScreenshot: (hideWindow?: boolean) => Promise<string>;
+  saveScreenshotFile: (base64: string) => Promise<string>;
 }
 
 declare global {

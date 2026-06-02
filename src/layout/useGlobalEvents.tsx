@@ -123,8 +123,10 @@ export function useGlobalEvent() {
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     try {
-      const apiAddr = import.meta.env.VITE_API_URL;
-      const wsAddr = import.meta.env.VITE_WS_URL;
+      const storedHost = localStorage.getItem("openim_server_host");
+      const host = storedHost || (import.meta.env.VITE_BASE_HOST as string);
+      const apiAddr = `http://${host}:10002`;
+      const wsAddr = `ws://${host}:10001`;
       if (window.electronAPI) {
         await IMSDK.initSDK({
           platformID: window.electronAPI?.getPlatform() ?? 5,

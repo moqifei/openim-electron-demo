@@ -10,6 +10,7 @@ import i18n, { t } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBusinessUserInfo } from "@/api/login";
+import { SearchOutlined } from "@ant-design/icons";
 import add_friend from "@/assets/images/topSearchBar/add_friend.png";
 import add_group from "@/assets/images/topSearchBar/add_group.png";
 import create_group from "@/assets/images/topSearchBar/create_group.png";
@@ -26,6 +27,7 @@ import { useContactStore, useUserStore } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
 
 import { IMSDK } from "../MainContentWrap";
+import GlobalSearchModal from "./GlobalSearchModal";
 import SearchUserOrGroup from "./SearchUserOrGroup";
 
 type UserCardState = OpenUserCardParams & {
@@ -37,6 +39,7 @@ const TopSearchBar = () => {
   const groupCardRef = useRef<OverlayVisibleHandle>(null);
   const chooseModalRef = useRef<OverlayVisibleHandle>(null);
   const searchModalRef = useRef<OverlayVisibleHandle>(null);
+  const globalSearchModalRef = useRef<OverlayVisibleHandle>(null);
   const rtcRef = useRef<OverlayVisibleHandle>(null);
   const [chooseModalState, setChooseModalState] = useState<ChooseModalState>({
     type: "CRATE_GROUP",
@@ -47,6 +50,7 @@ const TopSearchBar = () => {
   >();
   const [actionVisible, setActionVisible] = useState(false);
   const [isSearchGroup, setIsSearchGroup] = useState(false);
+  const [isSearchAgent, setIsSearchAgent] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData>({} as InviteData);
 
   useEffect(() => {
@@ -111,9 +115,15 @@ const TopSearchBar = () => {
     switch (idx) {
       case 0:
         setIsSearchGroup(false);
+        setIsSearchAgent(false);
         searchModalRef.current?.openOverlay();
         break;
       case 1:
+        setIsSearchGroup(false);
+        setIsSearchAgent(true);
+        searchModalRef.current?.openOverlay();
+        break;
+      case 2:
         setChooseModalState({ type: "CRATE_GROUP" });
         chooseModalRef.current?.openOverlay();
         break;
@@ -145,7 +155,13 @@ const TopSearchBar = () => {
   return (
     <div className="no-mobile app-drag flex h-10 min-h-[40px] items-center bg-[var(--top-search-bar)] dark:bg-[#141414]">
       <div className="flex w-full items-center justify-center">
-        <div className="app-no-drag flex h-[26px] w-1/3 items-center justify-center rounded-md bg-[rgba(255,255,255,0.2)]"></div>
+        <div
+          className="app-no-drag flex h-[26px] w-1/3 cursor-pointer items-center justify-center gap-1 rounded-md bg-[rgba(255,255,255,0.2)] text-white/70 hover:bg-[rgba(255,255,255,0.3)]"
+          onClick={() => globalSearchModalRef.current?.openOverlay()}
+        >
+          <SearchOutlined className="text-xs" />
+          <span className="text-xs">{t("placeholder.search")}</span>
+        </div>
         <Popover
           content={<ActionPopContent actionClick={actionClick} />}
           arrow={false}
@@ -167,9 +183,11 @@ const TopSearchBar = () => {
       <UserCardModal ref={userCardRef} {...userCardState} />
       <GroupCardModal ref={groupCardRef} groupData={groupCardData} />
       <ChooseModal ref={chooseModalRef} state={chooseModalState} />
+      <GlobalSearchModal ref={globalSearchModalRef} />
       <SearchUserOrGroup
         ref={searchModalRef}
         isSearchGroup={isSearchGroup}
+        isSearchAgent={isSearchAgent}
         openUserCardWithData={openUserCardWithData}
         openGroupCardWithData={openGroupCardWithData}
       />
@@ -188,6 +206,11 @@ const actionMenuList = [
   },
   {
     idx: 1,
+    title: t("placeholder.searchAgents"),
+    icon: add_friend,
+  },
+  {
+    idx: 2,
     title: t("placeholder.createGroup"),
     icon: create_group,
   },
@@ -195,7 +218,8 @@ const actionMenuList = [
 
 i18n.on("languageChanged", () => {
   actionMenuList[0].title = t("placeholder.addFriends");
-  actionMenuList[1].title = t("placeholder.createGroup");
+  actionMenuList[1].title = t("placeholder.searchAgents");
+  actionMenuList[2].title = t("placeholder.createGroup");
 });
 
 const ActionPopContent = ({ actionClick }: { actionClick: (idx: number) => void }) => {

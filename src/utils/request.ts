@@ -6,6 +6,7 @@ import { useUserStore } from "@/store";
 
 import { getChatToken, getIMToken } from "./storage";
 import { feedbackToast } from "./common";
+import { getServerHost } from "./config";
 
 const tokenErrorCodeList = [1501, 1503, 1504, 1505];
 
@@ -53,6 +54,29 @@ const createAxiosInstance = (baseURL: string, imToken = true) => {
   );
 
   return serves;
+};
+
+// Dynamic axios instances — re-read the base host from
+// localStorage on each access so users can reconfigure at runtime.
+let _chatAxios: ReturnType<typeof createAxiosInstance> | null = null;
+let _apiAxios: ReturnType<typeof createAxiosInstance> | null = null;
+
+export const getChatAxios = () => {
+  const host = getServerHost();
+  const url = `http://${host}:10008`;
+  if (!_chatAxios || _chatAxios.defaults.baseURL !== url) {
+    _chatAxios = createAxiosInstance(url, false);
+  }
+  return _chatAxios;
+};
+
+export const getApiAxios = () => {
+  const host = getServerHost();
+  const url = `http://${host}:10002`;
+  if (!_apiAxios || _apiAxios.defaults.baseURL !== url) {
+    _apiAxios = createAxiosInstance(url, true);
+  }
+  return _apiAxios;
 };
 
 export default createAxiosInstance;

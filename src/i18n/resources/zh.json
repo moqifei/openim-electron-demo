@@ -114,7 +114,8 @@
     "publishFailed": "发布失败！",
     "notCanAddFriend": "对方已设置不允许被添加为好友！",
     "isJoinCalling": "群通话进行中，是否直接加入？",
-    "fileTypeError": "不支持的文件类型或文件夹！"
+    "fileTypeError": "不支持的文件类型或文件夹！",
+    "screenshotPermissionDenied": "截图失败，请前往系统设置 > 安全性与隐私 > 屏幕录制中授予应用权限！"
   },
   "placeholder": {
     "conversation": "会话",
@@ -319,6 +320,7 @@
     "messageAllowBeep": "新消息提示音",
     "messageNotNotify": "勿扰模式",
     "addFriends": "搜索人员",
+    "searchAgents": "搜索智能体",
     "verifyAdd": "验证添加",
     "addGroup": "添加群组",
     "createGroup": "创建群聊",
@@ -336,6 +338,7 @@
     "reEdit": "重新编辑",
     "multipleNewMessages": "{{count}}新消息",
     "reply": "回复",
+    "releaseToUpload": "释放以上传文件",
     "favorite": "收藏",
     "sendShortcutkey": "Enter发送/Shift+Enter换行",
     "sendWithEnter": "按Enter发送",

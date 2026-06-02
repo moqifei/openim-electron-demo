@@ -113,7 +113,8 @@
     "getLogFailed": "Failed to retrieve the log file!",
     "publishFailed": "Failed to publish!",
     "notCanAddFriend": "The other party has been set up not to be added as a friend!",
-    "fileTypeError": "Unsupported file type or folder!"
+    "fileTypeError": "Unsupported file type or folder!",
+    "screenshotPermissionDenied": "Screenshot failed. Please grant screen recording permission in System Settings > Security & Privacy > Screen Recording!"
   },
   "placeholder": {
     "conversation": "Conversation",
@@ -318,6 +319,7 @@
     "messageAllowBeep": "New Message Sound Alert",
     "messageNotNotify": "Do Not Disturb Mode",
     "addFriends": "Search Personnel",
+    "searchAgents": "Search Agents",
     "verifyAdd": "Add",
     "addGroup": "Add Group",
     "createGroup": "Create Group Chat",
@@ -335,6 +337,7 @@
     "reEdit": "Re-edit",
     "multipleNewMessages": "{{count}} new messages",
     "reply": "Reply",
+    "releaseToUpload": "Release to upload files",
     "favorite": "Favorite",
     "sendShortcutkey": "Enter to Send/Shift+Enter for New Line",
     "sendWithEnter": "Send with Enter",

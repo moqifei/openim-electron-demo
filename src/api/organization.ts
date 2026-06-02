@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from "uuid";
 
-import createAxiosInstance from "@/utils/request";
+import { getChatAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
-const request = createAxiosInstance(import.meta.env.VITE_CHAT_URL as string);
+const getRequest = () => getChatAxios();
 
 export interface ADDepartmentInfo {
   departmentID: string;
@@ -23,6 +23,9 @@ export interface ADDepartmentMemberInfo {
   departmentID: string;
   position: string;
   phone: string;
+  avatar?: string;
+  faceURL?: string;
+  departmentName?: string;
 }
 
 export interface GetADDepartmentListResp {
@@ -58,7 +61,7 @@ export interface SearchADMembersResp {
 
 export const getADDepartmentList = async () => {
   const token = (await getChatToken()) as string;
-  return request.post<GetADDepartmentListResp>(
+  return getRequest().post<GetADDepartmentListResp>(
     "/ad/department/list",
     {},
     {
@@ -72,7 +75,7 @@ export const getADDepartmentList = async () => {
 
 export const getADDepartmentMembers = async (params: GetADDepartmentMembersReq) => {
   const token = (await getChatToken()) as string;
-  return request.post<GetADDepartmentMembersResp>(
+  return getRequest().post<GetADDepartmentMembersResp>(
     "/ad/department/members",
     params,
     {
@@ -86,7 +89,7 @@ export const getADDepartmentMembers = async (params: GetADDepartmentMembersReq) 
 
 export const searchADMembers = async (params: SearchADMembersReq) => {
   const token = (await getChatToken()) as string;
-  return request.post<SearchADMembersResp>(
+  return getRequest().post<SearchADMembersResp>(
     "/ad/member/search",
     params,
     {
@@ -100,7 +103,7 @@ export const searchADMembers = async (params: SearchADMembersReq) => {
 
 export const syncADOrganization = async () => {
   const token = (await getChatToken()) as string;
-  return request.post(
+  return getRequest().post(
     "/ad/sync",
     {},
     {

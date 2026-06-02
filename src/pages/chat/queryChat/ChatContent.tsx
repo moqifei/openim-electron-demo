@@ -19,7 +19,7 @@ import ForwardModal, { ForwardModalHandle } from "./ForwardModal";
 import MessageItem from "./MessageItem";
 import MultiSelectToolbar from "./MultiSelectToolbar";
 import NotificationMessage from "./NotificationMessage";
-import { useHistoryMessageList } from "./useHistoryMessageList";
+import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList";
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
@@ -182,19 +182,35 @@ const ChatContent = () => {
     });
   }, []);
 
-  const handleDelete = useCallback(
+  const handleRevoke = useCallback(
     async (msg: MessageItemType) => {
       if (!conversationID) return;
       try {
-        await IMSDK.deleteMessage({
+        await IMSDK.revokeMessage({
           conversationID,
           clientMsgID: msg.clientMsgID,
         });
+        // 立即更新本地消息状态
+        updateOneMessage({
+          clientMsgID: msg.clientMsgID,
+          contentType: MessageType.RevokeMessage,
+          notificationElem: {
+            detail: JSON.stringify({
+              clientMsgID: msg.clientMsgID,
+              revokerID: selfUserID,
+              revokerNickname: "",
+              revokeTime: Date.now(),
+              sourceMessageSendID: msg.sendID,
+              sourceMessageSendTime: msg.sendTime,
+              sourceMessageSenderNickname: msg.senderNickname,
+            }),
+          },
+        } as MessageItemType);
       } catch (error) {
         feedbackToast({ error });
       }
     },
-    [conversationID],
+    [conversationID, selfUserID],
   );
 
   const handleForwardOneByOne = useCallback(() => {
@@ -262,7 +278,7 @@ const ChatContent = () => {
                 onForward={(msg) => handleForward([msg], false)}
                 onReply={handleReply}
                 onMultiSelect={handleMultiSelect}
-                onDelete={handleDelete}
+                onRevoke={handleRevoke}
               />
             );
           }}
