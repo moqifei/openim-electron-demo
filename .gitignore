@@ -36,3 +36,5 @@ yarn.lock
 # sdk core
 open-im-sdk-core.*
 OpenIM_*
+
+.env

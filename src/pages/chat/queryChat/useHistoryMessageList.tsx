@@ -60,11 +60,16 @@ export function useHistoryMessageList() {
         };
       });
     };
+    const reloadChatMessages = () => {
+      loadHistoryMessages();
+    };
     emitter.on("PUSH_NEW_MSG", pushNewMessage);
     emitter.on("UPDATE_ONE_MSG", updateOneMessage);
+    emitter.on("RELOAD_CHAT_MESSAGES", reloadChatMessages);
     return () => {
       emitter.off("PUSH_NEW_MSG", pushNewMessage);
       emitter.off("UPDATE_ONE_MSG", updateOneMessage);
+      emitter.off("RELOAD_CHAT_MESSAGES", reloadChatMessages);
     };
   }, []);
 
@@ -73,6 +78,7 @@ export function useHistoryMessageList() {
   const { loading: moreOldLoading, runAsync: getMoreOldMessages } = useRequest(
     async (loadMore = true) => {
       const reqConversationID = conversationID;
+      console.log("[history] getAdvancedHistoryMessageList start", "convID:", conversationID, "loadMore:", loadMore);
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: SPLIT_COUNT,
         startClientMsgID: loadMore
@@ -82,6 +88,14 @@ export function useHistoryMessageList() {
         viewType: ViewType.History,
       });
       if (conversationID !== reqConversationID) return;
+
+      const loadedSeqs = data.messageList.map((m: MessageItem) => m.seq).sort((a: number, b: number) => a - b);
+      console.log("[history] getAdvancedHistoryMessageList result",
+        "count:", data.messageList.length,
+        "isEnd:", data.isEnd,
+        "seqRange:", loadedSeqs.length > 0 ? `${loadedSeqs[0]}-${loadedSeqs[loadedSeqs.length-1]}` : "empty",
+        "seqs:", loadedSeqs);
+
       setTimeout(() =>
         setLoadState((preState) => ({
           ...preState,

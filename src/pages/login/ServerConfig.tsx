@@ -2,7 +2,13 @@ import { SettingOutlined } from "@ant-design/icons";
 import { Button, Input, Modal, Space } from "antd";
 import { useState } from "react";
 
-import { getServerHost, setServerHost, clearServerHost } from "@/utils/config";
+import {
+  getIMHost,
+  setIMHost,
+  getChatHost,
+  setChatHost,
+  clearServerHost,
+} from "@/utils/config";
 
 interface ServerConfigProps {
   onConfigChanged?: () => void;
@@ -10,20 +16,25 @@ interface ServerConfigProps {
 
 const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState(getServerHost());
+  const [imHost, setImHost] = useState(getIMHost());
+  const [chatHost, setChatHostVal] = useState(getChatHost());
 
   const handleSave = () => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    setServerHost(trimmed);
+    const trimmedIm = imHost.trim();
+    const trimmedChat = chatHost.trim();
+    if (!trimmedIm || !trimmedChat) return;
+    setIMHost(trimmedIm);
+    setChatHost(trimmedChat);
     setOpen(false);
-    // Notify parent to reload / re-login
     onConfigChanged?.();
   };
 
   const handleReset = () => {
     clearServerHost();
-    setValue(import.meta.env.VITE_BASE_HOST as string);
+    const defaultIm = (import.meta.env.VITE_IM_HOST ?? import.meta.env.VITE_BASE_HOST) as string;
+    const defaultChat = (import.meta.env.VITE_CHAT_HOST ?? import.meta.env.VITE_BASE_HOST) as string;
+    setImHost(defaultIm);
+    setChatHostVal(defaultChat);
     setOpen(false);
     onConfigChanged?.();
   };
@@ -33,7 +44,8 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
       <SettingOutlined
         className="cursor-pointer text-lg text-gray-400 hover:text-[var(--primary)]"
         onClick={() => {
-          setValue(getServerHost());
+          setImHost(getIMHost());
+          setChatHostVal(getChatHost());
           setOpen(true);
         }}
       />
@@ -42,22 +54,36 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
         open={open}
         onCancel={() => setOpen(false)}
         footer={null}
-        width={400}
+        width={440}
         destroyOnClose
       >
-        <div className="mb-4 text-xs text-gray-400">
-          请输入 OpenIM 服务器的 IP 地址或域名（不含端口号）
+        <div className="mb-3 text-xs text-gray-400">
+          集群部署模式下，IM 服务和 Chat 服务可能部署在不同地址
         </div>
-        <Input
-          placeholder="例如: 192.168.1.100"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onPressEnter={handleSave}
-          autoFocus
-        />
-        <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+        <div className="mb-2">
+          <div className="mb-1 text-sm font-medium">IM 服务器地址</div>
+          <div className="mb-1 text-xs text-gray-400">
+            WebSocket :10001 / API :10002
+          </div>
+          <Input
+            placeholder="例如: 192.168.1.100"
+            value={imHost}
+            onChange={(e) => setImHost(e.target.value)}
+            autoFocus
+          />
+        </div>
+        <div className="mb-3">
+          <div className="mb-1 text-sm font-medium">Chat 服务器地址</div>
+          <div className="mb-1 text-xs text-gray-400">API :10008</div>
+          <Input
+            placeholder="例如: 192.168.1.200"
+            value={chatHost}
+            onChange={(e) => setChatHostVal(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center justify-between text-xs text-gray-400">
           <span>
-            当前：{value}:10008
+            当前：IM {imHost}:10001/02 | Chat {chatHost}:10008
           </span>
           <Space>
             <Button size="small" type="link" danger onClick={handleReset}>

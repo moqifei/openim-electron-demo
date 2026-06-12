@@ -30,6 +30,8 @@ import { initStore } from "@/utils/imCommon";
 import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
+import { getIMHost } from "@/utils/config";
+import emitter from "@/utils/events";
 
 export function useGlobalEvent() {
   const navigate = useNavigate();
@@ -123,8 +125,7 @@ export function useGlobalEvent() {
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     try {
-      const storedHost = localStorage.getItem("openim_server_host");
-      const host = storedHost || (import.meta.env.VITE_BASE_HOST as string);
+      const host = getIMHost();
       const apiAddr = `http://${host}:10002`;
       const wsAddr = `ws://${host}:10001`;
       if (window.electronAPI) {
@@ -240,30 +241,51 @@ export function useGlobalEvent() {
 
   // sync
   const syncStartHandler = ({ data }: WSEvent<boolean>) => {
+    console.log("[sync] OnSyncServerStart, reinstall:", data);
     updateSyncState("loading");
     updateReinstallState(data);
   };
   const syncProgressHandler = ({ data }: WSEvent<number>) => {
+    console.log("[sync] OnSyncServerProgress, progress:", data);
     updateProgressState(data);
   };
   const syncFinishHandler = () => {
+    console.log("[sync] OnSyncServerFinish");
     updateSyncState("success");
     getFriendListByReq();
     getGroupListByReq();
     getConversationListByReq(false);
     getUnReadCountByReq();
+    emitter.emit("RELOAD_CHAT_MESSAGES");
+    console.log("[sync] RELOAD_CHAT_MESSAGES emitted");
   };
   const syncFailedHandler = () => {
+    console.log("[sync] OnSyncServerFailed");
     updateSyncState("failed");
     feedbackToast({ msg: t("toast.syncFailed"), error: t("toast.syncFailed") });
   };
 
   // message
   const newMessageHandler = ({ data }: WSEvent<MessageItem[]>) => {
+    console.log("[msg] OnRecvNewMessages, count:", data.length, "syncState:", useUserStore.getState().syncState, "resume:", resume.current,
+      "msgs:", data.map(m => ({ seq: m.seq, convID: m.conversationID || m.clientMsgID?.substring(0, 8), contentType: m.contentType, content: typeof m.content === 'string' ? m.content.substring(0, 20) : '' })));
     if (useUserStore.getState().syncState === "loading" || resume.current) {
+      // During sync, still process messages for the currently open conversation
+      // so they appear in the chat window immediately.
+      data.forEach((message) => {
+        if (inCurrentConversation(message)) {
+          console.log("[msg] processing in-current-conversation msg during sync/resume, seq:", message.seq);
+          handleNewMessage(message);
+        } else {
+          console.log("[msg] skipping non-current-conversation msg during sync/resume, seq:", message.seq);
+        }
+      });
       return;
     }
-    data.map((message) => handleNewMessage(message));
+    data.map((message) => {
+      console.log("[msg] processing new message, seq:", message.seq, "inCurrent:", inCurrentConversation(message));
+      handleNewMessage(message);
+    });
   };
 
   const revokedMessageHandler = ({ data }: WSEvent<RevokedInfo>) => {
@@ -324,12 +346,17 @@ export function useGlobalEvent() {
 
   // conversation
   const conversationChnageHandler = ({ data }: WSEvent<ConversationItem[]>) => {
+    console.log("[conv] OnConversationChanged, count:", data.length,
+      "convs:", data.map(c => ({ convID: c.conversationID, unread: c.unreadCount, latestMsg: c.latestMsg?.substring(0, 20) })));
     updateConversationList(data, "filter");
   };
   const newConversationHandler = ({ data }: WSEvent<ConversationItem[]>) => {
+    console.log("[conv] OnNewConversation, count:", data.length,
+      "convs:", data.map(c => ({ convID: c.conversationID, unread: c.unreadCount })));
     updateConversationList(data, "push");
   };
   const totalUnreadChangeHandler = ({ data }: WSEvent<number>) => {
+    console.log("[conv] OnTotalUnreadMessageCountChanged, count:", data, "current:", useConversationStore.getState().unReadCount);
     if (data === useConversationStore.getState().unReadCount) return;
     updateUnReadCount(data);
   };

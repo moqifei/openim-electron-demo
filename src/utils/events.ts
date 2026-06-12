@@ -16,6 +16,7 @@ type EmitterEvents = {
   // message store
   PUSH_NEW_MSG: MessageItem;
   UPDATE_ONE_MSG: MessageItem;
+  RELOAD_CHAT_MESSAGES: void;
 
   SELECT_USER: SelectUserParams;
 };
