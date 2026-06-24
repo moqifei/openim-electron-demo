@@ -110,6 +110,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           }
         } catch (error) {
           console.error("[ChatFooter] send file failed:", error);
+          message.error(t("toast.accessFailed"));
         }
       }
     },

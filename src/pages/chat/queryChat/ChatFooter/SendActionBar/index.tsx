@@ -1,5 +1,5 @@
 import { MessageItem } from "@openim/wasm-client-sdk";
-import { Popover, Upload } from "antd";
+import { message as antdMessage, Popover, Upload } from "antd";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, RefObject, useState } from "react";
@@ -77,15 +77,20 @@ const SendActionBar = ({
   const [configOpen, setConfigOpen] = useState(false);
 
   const fileHandle = async (options: UploadRequestOption, key: string) => {
-    let message: MessageItem;
-    if (key === "image") {
-      message = await getImageMessage(options.file as File);
-    } else if (key === "file") {
-      message = await getFileMessage(options.file as File);
-    } else {
-      return;
+    try {
+      let message: MessageItem;
+      if (key === "image") {
+        message = await getImageMessage(options.file as File);
+      } else if (key === "file") {
+        message = await getFileMessage(options.file as File);
+      } else {
+        return;
+      }
+      await sendMessage({ message });
+    } catch (error) {
+      console.error("[SendActionBar] send file failed:", error);
+      antdMessage.error(t("toast.accessFailed"));
     }
-    sendMessage({ message });
   };
 
   const handleEmojiSelect = (emoji: string) => {

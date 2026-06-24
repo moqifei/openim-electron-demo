@@ -8,7 +8,9 @@ import {
   GroupApplicationItem,
   GroupItem,
   GroupMemberItem,
+  GroupMessageReceiptInfo,
   MessageItem,
+  ReceiptInfo,
   RevokedInfo,
   SelfUserInfo,
   WSEvent,
@@ -180,6 +182,8 @@ export function useGlobalEvent() {
     // message
     IMSDK.on(CbEvents.OnRecvNewMessages, newMessageHandler);
     IMSDK.on(CbEvents.OnNewRecvMessageRevoked, revokedMessageHandler);
+    IMSDK.on(CbEvents.OnRecvC2CReadReceipt, c2cReadReceiptHandler);
+    IMSDK.on(CbEvents.OnRecvGroupReadReceipt, groupReadReceiptHandler);
     // conversation
     IMSDK.on(CbEvents.OnConversationChanged, conversationChnageHandler);
     IMSDK.on(CbEvents.OnNewConversation, newConversationHandler);
@@ -457,6 +461,43 @@ export function useGlobalEvent() {
     }
   };
 
+  // 单聊已读回执处理
+  const c2cReadReceiptHandler = ({ data }: WSEvent<ReceiptInfo[]>) => {
+    console.log("[read] OnRecvC2CReadReceipt, receipts:", data.length, data);
+    data.forEach(async (receipt) => {
+      console.log("[read] processing c2c receipt: userID:", receipt.userID, "msgIDList:", receipt.msgIDList);
+      // 直接从本地消息列表更新，不需要调用 getMsgsInfo
+      // 因为 receipt 中的 msgIDList 就是已读的消息 ID 列表
+      // 我们通过 emitter 通知所有聊天页面更新这些消息的 isRead 状态
+      receipt.msgIDList.forEach((clientMsgID) => {
+        updateOneMessage({
+          clientMsgID,
+          isRead: true,
+        } as MessageItem);
+      });
+    });
+  };
+
+  // 群聊已读回执处理
+  const groupReadReceiptHandler = ({ data }: WSEvent<GroupMessageReceiptInfo>) => {
+    const readInfos = data?.groupMessageReadInfo ?? [];
+    console.log("[read] OnRecvGroupReadReceipt, conversationID:", data?.conversationID, "receipts:", readInfos.length);
+    readInfos.forEach((receipt) => {
+      console.log("[read] processing group receipt: clientMsgID:", receipt.clientMsgID, "hasReadCount:", receipt.hasReadCount, "unreadCount:", receipt.unreadCount);
+      updateOneMessage({
+        clientMsgID: receipt.clientMsgID,
+        attachedInfoElem: {
+          groupHasReadInfo: {
+            hasReadCount: receipt.hasReadCount,
+            unreadCount: receipt.unreadCount,
+            hasReadUserIDList: receipt.readMembers?.map((member) => member.userID) ?? [],
+            groupMemberCount: receipt.hasReadCount + receipt.unreadCount + 1,
+          },
+        },
+      } as MessageItem);
+    });
+  };
+
   const disposeIMListener = () => {
     IMSDK.off(CbEvents.OnSelfInfoUpdated, selfUpdateHandler);
     IMSDK.off(CbEvents.OnConnecting, connectingHandler);
@@ -472,6 +513,9 @@ export function useGlobalEvent() {
     IMSDK.off(CbEvents.OnSyncServerFailed, syncFailedHandler);
     // message
     IMSDK.off(CbEvents.OnRecvNewMessages, newMessageHandler);
+    IMSDK.off(CbEvents.OnNewRecvMessageRevoked, revokedMessageHandler);
+    IMSDK.off(CbEvents.OnRecvC2CReadReceipt, c2cReadReceiptHandler);
+    IMSDK.off(CbEvents.OnRecvGroupReadReceipt, groupReadReceiptHandler);
     // conversation
     IMSDK.off(CbEvents.OnConversationChanged, conversationChnageHandler);
     IMSDK.off(CbEvents.OnNewConversation, newConversationHandler);

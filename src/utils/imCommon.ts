@@ -1,12 +1,11 @@
 import dayjs from "dayjs";
-import { v4 as uuidV4 } from "uuid";
 import calendar from "dayjs/plugin/calendar";
 import relativeTime from "dayjs/plugin/relativeTime";
 import updateLocale from "dayjs/plugin/updateLocale";
 import { t } from "i18next";
 import default_group from "@/assets/images/contact/my_groups.png";
-import { v4 as uuidv4 } from "uuid";
 
+import { uploadObjectFile } from "@/api/imApi";
 import { GroupSessionTypes, SystemMessageTypes } from "@/constants/im";
 import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
@@ -21,8 +20,6 @@ import {
 import { MessageType, SessionType } from "@openim/wasm-client-sdk";
 import { isThisYear } from "date-fns";
 import { FileWithPath } from "@/pages/chat/queryChat/ChatFooter/SendActionBar/useFileMessage";
-import { IMSDK } from "@/layout/MainContentWrap";
-import { UploadFileParams } from "@openim/wasm-client-sdk/lib/types/params";
 dayjs.extend(calendar);
 dayjs.extend(relativeTime);
 dayjs.extend(updateLocale);
@@ -485,19 +482,12 @@ export const getConversationContent = (message: MessageItem) => {
   return `${senderNickname}：${formatMessageByType(message)}`;
 };
 
-export const uploadFile = async (file: FileWithPath, path?: string) => {
-  const params: UploadFileParams = {
+export const uploadFile = async (file: FileWithPath, _path?: string) => {
+  return uploadObjectFile(file, {
     name: file.name,
-    contentType: file.type,
-    uuid: uuidV4(),
-    cause: "",
-  };
-  if (window.electronAPI) {
-    params.filepath = path ?? file.path;
-  } else {
-    params.file = file;
-  }
-  return IMSDK.uploadFile(params);
+    contentType: file.type || "application/octet-stream",
+    cause: "common-upload",
+  });
 };
 
 export const getConversationIDByMsg = (message: MessageItem) => {

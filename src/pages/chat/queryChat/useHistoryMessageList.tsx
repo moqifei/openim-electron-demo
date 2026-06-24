@@ -1,16 +1,24 @@
-import { MessageItem, ViewType } from "@openim/wasm-client-sdk";
+import { MessageItem, SessionType, ViewType } from "@openim/wasm-client-sdk";
 import { useLatest, useRequest } from "ahooks";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { getGroupMessagesReadInfo, markMsgsAsRead } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { useUserStore } from "@/store";
 import emitter, { emit } from "@/utils/events";
 
 const START_INDEX = 10000;
 const SPLIT_COUNT = 20;
 
+const canSendGroupReadReceipt = () => {
+  const lib = (IMSDK as any).libOpenIMSDK;
+  return typeof lib?.send_group_message_read_receipt === "function";
+};
+
 export function useHistoryMessageList() {
   const { conversationID } = useParams();
+  const currentUserID = useUserStore((state) => state.selfInfo.userID);
   const [loadState, setLoadState] = useState({
     initLoading: true,
     hasMoreOld: true,
@@ -53,7 +61,14 @@ export function useHistoryMessageList() {
           return preState;
         }
 
-        tmpList[idx] = { ...tmpList[idx], ...message };
+        tmpList[idx] = {
+          ...tmpList[idx],
+          ...message,
+          attachedInfoElem: {
+            ...tmpList[idx].attachedInfoElem,
+            ...message.attachedInfoElem,
+          },
+        };
         return {
           ...preState,
           messageList: tmpList,
@@ -96,15 +111,105 @@ export function useHistoryMessageList() {
         "seqRange:", loadedSeqs.length > 0 ? `${loadedSeqs[0]}-${loadedSeqs[loadedSeqs.length-1]}` : "empty",
         "seqs:", loadedSeqs);
 
+      let currentMsgList = loadMore
+        ? [...data.messageList, ...latestLoadState.current.messageList]
+        : data.messageList;
+
+      const sessionType = data.messageList[0]?.sessionType;
+      if (currentMsgList.length > 0 && sessionType === SessionType.Group && reqConversationID) {
+        const ownGroupMessages = currentMsgList.filter(
+          (msg) => msg.sendID === currentUserID && msg.seq > 0,
+        );
+        const ownSeqs = ownGroupMessages.map((msg) => msg.seq);
+        if (ownSeqs.length > 0) {
+          try {
+            const groupID = ownGroupMessages[0]?.groupID ?? currentMsgList[0]?.groupID;
+            const { data: readInfos } = await getGroupMessagesReadInfo({
+              conversationID: reqConversationID,
+              groupID,
+              userID: currentUserID,
+              seqs: ownSeqs,
+            });
+            const readInfoMap = new Map(readInfos.map((info) => [info.seq, info]));
+            currentMsgList = currentMsgList.map((msg) => {
+              const readInfo = readInfoMap.get(msg.seq);
+              if (!readInfo) return msg;
+              return {
+                ...msg,
+                attachedInfoElem: {
+                  ...msg.attachedInfoElem,
+                  groupHasReadInfo: {
+                    ...msg.attachedInfoElem?.groupHasReadInfo,
+                    hasReadCount: readInfo.hasReadCount,
+                    unreadCount: readInfo.unreadCount,
+                    groupMemberCount: readInfo.groupMemberCount,
+                    hasReadUserIDList: readInfo.hasReadUserIDList,
+                  },
+                },
+              };
+            });
+            console.log("[read] refreshed own group read info:", readInfos);
+          } catch (err) {
+            console.error("[read] failed to refresh own group read info:", err);
+          }
+        }
+      }
+
       setTimeout(() =>
         setLoadState((preState) => ({
           ...preState,
           initLoading: false,
           hasMoreOld: !data.isEnd,
-          messageList: [...data.messageList, ...(loadMore ? preState.messageList : [])],
+          messageList: currentMsgList,
           firstItemIndex: preState.firstItemIndex - data.messageList.length,
         })),
       );
+
+      // 群聊消息：拉取后标记会话已读。当前 native SDK 可能未导出逐消息群回执函数，
+      // 因此逐消息回执仅作为可选增强，避免阻断会话已读状态更新。
+      console.log("[read] checking group read receipt, sessionType:", sessionType, "msgCount:", currentMsgList.length);
+      
+      if (currentMsgList.length > 0 && sessionType === SessionType.Group) {
+        const unreadMessages = currentMsgList
+          .filter((msg) => !msg.isRead && msg.sendID !== currentUserID)
+          .filter((msg) => msg.seq > 0);
+        const unreadMsgIDs = unreadMessages.map((msg) => msg.clientMsgID);
+        const unreadSeqs = unreadMessages
+          .map((msg) => msg.seq)
+          .sort((a, b) => a - b);
+        
+        console.log("[read] filtered unread msgIDs:", unreadMsgIDs.length, unreadMsgIDs);
+        
+        if (unreadMsgIDs.length > 0) {
+          if (canSendGroupReadReceipt()) {
+            console.log("[read] sending group read receipt for", unreadMsgIDs.length, "messages");
+            IMSDK.sendGroupMessageReadReceipt({
+              conversationID: reqConversationID,
+              clientMsgIDList: unreadMsgIDs,
+            }).then(() => {
+              console.log("[read] group read receipt sent successfully");
+            }).catch((err) => {
+              console.error("[read] failed to send group read receipt:", err);
+            });
+          } else {
+            if (!reqConversationID) return;
+            console.warn("[read] native group read receipt is unavailable, using mark_msgs_as_read fallback");
+            markMsgsAsRead({
+              conversationID: reqConversationID,
+              seqs: unreadSeqs,
+              userID: currentUserID,
+            }).then(() => {
+              console.log("[read] mark_msgs_as_read fallback sent successfully");
+            }).catch((err) => {
+              console.error("[read] failed to send mark_msgs_as_read fallback:", err);
+            });
+          }
+        } else {
+          console.log("[read] no unread messages to send receipt for");
+        }
+      } else {
+        console.log("[read] skipping group read receipt: not a group conversation or no messages");
+      }
     },
     {
       manual: true,

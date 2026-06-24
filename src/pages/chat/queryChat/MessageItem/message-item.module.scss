@@ -45,7 +45,48 @@
     .menu-wrap {
       @apply flex-row-reverse;
     }
+
+    .readStatus {
+      @apply ml-1 flex items-center;
+    }
   }
+}
+
+.readStatusButton {
+  @apply border-0 bg-transparent p-0;
+  cursor: pointer;
+}
+
+.readStatusButton:hover .readStatus span:last-child {
+  color: var(--primary);
+}
+
+.readMemberPopover {
+  width: 180px;
+}
+
+.readMemberTitle {
+  @apply mb-2 text-xs font-medium;
+  color: var(--primary-text);
+}
+
+.readMemberList {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.readMemberItem {
+  @apply flex items-center py-1;
+}
+
+.readMemberName {
+  @apply ml-2 truncate text-xs;
+  color: var(--primary-text);
+}
+
+.readMemberEmpty {
+  @apply flex min-h-[36px] items-center justify-center text-xs;
+  color: var(--sub-text);
 }
 
 .animate-container {
