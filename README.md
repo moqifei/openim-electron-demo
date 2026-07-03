@@ -139,6 +139,24 @@ The open-source version supports one-to-one audio and video calls. You need to f
      npm run build:linux
      ```
 
+   - UOS / Xinchuang x86_64 deb package:
+
+     ```bash
+     cp package_electron.json package.json
+     npm install --legacy-peer-deps
+     chmod +x scripts/*.sh
+     npm run build:linux-glibc
+     ```
+
+     The output is `release/Base/${version}/OpenCorp-Base_${version}_amd64.deb`. The package bundles glibc 2.34, Electron runtime libraries, and GTK file-picker resources, so the target machine only needs to install the deb:
+
+     ```bash
+     sudo dpkg -i OpenCorp-Base_3.8.4_amd64.deb
+     /opt/OpenCorp-Base/opencorp-base
+     ```
+
+     For a clean UOS packaging machine setup, dependency installation, and verification checklist, see [UOS x86_64 packaging guide](./docs/bundled-glibc-linux.md).
+
 3. The build artifacts will be located in the `release` directory.
 
 ## Features

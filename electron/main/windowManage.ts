@@ -60,6 +60,18 @@ export function createMainWindow() {
     mainWindow.loadFile(global.pathConfig.indexHtml);
   }
 
+  mainWindow.webContents.on("did-fail-load", (_, errorCode, errorDescription, validatedURL) => {
+    console.error("[main-window] did-fail-load", errorCode, errorDescription, validatedURL);
+  });
+
+  mainWindow.webContents.on("render-process-gone", (_, details) => {
+    console.error("[main-window] render-process-gone", details);
+  });
+
+  mainWindow.webContents.on("console-message", (_, level, message, line, sourceId) => {
+    console.log("[renderer]", level, message, sourceId, line);
+  });
+
   // Test actively push message to the Electron-Renderer
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow?.webContents.send("main-process-message", new Date().toLocaleString());

@@ -19,6 +19,8 @@
     "build:win": "vite build  &&  electron-builder --win --x64",
     "build:win-arm": "vite build  &&  electron-builder --win --arm64",
     "build:linux": "vite build  &&  electron-builder --linux --x64",
+    "prepare:glibc:x64": "bash scripts/prepareBundledGlibc.sh x64",
+    "build:linux-glibc": "vite build  &&  USE_BUNDLED_GLIBC=1 electron-builder --linux --x64",
     "build:linux-arm": "vite build  &&  electron-builder --linux --arm64",
     "build:all": "vite build  &&  electron-builder --macos --x64  &&  electron-builder --macos --arm64  &&  electron-builder --win --x64  &&  electron-builder --linux --x64  &&  electron-builder --linux --arm64",
     "pree2e": "vite build --mode=test",
