@@ -110,6 +110,12 @@ const saveScreenshotFile = (base64: string): Promise<string> => {
   return ipcRenderer.invoke(IpcRenderToMain.saveScreenshotFile, base64);
 };
 
+const openFileDialog = (
+  options?: Parameters<IElectronAPI["openFileDialog"]>[0],
+): Promise<string[]> => {
+  return ipcRenderer.invoke(IpcRenderToMain.openFileDialog, options);
+};
+
 const Api: IElectronAPI = {
   getDataPath,
   getVersion: () => process.version,
@@ -121,6 +127,7 @@ const Api: IElectronAPI = {
   ipcInvoke,
   ipcSendSync,
   getFileByPath,
+  openFileDialog,
   saveFileToDisk,
   startScreenshot,
   saveScreenshotFile,

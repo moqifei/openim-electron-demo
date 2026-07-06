@@ -93,6 +93,60 @@ const SendActionBar = ({
     }
   };
 
+  const nativeFileHandle = async (key: string) => {
+    if (!window.electronAPI?.openFileDialog || !window.electronAPI?.getFileByPath) {
+      return;
+    }
+
+    const filePaths = await window.electronAPI.openFileDialog({
+      properties: ["openFile", "multiSelections"],
+      filters:
+        key === "image"
+          ? [
+              {
+                name: "Images",
+                extensions: ["jpg", "jpeg", "png", "gif", "bmp", "webp"],
+              },
+            ]
+          : undefined,
+    });
+
+    console.info("[SendActionBar] native selected files", { key, filePaths });
+
+    for (const filePath of filePaths) {
+      try {
+        const file = await window.electronAPI.getFileByPath(filePath);
+        if (!file) {
+          throw new Error(`Failed to read selected file: ${filePath}`);
+        }
+        Object.defineProperty(file, "path", {
+          configurable: true,
+          value: filePath,
+        });
+        console.info("[SendActionBar] native file loaded", {
+          key,
+          filePath,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+        });
+
+        let message: MessageItem;
+        if (key === "image") {
+          message = await getImageMessage(file);
+        } else if (key === "file") {
+          message = await getFileMessage(file);
+        } else {
+          return;
+        }
+        await sendMessage({ message });
+      } catch (error) {
+        console.error("[SendActionBar] send native file failed:", error);
+        antdMessage.error(t("toast.accessFailed"));
+      }
+    }
+  };
+
   const handleEmojiSelect = (emoji: string) => {
     editorRef.current?.insertText(emoji);
     setEmojiOpen(false);
@@ -186,6 +240,7 @@ const SendActionBar = ({
             accept: action.accept,
             actionKey: action.key,
             fileHandle,
+            nativeFileHandle,
             onClick: isCard ? () => setCardModalOpen(true) : undefined,
             popoverContent: isEmoji ? (
               <EmojiPicker onSelect={handleEmojiSelect} />
@@ -221,6 +276,7 @@ const ActionWrap = ({
   actionKey,
   children,
   fileHandle,
+  nativeFileHandle,
   onClick,
   popoverContent,
   popoverOpen,
@@ -230,12 +286,21 @@ const ActionWrap = ({
   children: ReactNode;
   actionKey: string;
   fileHandle: (options: UploadRequestOption, key: string) => void;
+  nativeFileHandle: (key: string) => void;
   onClick?: () => void;
   popoverContent?: ReactNode;
   popoverOpen?: boolean;
   onPopoverOpenChange?: (open: boolean) => void;
 }) => {
   if (accept) {
+    if (window.electronAPI?.openFileDialog) {
+      return (
+        <div className="flex" onClick={() => nativeFileHandle(actionKey)}>
+          {children}
+        </div>
+      );
+    }
+
     return (
       <Upload
         showUploadList={false}

@@ -15,6 +15,7 @@ import {
   clearCache,
   closeWindow,
   minimize,
+  showSelectDialog,
   showWindow,
   splashEnd,
   updateMaximize,
@@ -110,6 +111,10 @@ export const setIpcMainListener = () => {
         e.returnValue = global.pathConfig.publicPath;
         break;
     }
+  });
+  ipcMain.handle(IpcRenderToMain.openFileDialog, async (_, options: Electron.OpenDialogOptions) => {
+    const result = await showSelectDialog(options);
+    return result.canceled ? [] : result.filePaths;
   });
 
   // Screenshot: hide window, capture full screen, show window, return base64
