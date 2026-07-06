@@ -25,8 +25,15 @@ import styles from "./left-nav-bar.module.scss";
 import PersonalSettings from "./PersonalSettings";
 
 const { Sider } = Layout;
+const digitalTwinIcon = "/icons/shuzifenshen.png";
 
 const NavList = [
+  {
+    icon: digitalTwinIcon,
+    icon_active: digitalTwinIcon,
+    title: "分身",
+    path: "/digital-twin",
+  },
   {
     icon: message_icon,
     icon_active: message_icon_active,
@@ -42,8 +49,9 @@ const NavList = [
 ];
 
 i18n.on("languageChanged", () => {
-  NavList[0].title = t("placeholder.chat");
-  NavList[1].title = t("placeholder.contact");
+  NavList[0].title = "分身";
+  NavList[1].title = t("placeholder.chat");
+  NavList[2].title = t("placeholder.contact");
 });
 
 const resizeFile = (file: File): Promise<File> =>
@@ -77,8 +85,6 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: NavItemType
       locationPathname.charAt(toPathname.length) === "/") ||
     location.hash.startsWith(`#${toPathname}`);
 
-  const [showConversationMenu, setShowConversationMenu] = useState(false);
-
   const unReadCount = useConversationStore((state) => state.unReadCount);
   const unHandleFriendApplicationCount = useContactStore(
     (state) => state.unHandleFriendApplicationCount,
@@ -94,10 +100,6 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: NavItemType
 
     // TODO Keep answering when jumping back to chat from another page (if there is one)
     navigator.push(path);
-  };
-
-  const closeConversationMenu = () => {
-    setShowConversationMenu(false);
   };
 
   const getBadge = () => {

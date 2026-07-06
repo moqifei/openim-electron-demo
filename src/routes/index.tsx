@@ -43,6 +43,13 @@ const router = createHashRouter([
             },
             children: contactRoutes,
           },
+          {
+            path: "digital-twin",
+            async lazy() {
+              const { DigitalTwin } = await import("@/pages/digitalTwin");
+              return { Component: DigitalTwin };
+            },
+          },
         ],
       },
       {

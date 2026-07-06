@@ -1,5 +1,6 @@
 export const IpcMainToRender = {
   appResume: "appResume",
+  mainWindowStateChanged: "mainWindowStateChanged",
 };
 
 export const IpcRenderToMain = {

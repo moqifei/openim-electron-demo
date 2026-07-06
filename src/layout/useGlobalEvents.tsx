@@ -28,12 +28,13 @@ import {
 import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
+import { getIMHost } from "@/utils/config";
+import emitter from "@/utils/events";
 import { initStore } from "@/utils/imCommon";
+import { initReadVisibilityMonitor } from "@/utils/readVisibility";
 import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
-import { getIMHost } from "@/utils/config";
-import emitter from "@/utils/events";
 
 export function useGlobalEvent() {
   const navigate = useNavigate();
@@ -96,6 +97,7 @@ export function useGlobalEvent() {
   );
 
   useEffect(() => {
+    initReadVisibilityMonitor();
     loginCheck();
     setIMListener();
     setIpcListener();

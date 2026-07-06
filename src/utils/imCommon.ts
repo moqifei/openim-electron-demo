@@ -20,6 +20,10 @@ import {
 import { MessageType, SessionType } from "@openim/wasm-client-sdk";
 import { isThisYear } from "date-fns";
 import { FileWithPath } from "@/pages/chat/queryChat/ChatFooter/SendActionBar/useFileMessage";
+import {
+  extractDigitalTwinText,
+  isDigitalTwinMessage,
+} from "@/utils/digitalTwinMessage";
 dayjs.extend(calendar);
 dayjs.extend(relativeTime);
 dayjs.extend(updateLocale);
@@ -261,6 +265,9 @@ export const parseBr = (text: string) => {
 
 export const formatMessageByType = (message?: MessageItem): string => {
   if (!message) return "";
+  if (isDigitalTwinMessage(message)) {
+    return extractDigitalTwinText(message) || "数字分身消息";
+  }
   const selfUserID = useUserStore.getState().selfInfo.userID;
   const isSelf = (id: string) => id === selfUserID;
   const getName = (user: PublicUserItem) => {

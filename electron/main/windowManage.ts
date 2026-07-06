@@ -6,11 +6,21 @@ import { getIsForceQuit } from "./appManage";
 import { registerShortcuts, unregisterShortcuts } from "./shortcutManage";
 import { initIMSDK } from "../utils/imsdk";
 import OpenIMSDKMain from "@openim/electron-client-sdk";
+import { IpcMainToRender } from "../constants";
 
 const url = process.env.VITE_DEV_SERVER_URL;
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let sdkInstance: OpenIMSDKMain | null = null;
+
+const notifyMainWindowState = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send(IpcMainToRender.mainWindowStateChanged, {
+    focused: mainWindow.isFocused(),
+    visible: mainWindow.isVisible(),
+    minimized: mainWindow.isMinimized(),
+  });
+};
 
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
@@ -74,11 +84,18 @@ export function createMainWindow() {
   mainWindow.on("focus", () => {
     mainWindow?.flashFrame(false);
     registerShortcuts();
+    notifyMainWindowState();
   });
 
   mainWindow.on("blur", () => {
     unregisterShortcuts();
+    notifyMainWindowState();
   });
+
+  mainWindow.on("minimize", notifyMainWindowState);
+  mainWindow.on("restore", notifyMainWindowState);
+  mainWindow.on("hide", notifyMainWindowState);
+  mainWindow.on("show", notifyMainWindowState);
 
   mainWindow.on("close", (e) => {
     if (getIsForceQuit() || !mainWindow.isVisible()) {

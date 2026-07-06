@@ -11,6 +11,21 @@ import { useContactStore } from "./contact";
 import { useConversationStore } from "./conversation";
 import { AppSettings, IMConnectState, UserStore } from "./type";
 
+type IMLogoutError = {
+  errCode?: number;
+  errMsg?: string;
+  message?: string;
+};
+
+const isIgnorableLogoutError = (error: unknown) => {
+  const logoutError = error as IMLogoutError;
+  const errorText = `${logoutError?.errMsg ?? ""} ${logoutError?.message ?? ""}`;
+
+  return (
+    logoutError?.errCode === 10005 || /not\s+login|not\s+logged\s+in/i.test(errorText)
+  );
+};
+
 export const useUserStore = create<UserStore>()((set, get) => ({
   syncState: "success",
   progress: 0,
@@ -60,7 +75,16 @@ export const useUserStore = create<UserStore>()((set, get) => ({
     set((state) => ({ appSettings: { ...state.appSettings, ...settings } }));
   },
   userLogout: async (force?: boolean) => {
-    if (!force) await IMSDK.logout();
+    if (!force) {
+      try {
+        await IMSDK.logout();
+      } catch (error) {
+        if (!isIgnorableLogoutError(error)) {
+          throw error;
+        }
+        console.warn("ignore logout sdk error", error);
+      }
+    }
     clearIMProfile();
     set({ selfInfo: {} as BusinessUserInfo, progress: 0 });
     useContactStore.getState().clearContactStore();

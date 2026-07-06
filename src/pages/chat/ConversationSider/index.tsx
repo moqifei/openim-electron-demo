@@ -11,6 +11,7 @@ import { useConversationStore, useUserStore } from "@/store";
 
 import ConversationItemComp from "./ConversationItem";
 import styles from "./index.module.scss";
+import { useDigitalTwinConversationSummaries } from "./useDigitalTwinConversationSummaries";
 
 const ConnectBar = () => {
   const userStore = useUserStore();
@@ -59,6 +60,7 @@ const ConversationSider = () => {
   const getConversationListByReq = useConversationStore(
     (state) => state.getConversationListByReq,
   );
+  const digitalTwinSummaries = useDigitalTwinConversationSummaries(conversationList);
   const virtuoso = useRef<VirtuosoHandle>(null);
   const hasmore = useRef(true);
   const loading = useRef(false);
@@ -81,12 +83,15 @@ const ConversationSider = () => {
           className="flex-1"
           data={conversationList}
           ref={virtuoso}
-          endReached={endReached}
+          endReached={() => {
+            void endReached();
+          }}
           computeItemKey={(_, item) => item.conversationID}
           itemContent={(_, conversation) => (
             <ConversationItemComp
               isActive={conversationID === conversation.conversationID}
               conversation={conversation}
+              digitalTwinSummary={digitalTwinSummaries[conversation.conversationID]}
             />
           )}
         />

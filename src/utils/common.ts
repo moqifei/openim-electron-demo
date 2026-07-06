@@ -19,6 +19,7 @@ export const feedbackToast = (config?: FeedbackToastParams) => {
   if (error) {
     content =
       (error as FeedbackError)?.message ??
+      (error as FeedbackError)?.errMsg ??
       (error as FeedbackError)?.errDlt ??
       t("toast.accessFailed");
   }

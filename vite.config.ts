@@ -15,6 +15,7 @@ export default defineConfig(({ command }) => {
   rmSync("dist-electron", { recursive: true, force: true });
 
   const sourcemap = command === "serve" || !!process.env.VSCODE_DEBUG;
+  const devServerUrl = new URL(pkg.debug.env.VITE_DEV_SERVER_URL);
 
   return {
     resolve: {
@@ -39,13 +40,13 @@ export default defineConfig(({ command }) => {
         plugins: [
           ...(!!process.env.VSCODE_DEBUG
             ? [
-              // Will start Electron via VSCode Debug
-              customStart(() =>
-                console.log(
+                // Will start Electron via VSCode Debug
+                customStart(() =>
+                  console.log(
                     /* For `.vscode/.debug.script.mjs` */ "[startup] Electron App",
+                  ),
                 ),
-              ),
-            ]
+              ]
             : []),
           // Allow use `import.meta.env.VITE_SOME_KEY` in Electron-Main
           loadViteEnv(),
@@ -56,15 +57,11 @@ export default defineConfig(({ command }) => {
       // }),
       // visualizer({ open: true }),
     ],
-    server: !!process.env.VSCODE_DEBUG
-      ? (() => {
-        const url = new URL(pkg.debug.env.VITE_DEV_SERVER_URL);
-        return {
-          host: url.hostname,
-          port: +url.port,
-        };
-      })()
-      : undefined,
+    server: {
+      host: devServerUrl.hostname,
+      port: +devServerUrl.port,
+      strictPort: true,
+    },
     clearScreen: false,
     build: {
       sourcemap: false,
@@ -77,8 +74,7 @@ export default defineConfig(({ command }) => {
         },
       },
       rollupOptions: {
-        output: {
-        },
+        output: {},
       },
     },
   };

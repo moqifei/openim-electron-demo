@@ -8,10 +8,16 @@ import { FC, memo, useRef, useState } from "react";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
+import {
+  extractDigitalTwinText,
+  isDigitalTwinMessage,
+} from "@/utils/digitalTwinMessage";
 import { formatMessageTime } from "@/utils/imCommon";
 
+import AtTextMessageRender from "./AtTextMessageRender";
 import CardMessageRender from "./CardMessageRender";
 import CatchMessageRender from "./CatchMsgRenderer";
+import DigitalTwinMessageRender from "./DigitalTwinMessageRender";
 import FileMessageRender from "./FileMessageRender";
 import MediaMessageRender from "./MediaMessageRender";
 import MergeMessageRender from "./MergeMessageRender";
@@ -20,7 +26,6 @@ import MessageItemErrorBoundary from "./MessageItemErrorBoundary";
 import MessageSuffix from "./MessageSuffix";
 import QuoteMessageRender from "./QuoteMessageRender";
 import TextMessageRender from "./TextMessageRender";
-import AtTextMessageRender from "./AtTextMessageRender";
 
 export interface IMessageItemProps {
   message: MessageItemType;
@@ -64,7 +69,10 @@ const MessageItem: FC<IMessageItemProps> = ({
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const MessageRenderComponent = components[message.contentType] || CatchMessageRender;
+  const isDigitalTwin = isDigitalTwinMessage(message);
+  const MessageRenderComponent = isDigitalTwin
+    ? DigitalTwinMessageRender
+    : components[message.contentType] || CatchMessageRender;
 
   // Look up sender's display name from friend list (remark > nickname > senderNickname).
   const senderName = useContactStore((state) => {
@@ -73,10 +81,15 @@ const MessageItem: FC<IMessageItemProps> = ({
   });
 
   const showActions = !disabled && !isMultiSelectActive && (hovered || menuOpen);
-  const isTextMessage = message.contentType === MessageType.TextMessage;
+  const isTextMessage =
+    message.contentType === MessageType.TextMessage || isDigitalTwin;
 
   const actionItems: MenuProps["items"] = [
-    { key: "forward", label: t("placeholder.forward"), onClick: () => onForward?.(message) },
+    {
+      key: "forward",
+      label: t("placeholder.forward"),
+      onClick: () => onForward?.(message),
+    },
     { key: "reply", label: t("placeholder.reply"), onClick: () => onReply?.(message) },
     ...(isTextMessage
       ? [
@@ -84,7 +97,9 @@ const MessageItem: FC<IMessageItemProps> = ({
             key: "copy",
             label: t("placeholder.copy"),
             onClick: () => {
-              const text = message.textElem?.content || "";
+              const text = isDigitalTwin
+                ? extractDigitalTwinText(message)
+                : message.textElem?.content || "";
               navigator.clipboard.writeText(text).then(
                 () => feedbackToast({ msg: t("toast.copySuccess") }),
                 () => feedbackToast({ msg: t("toast.copyFailed") }),
@@ -93,8 +108,16 @@ const MessageItem: FC<IMessageItemProps> = ({
           },
         ]
       : []),
-    { key: "check", label: t("placeholder.check"), onClick: () => onMultiSelect?.(message) },
-    { key: "revoke", label: t("placeholder.revoke"), onClick: () => onRevoke?.(message) },
+    {
+      key: "check",
+      label: t("placeholder.check"),
+      onClick: () => onMultiSelect?.(message),
+    },
+    {
+      key: "revoke",
+      label: t("placeholder.revoke"),
+      onClick: () => onRevoke?.(message),
+    },
   ];
 
   return (
@@ -128,11 +151,7 @@ const MessageItem: FC<IMessageItemProps> = ({
             isSender && styles["message-container-sender"],
           )}
         >
-          <OIMAvatar
-            size={36}
-            src={message.senderFaceUrl}
-            text={senderName}
-          />
+          <OIMAvatar size={36} src={message.senderFaceUrl} text={senderName} />
 
           <div className={styles["message-wrap"]} ref={messageWrapRef}>
             <div className={styles["message-profile"]}>

@@ -142,3 +142,44 @@
   word-break: break-word;
   white-space: pre-wrap;
 }
+
+.digitalTwinBubble {
+  background: linear-gradient(135deg, #eef7ff 0%, #f8fbff 100%) !important;
+  border: 1px solid rgba(0, 137, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(0, 137, 255, 0.08);
+}
+
+.digitalTwinBubbleSender {
+  background: linear-gradient(135deg, #dff0ff 0%, #eef8ff 100%) !important;
+  border-color: rgba(0, 137, 255, 0.26);
+}
+
+.digitalTwinBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0077e6;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 137, 255, 0.14);
+  border-radius: 999px;
+  line-height: 1.6;
+}
+
+.digitalTwinBadgeIcon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.digitalTwinContent {
+  color: #172033;
+  font-size: 14px;
+  line-height: 1.7;
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+}

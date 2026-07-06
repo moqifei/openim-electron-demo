@@ -1,3 +1,4 @@
+import { SessionType } from "@openim/wasm-client-sdk";
 import type {
   ConversationItem,
   ConversationItem as ConversationItemType,
@@ -8,8 +9,11 @@ import clsx from "clsx";
 import { t } from "i18next";
 import { memo, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+
+import { DigitalTwinReplySummary } from "@/api/digitalTwin";
 import OIMAvatar from "@/components/OIMAvatar";
-import { useConversationStore, useContactStore, useUserStore } from "@/store";
+import { useContactStore, useConversationStore } from "@/store";
+import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
 import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
 
 import styles from "./conversation-item.module.scss";
@@ -17,15 +21,18 @@ import styles from "./conversation-item.module.scss";
 interface IConversationProps {
   isActive: boolean;
   conversation: ConversationItemType;
+  digitalTwinSummary?: DigitalTwinReplySummary;
 }
 
-const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
+const ConversationItem = ({
+  isActive,
+  conversation,
+  digitalTwinSummary,
+}: IConversationProps) => {
   const navigate = useNavigate();
   const updateCurrentConversation = useConversationStore(
     (state) => state.updateCurrentConversation,
   );
-  const currentUser = useUserStore((state) => state.selfInfo.userID);
-
   const displayName = useContactStore((state) => {
     if (conversation.groupID) return conversation.showName;
     const friend = state.friendList.find((f) => f.userID === conversation.userID);
@@ -40,20 +47,33 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
     navigate(`/chat/${conversation.conversationID}`);
   };
 
-  const latestMessageContent = useMemo(() => {
-    let content = "";
+  const latestMessage = useMemo(() => {
     if (!conversation.latestMsg) {
+      return undefined;
+    }
+    try {
+      return JSON.parse(conversation.latestMsg) as MessageItem;
+    } catch (error) {
+      return undefined;
+    }
+  }, [conversation.latestMsg]);
+
+  const latestMessageContent = useMemo(() => {
+    if (!latestMessage) {
       return "";
     }
     try {
-      content = getConversationContent(
-        JSON.parse(conversation.latestMsg) as MessageItem,
-      );
+      return getConversationContent(latestMessage);
     } catch (error) {
-      content = t("messageDescription.catchMessage");
+      return t("messageDescription.catchMessage");
     }
-    return content;
-  }, [conversation.draftText, conversation.latestMsg, isActive, currentUser]);
+  }, [latestMessage]);
+
+  const isSingleConversation = conversation.conversationType === SessionType.Single;
+  const latestMessageIsDigitalTwin =
+    isSingleConversation && latestMessage ? isDigitalTwinMessage(latestMessage) : false;
+  const unreviewedCount = digitalTwinSummary?.unreviewed ?? 0;
+  const needsFollowUpCount = digitalTwinSummary?.needsFollowUp ?? 0;
 
   const latestMessageTime = formatConversionTime(conversation.latestMsgSendTime);
 
@@ -64,7 +84,9 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
         "border border-transparent",
         isActive && `bg-[var(--primary-active)]`,
       )}
-      onClick={toSpecifiedConversation}
+      onClick={() => {
+        void toSpecifiedConversation();
+      }}
     >
       <Badge size="small" count={conversation.unreadCount}>
         <OIMAvatar
@@ -76,12 +98,38 @@ const ConversationItem = ({ isActive, conversation }: IConversationProps) => {
 
       <div className="ml-3 flex h-11 flex-1 flex-col justify-between overflow-hidden">
         <div className="flex items-center justify-between">
-          <div className="flex-1 truncate font-medium">{displayName}</div>
+          <div className="flex min-w-0 flex-1 items-center">
+            <div className="truncate font-medium">{displayName}</div>
+            {latestMessageIsDigitalTwin && (
+              <span className="ml-2 shrink-0 rounded bg-[#e6f4ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#0089ff]">
+                分身已回
+              </span>
+            )}
+            {unreviewedCount > 0 && (
+              <span className="ml-1.5 shrink-0 rounded bg-[#fff3e6] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#d46b08]">
+                待确认 {unreviewedCount}
+              </span>
+            )}
+            {needsFollowUpCount > 0 && (
+              <span className="ml-1.5 shrink-0 rounded bg-[#fff1f0] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#cf1322]">
+                需跟进 {needsFollowUpCount}
+              </span>
+            )}
+          </div>
           <div className="ml-2 text-xs text-[var(--sub-text)]">{latestMessageTime}</div>
         </div>
 
         <div className="flex items-center">
           <div className="flex min-h-[16px] flex-1 items-center overflow-hidden text-xs">
+            {latestMessageIsDigitalTwin && (
+              <span className="mr-1 shrink-0 text-[#0089ff]">
+                分身已代回
+                {conversation.unreadCount > 0
+                  ? ` · 未读 ${conversation.unreadCount}`
+                  : ""}
+                :
+              </span>
+            )}
             <div
               className="truncate text-[rgba(81,94,112,0.5)]"
               dangerouslySetInnerHTML={{

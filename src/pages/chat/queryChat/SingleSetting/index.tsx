@@ -8,10 +8,10 @@ import OIMAvatar from "@/components/OIMAvatar";
 import SettingRow from "@/components/SettingRow";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { useConversationStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { emit } from "@/utils/events";
-import { useConversationStore } from "@/store";
 
 // export interface SingleSettingProps {}
 
@@ -33,7 +33,8 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
   const friend = useContactStore((state) =>
     state.friendList.find((f) => f.userID === currentConversation?.userID),
   );
-  const displayName = friend?.remark || friend?.nickname || currentConversation?.showName;
+  const displayName =
+    friend?.remark || friend?.nickname || currentConversation?.showName;
 
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
 
@@ -107,10 +108,7 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         onClick={openUserCard}
       >
         <div className="flex items-center">
-          <OIMAvatar
-            src={currentConversation?.faceURL}
-            text={displayName}
-          />
+          <OIMAvatar src={currentConversation?.faceURL} text={displayName} />
           <div className="ml-3">{displayName}</div>
         </div>
         <RightOutlined rev={undefined} />

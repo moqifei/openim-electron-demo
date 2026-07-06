@@ -23,10 +23,6 @@
   ],
   extraResources: [
     {
-      from: "extraResources",
-      to: "extraResources",
-    },
-    {
       from: "node_modules/rxjs",
       to: "app.asar.unpacked/node_modules/rxjs",
     },
@@ -67,9 +63,19 @@
   },
   linux: {
     icon: "./dist/icons/icon.png",
-    target: "deb",
+    target: [
+      {
+        target: "deb",
+        arch: ["arm64"]
+      },
+      {
+        target: "AppImage",
+        arch: ["x64", "arm64"]
+      }
+    ],
     maintainer: "opencorp-base",
     artifactName: "${productName}_${version}_${arch}.${ext}",
+    category: "Utility",
     extraResources: [
       {
         from: "node_modules/@openim/electron-client-sdk/assets/linux_${arch}/",
