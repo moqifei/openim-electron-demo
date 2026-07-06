@@ -7,6 +7,8 @@
   asar: true,
   asarUnpack: ["**/*.node"],
   extends: null,
+  beforePack: "./scripts/beforePackBundledGlibc.cjs",
+  afterPack: "./scripts/afterPackBundledGlibc.cjs",
   directories: {
     output: "release/Base/${version}",
   },
@@ -86,6 +88,10 @@
         to: "koffi/linux_${arch}",
       },
     ],
+  },
+  deb: {
+    afterInstall: "./scripts/linuxCreateDesktopShortcut.sh",
+    afterRemove: "./scripts/linuxRemoveDesktopShortcut.sh",
   },
   nsis: {
     oneClick: false,

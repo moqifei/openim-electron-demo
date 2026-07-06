@@ -139,6 +139,24 @@ OpenIM 为开发者提供开源即时通讯 SDK，作为 Twilio、Sendbird 等�
      npm run build:linux
      ```
 
+   - UOS / 信创 x86_64 deb 包:
+
+     ```bash
+     cp package_electron.json package.json
+     npm install --legacy-peer-deps
+     chmod +x scripts/*.sh
+     npm run build:linux-glibc
+     ```
+
+     构建结果位于 `release/Base/${version}/OpenCorp-Base_${version}_amd64.deb`。该包会把 glibc 2.34、Electron 运行库、GTK 文件选择器资源封进 deb 内，目标机器只需安装 deb：
+
+     ```bash
+     sudo dpkg -i OpenCorp-Base_3.8.4_amd64.deb
+     /opt/OpenCorp-Base/opencorp-base
+     ```
+
+     新打包机的完整环境准备、依赖安装、验证步骤见 [UOS x86_64 信创包打包说明](./docs/bundled-glibc-linux.md)。
+
 3. 构建结果将位于 `release` 目录下。
 
 ## 功能列表

@@ -2,6 +2,14 @@ import { Platform } from "@openim/wasm-client-sdk";
 
 export type DataPath = "public" | "emojiData" | "sdkResources" | "logsPath";
 
+export type OpenFileDialogOptions = {
+  filters?: Array<{
+    name: string;
+    extensions: string[];
+  }>;
+  properties?: Array<"openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles">;
+};
+
 export interface IElectronAPI {
   getDataPath: (key: DataPath) => string;
   getVersion: () => string;
@@ -14,6 +22,7 @@ export interface IElectronAPI {
   ipcSendSync: <T = unknown>(channel: string, ...arg: any) => T;
   saveFileToDisk: (params: { file: File; sync?: boolean }) => Promise<string>;
   getFileByPath: (filePath: string) => Promise<File | null>;
+  openFileDialog: (options?: OpenFileDialogOptions) => Promise<string[]>;
   startScreenshot: (hideWindow?: boolean) => Promise<string>;
   saveScreenshotFile: (base64: string) => Promise<string>;
 }

@@ -15,6 +15,7 @@ export const IpcRenderToMain = {
   getKeyStoreSync: "getKeyStoreSync",
   showInputContextMenu: "showInputContextMenu",
   getDataPath: "getDataPath",
+  openFileDialog: "openFileDialog",
   startScreenshot: "startScreenshot",
   saveScreenshotFile: "saveScreenshotFile",
 };

@@ -13,6 +13,9 @@
   "scripts": {
     "dev": "vite --force --host",
     "build": "vite build",
+    "build:linux": "vite build  &&  electron-builder --linux --x64",
+    "prepare:glibc:x64": "bash scripts/prepareBundledGlibc.sh x64",
+    "build:linux-glibc": "vite build  &&  USE_BUNDLED_GLIBC=1 electron-builder --linux --x64",
     "preview": "vite preview",
     "pree2e": "vite build --mode=test",
     "e2e": "playwright test",
@@ -70,8 +73,8 @@
   "dependencies": {
     "@ant-design/icons": "^5.1.4",
     "@ckeditor/ckeditor5-react": "^8.0.0",
-    "@livekit/components-react": "^2.6.9",
-    "@livekit/components-styles": "^1.1.4",
+    "@livekit/components-react": "2.6.9",
+    "@livekit/components-styles": "1.1.4",
     "@openim/electron-client-sdk": "^3.8.3-patch.3",
     "@openim/wasm-client-sdk": "^3.8.3-patch.3",
     "adm-zip": "^0.5.10",

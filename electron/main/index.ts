@@ -9,6 +9,12 @@ import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
 
+if (isLinux) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+}
+
 export const logger = getLogger(join(app.getPath("userData"), `/OpenIMData/logs`));
 
 const init = () => {

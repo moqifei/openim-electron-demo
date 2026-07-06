@@ -5,6 +5,26 @@ import { getChatToken } from "@/utils/storage";
 import { useUserStore } from "@/store";
 
 const getRequest = () => getChatAxios();
+const uploadRetryDelays = [800, 1600];
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const isRetriableUploadError = (error: unknown) => {
+  const axiosError = error as {
+    message?: string;
+    code?: string;
+    response?: unknown;
+    request?: unknown;
+  };
+
+  if (axiosError.response) return false;
+  return Boolean(
+    axiosError.request ||
+      axiosError.message?.includes("Network Error") ||
+      axiosError.message?.includes("timeout") ||
+      axiosError.code === "ECONNABORTED",
+  );
+};
 
 export const getRtcConnectData = async (room: string, identity: string) => {
   const token = (await getChatToken()) as string;
@@ -59,22 +79,95 @@ export const uploadObjectFile = async (
     cause?: string;
   },
 ) => {
-  const formData = new FormData();
   const rawName = options?.name ?? file.name;
+  const filePath = (file as File & { path?: string }).path;
+  if (!rawName || file.size === 0) {
+    console.error("[uploadObjectFile] invalid file", {
+      rawName,
+      fileSize: file.size,
+      fileType: options?.contentType ?? file.type,
+      filePath,
+      cause: options?.cause ?? "chat",
+    });
+    throw new Error("Selected file is empty or unreadable");
+  }
+
   const currentUserID = useUserStore.getState()?.selfInfo?.userID;
   // Backend requires non-admin users to prefix file name with their userID
   const uploadName = currentUserID
     ? `${currentUserID}/${rawName}`
     : rawName;
 
-  formData.append("file", file, uploadName);
-  formData.append("name", uploadName);
-  formData.append("contentType", options?.contentType ?? file.type);
-  formData.append("cause", options?.cause ?? "chat");
+  const request = getApiAxios();
+  const uploadUrl = `${request.defaults.baseURL ?? ""}/object/upload`;
+  const uploadMeta = {
+    cause: options?.cause ?? "chat",
+    uploadUrl,
+    fileName: rawName,
+    uploadName,
+    fileSize: file.size,
+    fileType: options?.contentType ?? file.type,
+    filePath,
+  };
 
-  return getApiAxios().post<ObjectUploadResp>("/object/upload", formData, {
-    timeout: 10 * 60 * 1000,
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
-  });
+  const createFormData = () => {
+    const formData = new FormData();
+    formData.append("file", file, uploadName);
+    formData.append("name", uploadName);
+    formData.append("contentType", options?.contentType ?? file.type);
+    formData.append("cause", options?.cause ?? "chat");
+    return formData;
+  };
+
+  console.info("[uploadObjectFile] start", uploadMeta);
+
+  for (let attempt = 0; attempt <= uploadRetryDelays.length; attempt += 1) {
+    try {
+      const response = await request.post<ObjectUploadResp>("/object/upload", createFormData(), {
+        timeout: 10 * 60 * 1000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+      console.info("[uploadObjectFile] success", { ...uploadMeta, attempt: attempt + 1 });
+      return response;
+    } catch (error) {
+      const axiosError = error as {
+        message?: string;
+        code?: string;
+        response?: { status?: number; data?: unknown };
+        request?: unknown;
+        config?: {
+          baseURL?: string;
+          url?: string;
+          method?: string;
+          timeout?: number;
+        };
+      };
+      const canRetry = attempt < uploadRetryDelays.length && isRetriableUploadError(error);
+      const errorMeta = {
+        ...uploadMeta,
+        attempt: attempt + 1,
+        willRetry: canRetry,
+        message: axiosError.message,
+        code: axiosError.code,
+        status: axiosError.response?.status,
+        response: axiosError.response?.data,
+        method: axiosError.config?.method,
+        baseURL: axiosError.config?.baseURL,
+        url: axiosError.config?.url,
+        timeout: axiosError.config?.timeout,
+        hasRequest: Boolean(axiosError.request),
+      };
+
+      if (!canRetry) {
+        console.error("[uploadObjectFile] failed", errorMeta);
+        throw error;
+      }
+
+      console.warn("[uploadObjectFile] retrying", errorMeta);
+      await wait(uploadRetryDelays[attempt]);
+    }
+  }
+
+  throw new Error("Upload failed");
 };

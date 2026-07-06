@@ -103,10 +103,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           const file = item.file;
           if (isImageFile(file)) {
             const msg = await getImageMessage(file);
-            sendMessage({ message: msg });
+            await sendMessage({ message: msg });
           } else {
             const msg = await getFileMessage(file);
-            sendMessage({ message: msg });
+            await sendMessage({ message: msg });
           }
         } catch (error) {
           console.error("[ChatFooter] send file failed:", error);
@@ -355,7 +355,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       message = data;
     }
 
-    sendMessage({ message });
+    await sendMessage({ message });
   }, [pendingFiles, handleSendPendingFiles, sendMessage]);
 
   const getQuotePreview = (msg: MessageItem) => {

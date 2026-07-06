@@ -18,6 +18,7 @@ export default defineConfig(({ command }) => {
   const devServerUrl = new URL(pkg.debug.env.VITE_DEV_SERVER_URL);
 
   return {
+    base: "./",
     resolve: {
       alias: {
         "@": path.join(__dirname, "src"),
