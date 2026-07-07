@@ -18,6 +18,7 @@ import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { emit } from "@/utils/events";
 import { uploadFile } from "@/utils/imCommon";
+import { publicAsset } from "@/utils/publicAsset";
 
 import { OverlayVisibleHandle } from "../../hooks/useOverlayVisible";
 import About from "./About";
@@ -25,7 +26,7 @@ import styles from "./left-nav-bar.module.scss";
 import PersonalSettings from "./PersonalSettings";
 
 const { Sider } = Layout;
-const digitalTwinIcon = "/icons/shuzifenshen.png";
+const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
 
 const NavList = [
   {

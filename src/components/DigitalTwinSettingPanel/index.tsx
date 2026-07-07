@@ -39,9 +39,10 @@ import { useContactStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { notifyDigitalTwinRepliesChanged } from "@/utils/digitalTwinEvents";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
+import { publicAsset } from "@/utils/publicAsset";
 
 const DEFAULT_REPLY_TEXT = "我现在不方便回复，数字分身已收到你的消息。";
-const digitalTwinIcon = "/icons/shuzifenshen.png";
+const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
 export type DigitalTwinPanelSection = "overview" | "settings" | "skills" | "records";
 
 type DigitalTwinSettingPanelProps = {

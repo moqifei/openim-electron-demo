@@ -8,6 +8,7 @@ import {
 } from "@/api/digitalTwin";
 import { useConversationStore, useUserStore } from "@/store";
 import { DIGITAL_TWIN_REPLIES_CHANGED } from "@/utils/digitalTwinEvents";
+import { publicAsset } from "@/utils/publicAsset";
 
 const emptySummary: DigitalTwinReplySummary = {
   total: 0,
@@ -16,7 +17,7 @@ const emptySummary: DigitalTwinReplySummary = {
   confirmed: 0,
 };
 
-const aiIcon = "/icons/a-iconai.png";
+const aiIcon = publicAsset("icons/a-iconai.png");
 
 const truncateText = (text: string, maxLength = 42) => {
   if (text.length <= maxLength) return text;

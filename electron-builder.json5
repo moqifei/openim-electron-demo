@@ -3,14 +3,14 @@
  */
 {
   appId: "io.opencorp.desktop.base",
-  productName: "OpenCorp-Base",
+  productName: "年糕",
   asar: true,
   asarUnpack: ["**/*.node"],
   extends: null,
   beforePack: "./scripts/beforePackBundledGlibc.cjs",
   afterPack: "./scripts/afterPackBundledGlibc.cjs",
   directories: {
-    output: "release/Base/${version}",
+    output: "release/StickyCake/${version}",
   },
   files: [
     "dist",
@@ -30,9 +30,9 @@
     },
   ],
   mac: {
-    artifactName: "${productName}_${version}_${arch}.${ext}",
+    artifactName: "StickyCake_${version}_${arch}.${ext}",
     target: ["dmg"],
-    icon: "./dist/icons/mac_icon.png",
+    icon: "./dist/icons/icon-new.png",
     extraResources: [
       {
         from: "node_modules/@openim/electron-client-sdk/assets/mac_${arch}/",
@@ -50,8 +50,8 @@
         target: "nsis",
       },
     ],
-    artifactName: "${productName}_${version}.${ext}",
-    icon: "./dist/icons/icon.ico",
+    artifactName: "StickyCake_${version}.${ext}",
+    icon: "./dist/icons/icon-new.ico",
     extraResources: [
       {
         from: "node_modules/@openim/electron-client-sdk/assets/win_${arch}/",
@@ -64,7 +64,7 @@
     ],
   },
   linux: {
-    icon: "./dist/icons/icon.png",
+    icon: "./dist/icons/icon-new.png",
     target: [
       {
         target: "deb",
@@ -76,7 +76,7 @@
       }
     ],
     maintainer: "opencorp-base",
-    artifactName: "${productName}_${version}_${arch}.${ext}",
+    artifactName: "StickyCake_${version}_${arch}.${ext}",
     category: "Utility",
     extraResources: [
       {
@@ -101,6 +101,6 @@
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
     deleteAppDataOnUninstall: true,
-    shortcutName: "OpenCorp-Base",
+    shortcutName: "年糕",
   }
 }

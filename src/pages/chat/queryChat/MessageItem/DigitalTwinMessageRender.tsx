@@ -3,11 +3,12 @@ import { FC, memo } from "react";
 
 import { formatBr } from "@/utils/common";
 import { extractDigitalTwinText } from "@/utils/digitalTwinMessage";
+import { publicAsset } from "@/utils/publicAsset";
 
 import { IMessageItemProps } from ".";
 import styles from "./message-item.module.scss";
 
-const aiIcon = "/icons/a-iconai.png";
+const aiIcon = publicAsset("icons/a-iconai.png");
 
 const DigitalTwinMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
   const text = extractDigitalTwinText(message) || "数字分身消息";

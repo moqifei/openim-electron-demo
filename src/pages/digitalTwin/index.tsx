@@ -5,8 +5,9 @@ import DigitalTwinSettingPanel, {
   DigitalTwinPanelSection,
 } from "@/components/DigitalTwinSettingPanel";
 import FlexibleSider from "@/components/FlexibleSider";
+import { publicAsset } from "@/utils/publicAsset";
 
-const digitalTwinIcon = "/icons/shuzifenshen.png";
+const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
 
 const sections: Array<{
   key: DigitalTwinPanelSection;
