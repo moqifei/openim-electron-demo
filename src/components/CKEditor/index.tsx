@@ -17,6 +17,7 @@ import {
 export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
   insertText: (text: string) => void;
+  setText: (text: string) => void;
   getEditor: () => ClassicEditor | null;
 };
 
@@ -82,12 +83,33 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     onChange?.(editor.getData());
   };
 
+  const setText = (text: string) => {
+    const editor = ckEditor.current;
+    if (!editor) return;
+    editor.model.change((writer) => {
+      const root = editor.model.document.getRoot();
+      if (!root) return;
+      writer.remove(writer.createRangeIn(root));
+      writer.insertText(text, root, 0);
+    });
+    editor.editing.view.focus();
+    onChange?.(editor.getData());
+  };
+
   const listenKeydown = (editor: ClassicEditor) => {
     editor.editing.view.document.on(
       "keydown",
       (evt, data) => {
         // debug: log all key events
-        console.log("[CKEditor keydown]", "keyCode:", data.keyCode, "key:", data.domEvent?.key, "shift:", data.domEvent?.shiftKey);
+        console.log(
+          "[CKEditor keydown]",
+          "keyCode:",
+          data.keyCode,
+          "key:",
+          data.domEvent?.key,
+          "shift:",
+          data.domEvent?.shiftKey,
+        );
         // Forward event to parent first (for @mention detection)
         if (onKeydownRef.current) {
           try {
@@ -161,6 +183,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     () => ({
       focus,
       insertText,
+      setText,
       getEditor: () => ckEditor.current,
     }),
     [],

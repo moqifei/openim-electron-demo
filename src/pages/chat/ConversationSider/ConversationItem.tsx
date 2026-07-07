@@ -4,7 +4,6 @@ import type {
   ConversationItem as ConversationItemType,
   MessageItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
-import { Badge } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
 import { memo, useMemo } from "react";
@@ -13,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { DigitalTwinReplySummary } from "@/api/digitalTwin";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useConversationStore } from "@/store";
+import { isAgentConversation } from "@/utils/agentConversation";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
 import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
 
@@ -23,6 +23,8 @@ interface IConversationProps {
   conversation: ConversationItemType;
   digitalTwinSummary?: DigitalTwinReplySummary;
 }
+
+const formatUnreadCount = (count: number) => (count > 99 ? "99+" : String(count));
 
 const ConversationItem = ({
   isActive,
@@ -70,6 +72,7 @@ const ConversationItem = ({
   }, [latestMessage]);
 
   const isSingleConversation = conversation.conversationType === SessionType.Single;
+  const isAgent = isAgentConversation(conversation, latestMessage);
   const latestMessageIsDigitalTwin =
     isSingleConversation && latestMessage ? isDigitalTwinMessage(latestMessage) : false;
   const unreviewedCount = digitalTwinSummary?.unreviewed ?? 0;
@@ -88,18 +91,36 @@ const ConversationItem = ({
         void toSpecifiedConversation();
       }}
     >
-      <Badge size="small" count={conversation.unreadCount}>
+      <div className="relative shrink-0">
         <OIMAvatar
           src={conversation.faceURL}
           isgroup={Boolean(conversation.groupID)}
           text={displayName}
         />
-      </Badge>
+        {conversation.unreadCount > 0 && (
+          <span
+            className={clsx(
+              styles["conversation-item-unread"],
+              isAgent && styles["conversation-item-unread-agent"],
+            )}
+          >
+            {formatUnreadCount(conversation.unreadCount)}
+          </span>
+        )}
+        {isAgent && (
+          <span className={styles["conversation-item-agent-corner"]}>AI</span>
+        )}
+      </div>
 
       <div className="ml-3 flex h-11 flex-1 flex-col justify-between overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex min-w-0 flex-1 items-center">
             <div className="truncate font-medium">{displayName}</div>
+            {isAgent && (
+              <span className="ml-2 shrink-0 rounded bg-[#f3e8ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#7c3aed]">
+                智能体
+              </span>
+            )}
             {latestMessageIsDigitalTwin && (
               <span className="ml-2 shrink-0 rounded bg-[#e6f4ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#0089ff]">
                 分身已回

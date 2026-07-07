@@ -4,25 +4,40 @@ import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { Button, message } from "antd";
 import { t } from "i18next";
-import { forwardRef, ForwardRefRenderFunction, memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  ForwardRefRenderFunction,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import CKEditor, { CKEditorRef } from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
-import { canSendImageTypeList } from "@/utils/common";
 import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
+import { isAgentConversation } from "@/utils/agentConversation";
+import { canSendImageTypeList } from "@/utils/common";
 
 import AtMemberPopup, { AtMemberInfo } from "./AtMemberPopup";
 import SendActionBar from "./SendActionBar";
-import { useFileMessage } from "./SendActionBar/useFileMessage";
 import ScreenshotCropper from "./SendActionBar/ScreenshotCropper";
+import { useFileMessage } from "./SendActionBar/useFileMessage";
 import { useSendMessage } from "./useSendMessage";
 
 const sendActions = [
   { label: t("placeholder.sendWithEnter"), key: "enter" },
   { label: t("placeholder.sendWithShiftEnter"), key: "enterwithshift" },
+];
+
+const agentPromptTemplates = [
+  "帮我写一段文案",
+  "总结一下这段内容",
+  "把这段话润色得更正式",
 ];
 
 i18n.on("languageChanged", () => {
@@ -57,14 +72,19 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [atPopupVisible, setAtPopupVisible] = useState(false);
   const [groupMemberList, setGroupMemberList] = useState<GroupMemberItem[]>([]);
   // Track @mentions by userID -> { nickname, groupNickname }
-  const atMembersRef = useRef<Map<string, { nickname: string; groupNickname: string }>>(new Map());
+  const atMembersRef = useRef<Map<string, { nickname: string; groupNickname: string }>>(
+    new Map(),
+  );
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const { getImageMessage, getFileMessage, getCardMessage } = useFileMessage();
   const { sendMessage } = useSendMessage();
   const quoteMessage = useConversationStore((state) => state.quoteMessage);
   const setQuoteMessage = useConversationStore((state) => state.setQuoteMessage);
-  const currentConversation = useConversationStore((state) => state.currentConversation);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
+  const isAgentChat = isAgentConversation(currentConversation);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -201,7 +221,8 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         }
         // Save screenshot to temp file, then send via full path to avoid File clone issue
         const filePath = await window.electronAPI.saveScreenshotFile(croppedBase64);
-        const imageMessage = (await IMSDK.createImageMessageFromFullPath(filePath)).data;
+        const imageMessage = (await IMSDK.createImageMessageFromFullPath(filePath))
+          .data;
         imageMessage.pictureElem!.sourcePicture.url = croppedBase64;
         await sendMessage({ message: imageMessage });
       } catch (error) {
@@ -220,9 +241,24 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setHtml(value);
   };
 
+  const insertAgentTemplate = useCallback((template: string) => {
+    if (editorRef.current) {
+      editorRef.current.setText(template);
+      return;
+    }
+    setHtml(template);
+  }, []);
+
   // ====== @mention logic ======
   const isGroupChat = currentConversation?.conversationType === SessionType.Group;
-  console.log("[ChatFooter] isGroupChat:", isGroupChat, "conversationType:", currentConversation?.conversationType, "groupID:", currentConversation?.groupID);
+  console.log(
+    "[ChatFooter] isGroupChat:",
+    isGroupChat,
+    "conversationType:",
+    currentConversation?.conversationType,
+    "groupID:",
+    currentConversation?.groupID,
+  );
 
   const fetchGroupMembers = useCallback(async () => {
     const groupID = currentConversation?.groupID;
@@ -237,14 +273,21 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       });
       console.log("[ChatFooter] getGroupMemberList result count:", data?.length);
       setGroupMemberList(data || []);
-    } catch(e) {
+    } catch (e) {
       console.error("[ChatFooter] getGroupMemberList failed:", e);
     }
   }, [currentConversation?.groupID]);
 
   const handleEditorKeydown = useCallback(
     (e: KeyboardEvent) => {
-      console.log("[ChatFooter handleEditorKeydown] key:", e?.key, "isGroupChat:", isGroupChat, "atPopupVisible:", atPopupVisible);
+      console.log(
+        "[ChatFooter handleEditorKeydown] key:",
+        e?.key,
+        "isGroupChat:",
+        isGroupChat,
+        "atPopupVisible:",
+        atPopupVisible,
+      );
       if (!isGroupChat) {
         console.log("[ChatFooter] not group chat, skipping @");
         return;
@@ -265,19 +308,19 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     [isGroupChat, atPopupVisible, fetchGroupMembers],
   );
 
-  const handleAtSelect = useCallback(
-    (member: AtMemberInfo) => {
-      const displayName = member.userID === "AtAllTag" ? `@${t("placeholder.mentionAll")}` : `@${member.nickname}`;
-      // Store mapping for later lookup on send
-      atMembersRef.current.set(member.userID, {
-        nickname: member.nickname,
-        groupNickname: member.groupNickname || member.nickname,
-      });
-      editorRef.current?.insertText(`${displayName} `);
-      setAtPopupVisible(false);
-    },
-    [],
-  );
+  const handleAtSelect = useCallback((member: AtMemberInfo) => {
+    const displayName =
+      member.userID === "AtAllTag"
+        ? `@${t("placeholder.mentionAll")}`
+        : `@${member.nickname}`;
+    // Store mapping for later lookup on send
+    atMembersRef.current.set(member.userID, {
+      nickname: member.nickname,
+      groupNickname: member.groupNickname || member.nickname,
+    });
+    editorRef.current?.insertText(`${displayName} `);
+    setAtPopupVisible(false);
+  }, []);
 
   const handleAtClose = useCallback(() => {
     setAtPopupVisible(false);
@@ -313,10 +356,13 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
 
     for (const [userId, info] of atNames) {
       const searchPattern =
-        userId === "AtAllTag"
-          ? `@${t("placeholder.mentionAll")}`
-          : `@${info.nickname}`;
-      console.log("[ChatFooter enterToSend] checking pattern:", searchPattern, "found:", sendText.includes(searchPattern));
+        userId === "AtAllTag" ? `@${t("placeholder.mentionAll")}` : `@${info.nickname}`;
+      console.log(
+        "[ChatFooter enterToSend] checking pattern:",
+        searchPattern,
+        "found:",
+        sendText.includes(searchPattern),
+      );
       if (sendText.includes(searchPattern)) {
         matchedUsers.push({
           userID: userId,
@@ -325,7 +371,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       }
     }
 
-    console.log("[ChatFooter enterToSend] matchedUsers:", matchedUsers, "hasQuote:", !!storeQuoteMessage);
+    console.log(
+      "[ChatFooter enterToSend] matchedUsers:",
+      matchedUsers,
+      "hasQuote:",
+      Boolean(storeQuoteMessage),
+    );
 
     if (matchedUsers.length > 0 || storeQuoteMessage) {
       if (storeQuoteMessage) {
@@ -341,7 +392,11 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           atUserID: u.userID,
           groupNickname: u.groupNickname,
         }));
-        console.log("[ChatFooter enterToSend] calling createTextAtMessage:", { text: sendText, atUserIDList, atUsersInfo });
+        console.log("[ChatFooter enterToSend] calling createTextAtMessage:", {
+          text: sendText,
+          atUserIDList,
+          atUsersInfo,
+        });
         const { data } = await IMSDK.createTextAtMessage({
           text: sendText,
           atUserIDList,
@@ -365,7 +420,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       case MessageType.PictureMessage:
         return t("messageDescription.imageMessage");
       case MessageType.FileMessage:
-        return t("messageDescription.fileMessage", { file: msg.fileElem?.fileName || "" });
+        return t("messageDescription.fileMessage", {
+          file: msg.fileElem?.fileName || "",
+        });
       case MessageType.CardMessage:
         return t("messageDescription.cardMessage");
       case MessageType.MergeMessage:
@@ -392,7 +449,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           editorRef={editorRef}
           onScreenshot={startScreenshot}
         />
-        <div ref={editorContainerRef} className="relative flex flex-1 flex-col overflow-hidden">
+        <div
+          ref={editorContainerRef}
+          className="relative flex flex-1 flex-col overflow-hidden"
+        >
           {quoteMessage && (
             <div className="flex items-center justify-between border-b border-[var(--gap-text)] bg-[var(--chat-bubble)] px-4 py-2">
               <div className="flex flex-1 flex-col overflow-hidden">
@@ -413,7 +473,8 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-2 border-b border-[var(--gap-text)] bg-[var(--chat-bubble)] px-3 py-2">
               {pendingFiles.map((item) =>
-                item.file.type.startsWith("image/") || canSendImageTypeList.includes(
+                item.file.type.startsWith("image/") ||
+                canSendImageTypeList.includes(
                   item.file.name.split(".").pop()?.toLowerCase() || "",
                 ) ? (
                   <div
@@ -437,7 +498,11 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                     key={item.id}
                     className="group relative flex h-16 max-w-[120px] flex-shrink-0 items-center gap-1.5 overflow-hidden rounded-md border border-gray-200 bg-white px-2"
                   >
-                    <svg className="h-6 w-6 flex-shrink-0 text-gray-400" viewBox="0 0 24 24" fill="none">
+                    <svg
+                      className="h-6 w-6 flex-shrink-0 text-gray-400"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                    >
                       <path
                         d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"
                         stroke="currentColor"
@@ -445,7 +510,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                       />
                       <path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" />
                     </svg>
-                    <span className="truncate text-xs text-gray-600">{item.file.name}</span>
+                    <span className="truncate text-xs text-gray-600">
+                      {item.file.name}
+                    </span>
                     <div
                       className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
                       onClick={() => removePendingFile(item.id)}
@@ -457,9 +524,30 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               )}
             </div>
           )}
+          {isAgentChat && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-[#efe7ff] bg-gradient-to-r from-[#fbf7ff] to-white px-3 py-2">
+              <span className="shrink-0 text-xs font-medium text-[#7c3aed]">
+                智能体快捷指令
+              </span>
+              {agentPromptTemplates.map((template) => (
+                <button
+                  key={template}
+                  type="button"
+                  className="rounded-full border border-[#ddd6fe] bg-white px-2.5 py-1 text-xs text-[#6d28d9] transition hover:border-[#a78bfa] hover:bg-[#f3e8ff]"
+                  onClick={() => insertAgentTemplate(template)}
+                >
+                  {template}
+                </button>
+              ))}
+            </div>
+          )}
           <CKEditor
+            key={`${currentConversation?.conversationID ?? "empty"}-${
+              isAgentChat ? "agent" : "normal"
+            }`}
             ref={editorRef}
             value={html}
+            placeholder={isAgentChat ? "给智能体发消息..." : ""}
             onEnter={enterToSend}
             onChange={onChange}
             onPasteFile={addPendingFiles}
