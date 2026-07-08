@@ -12,6 +12,7 @@ import { t } from "i18next";
 import { FC, useMemo } from "react";
 
 import { feedbackToast } from "@/utils/common";
+import { downloadFileWithProgress } from "@/utils/fileDownload";
 
 interface IMultiSelectToolbarProps {
   selectedMessages: MessageItem[];
@@ -60,27 +61,34 @@ const MultiSelectToolbar: FC<IMultiSelectToolbarProps> = ({
     onCopy();
   };
 
-  const handleSave = () => {
-    // Save logic: trigger download for files/images
-    selectedMessages.forEach((msg) => {
-      if (msg.contentType === MessageType.FileMessage) {
-        const url = msg.fileElem?.sourceUrl;
-        if (url) {
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = msg.fileElem?.fileName || "download";
-          a.click();
+  const handleSave = async () => {
+    for (const msg of selectedMessages) {
+      try {
+        if (msg.contentType === MessageType.FileMessage) {
+          const file = msg.fileElem;
+          if (!file?.sourceUrl) continue;
+          await downloadFileWithProgress({
+            url: file.sourceUrl,
+            fileName: file.fileName || "download",
+            knownSize: file.fileSize,
+            showProgressToast: true,
+            progressTitle: t("toast.downloading"),
+          });
+        } else if (msg.contentType === MessageType.PictureMessage) {
+          const url = msg.pictureElem?.sourcePicture?.url;
+          if (!url) continue;
+          await downloadFileWithProgress({
+            url,
+            fileName: "image",
+            showProgressToast: true,
+            progressTitle: t("toast.downloading"),
+          });
         }
-      } else if (msg.contentType === MessageType.PictureMessage) {
-        const url = msg.pictureElem?.sourcePicture?.url;
-        if (url) {
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "image";
-          a.click();
-        }
+      } catch (error) {
+        console.error("[MultiSelectToolbar] save failed:", error);
+        feedbackToast({ msg: t("toast.downloadFailed"), error });
       }
-    });
+    }
     onSave();
   };
 
@@ -98,10 +106,18 @@ const MultiSelectToolbar: FC<IMultiSelectToolbarProps> = ({
           onClick={onMergeForward}
         />
         {canCopy && (
-          <ToolbarButton icon={<CopyOutlined />} label={t("placeholder.copy")} onClick={handleCopy} />
+          <ToolbarButton
+            icon={<CopyOutlined />}
+            label={t("placeholder.copy")}
+            onClick={handleCopy}
+          />
         )}
         {canSave && (
-          <ToolbarButton icon={<SaveOutlined />} label={t("placeholder.save")} onClick={handleSave} />
+          <ToolbarButton
+            icon={<SaveOutlined />}
+            label={t("placeholder.save")}
+            onClick={handleSave}
+          />
         )}
         <ToolbarButton
           icon={<StarOutlined />}
@@ -119,11 +135,11 @@ const MultiSelectToolbar: FC<IMultiSelectToolbarProps> = ({
   );
 };
 
-const ToolbarButton: FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({
-  icon,
-  label,
-  onClick,
-}) => (
+const ToolbarButton: FC<{
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}> = ({ icon, label, onClick }) => (
   <button
     className="flex flex-col items-center gap-1 text-[var(--primary-text)] hover:text-[var(--primary)]"
     onClick={onClick}

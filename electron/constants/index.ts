@@ -18,4 +18,5 @@ export const IpcRenderToMain = {
   openFileDialog: "openFileDialog",
   startScreenshot: "startScreenshot",
   saveScreenshotFile: "saveScreenshotFile",
+  probeServerEnvironment: "probeServerEnvironment",
 };

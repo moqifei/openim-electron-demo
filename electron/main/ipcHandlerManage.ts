@@ -9,6 +9,8 @@ import {
 } from "electron";
 import { execFile } from "child_process";
 import fs from "fs";
+import * as iconv from "iconv-lite";
+import * as net from "net";
 import os from "os";
 import path from "path";
 import {
@@ -26,6 +28,105 @@ import { getStore } from "./storeManage";
 import { changeLanguage } from "../i18n";
 
 const store = getStore();
+
+type ServerEnvironment = {
+  key: string;
+  name: string;
+  imHost: string;
+  chatHost: string;
+};
+
+type ProbePorts = {
+  im: number[];
+  chat: number[];
+};
+
+const DEFAULT_PROBE_TIMEOUT_MS = 1200;
+
+const recoverMojibakePath = (filePath: string) => {
+  if (process.platform !== "win32") return "";
+
+  try {
+    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString(
+      "utf8",
+    );
+    if (recovered === filePath || recovered.includes("\uFFFD")) {
+      return "";
+    }
+    return recovered;
+  } catch (error) {
+    console.warn("[ipcMain] recover mojibake file path failed", error);
+    return "";
+  }
+};
+
+const normalizeDialogFilePath = (filePath: string) => {
+  if (!filePath || fs.existsSync(filePath)) return filePath;
+
+  const recoveredPath = recoverMojibakePath(filePath);
+  if (recoveredPath && fs.existsSync(recoveredPath)) {
+    console.warn("[ipcMain] recovered mojibake file path", {
+      filePath,
+      recoveredPath,
+    });
+    return recoveredPath;
+  }
+
+  return filePath;
+};
+
+const isValidHost = (host: unknown): host is string =>
+  typeof host === "string" && host.trim().length > 0;
+
+const isValidPort = (port: unknown): port is number =>
+  Number.isInteger(port) && port > 0 && port <= 65535;
+
+const probeTcpPort = (
+  host: string,
+  port: number,
+  timeoutMs: number,
+): Promise<boolean> => {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+
+    const finish = (available: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(available);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+    socket.connect(port, host);
+  });
+};
+
+const probeEnvironment = async (
+  environment: ServerEnvironment,
+  ports: ProbePorts,
+  timeoutMs: number,
+) => {
+  if (!isValidHost(environment.imHost) || !isValidHost(environment.chatHost)) {
+    return false;
+  }
+
+  const imPorts = Array.isArray(ports.im) ? ports.im.filter(isValidPort) : [];
+  const chatPorts = Array.isArray(ports.chat) ? ports.chat.filter(isValidPort) : [];
+  const checks = [
+    ...imPorts.map((port) => probeTcpPort(environment.imHost.trim(), port, timeoutMs)),
+    ...chatPorts.map((port) =>
+      probeTcpPort(environment.chatHost.trim(), port, timeoutMs),
+    ),
+  ];
+
+  if (!checks.length) return false;
+  return (await Promise.all(checks)).every(Boolean);
+};
 
 export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.clearSession, () => {
@@ -60,6 +161,38 @@ export const setIpcMainListener = () => {
       .showMessageBox(BrowserWindow.getFocusedWindow(), options)
       .then((res) => res.response);
   });
+  ipcMain.handle(
+    IpcRenderToMain.probeServerEnvironment,
+    async (
+      _,
+      {
+        environments = [],
+        ports = { im: [10001], chat: [] },
+        timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+      }: {
+        environments?: ServerEnvironment[];
+        ports?: Partial<ProbePorts>;
+        timeoutMs?: number;
+      },
+    ) => {
+      const safeTimeoutMs =
+        Number.isFinite(timeoutMs) && timeoutMs > 0
+          ? Math.min(timeoutMs, 5000)
+          : DEFAULT_PROBE_TIMEOUT_MS;
+      const safePorts = {
+        im: Array.isArray(ports.im) ? ports.im : [10001],
+        chat: Array.isArray(ports.chat) ? ports.chat : [],
+      };
+      const results = await Promise.all(
+        environments.map(async (environment) => ({
+          environment,
+          available: await probeEnvironment(environment, safePorts, safeTimeoutMs),
+        })),
+      );
+
+      return results.find((result) => result.available)?.environment ?? null;
+    },
+  );
 
   // data transfer
   ipcMain.handle(IpcRenderToMain.setKeyStore, (_, { key, data }) => {
@@ -114,7 +247,7 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.openFileDialog, async (_, options: Electron.OpenDialogOptions) => {
     const result = await showSelectDialog(options);
-    return result.canceled ? [] : result.filePaths;
+    return result.canceled ? [] : result.filePaths.map(normalizeDialogFilePath);
   });
 
   // Screenshot: hide window, capture full screen, show window, return base64

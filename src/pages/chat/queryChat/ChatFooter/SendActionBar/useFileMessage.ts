@@ -1,16 +1,39 @@
 import { v4 as uuidV4 } from "uuid";
 
-import { uploadObjectFile } from "@/api/imApi";
+import { ObjectUploadProgressHandler, uploadObjectFile } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { normalizeMojibakeString } from "@/utils/mojibake";
 
 export interface FileWithPath extends File {
   path?: string;
 }
 
-const isInvalidSelectedFile = (file: FileWithPath) =>
-  !file.name || file.size === 0;
+const isInvalidSelectedFile = (file: FileWithPath) => !file.name;
+
+const normalizeFileMetadata = (file: FileWithPath) => {
+  const normalizedName = normalizeMojibakeString(file.name);
+  const normalizedPath = normalizeMojibakeString(file.path);
+  const normalizedFile =
+    normalizedName && normalizedName !== file.name
+      ? new File([file], normalizedName, {
+          type: file.type,
+          lastModified: file.lastModified,
+        })
+      : file;
+
+  if (normalizedPath) {
+    Object.defineProperty(normalizedFile, "path", {
+      configurable: true,
+      value: normalizedPath,
+    });
+  }
+
+  return normalizedFile as FileWithPath;
+};
 
 const getUsableFile = async (file: FileWithPath) => {
+  file = normalizeFileMetadata(file);
+
   if (!isInvalidSelectedFile(file)) {
     return file;
   }
@@ -21,32 +44,44 @@ const getUsableFile = async (file: FileWithPath) => {
     );
   }
 
-  const fileFromPath = (await window.electronAPI.getFileByPath(file.path)) as FileWithPath | null;
-  if (!fileFromPath || !fileFromPath.name || fileFromPath.size === 0) {
+  const fileFromPath = (await window.electronAPI.getFileByPath(
+    file.path,
+  )) as FileWithPath | null;
+  if (!fileFromPath || !fileFromPath.name) {
     throw new Error(`Failed to read selected file from path: ${file.path}`);
   }
 
-  const normalizedFile = fileFromPath.type
-    ? fileFromPath
-    : new File([fileFromPath], fileFromPath.name, {
-        type: file.type || "application/octet-stream",
-      });
+  const normalizedFile = normalizeFileMetadata(
+    fileFromPath.type
+      ? fileFromPath
+      : new File([fileFromPath], fileFromPath.name, {
+          type: file.type || "application/octet-stream",
+        }),
+  );
 
   Object.defineProperty(normalizedFile, "path", {
     configurable: true,
-    value: file.path,
+    value: normalizeMojibakeString(file.path),
   });
 
-  return normalizedFile as FileWithPath;
+  return normalizedFile;
+};
+
+export type FileMessageOptions = {
+  onProgress?: ObjectUploadProgressHandler;
 };
 
 export function useFileMessage() {
-  const getImageMessage = async (file: FileWithPath) => {
+  const getImageMessage = async (
+    file: FileWithPath,
+    messageConfig?: FileMessageOptions,
+  ) => {
     file = await getUsableFile(file);
     const { width, height } = await getPicInfo(file);
     const { data: uploaded } = await uploadObjectFile(file, {
       contentType: file.type || "image/png",
       cause: "chat-image",
+      onProgress: messageConfig?.onProgress,
     });
     const baseInfo = {
       uuid: uuidV4(),
@@ -57,14 +92,14 @@ export function useFileMessage() {
       url: uploaded.url,
     };
 
-    const options = {
+    const messageOptions = {
       sourcePicture: baseInfo,
       bigPicture: baseInfo,
       snapshotPicture: baseInfo,
       sourcePath: "",
     };
 
-    return (await IMSDK.createImageMessageByURL(options)).data;
+    return (await IMSDK.createImageMessageByURL(messageOptions)).data;
   };
 
   const getPicInfo = (file: File): Promise<HTMLImageElement> =>
@@ -72,15 +107,14 @@ export function useFileMessage() {
       const _URL = window.URL || window.webkitURL;
       const img = new Image();
       const objectURL = _URL.createObjectURL(file);
-      let timer: number | undefined;
-      const cleanup = () => {
-        if (timer !== undefined) window.clearTimeout(timer);
-        _URL.revokeObjectURL(objectURL);
-      };
-      timer = window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
         cleanup();
         reject(new Error(`Failed to load image metadata: ${file.name}`));
       }, 10000);
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        _URL.revokeObjectURL(objectURL);
+      };
 
       img.onload = function () {
         cleanup();
@@ -93,13 +127,17 @@ export function useFileMessage() {
       img.src = objectURL;
     });
 
-  const getFileMessage = async (file: FileWithPath) => {
+  const getFileMessage = async (
+    file: FileWithPath,
+    messageConfig?: FileMessageOptions,
+  ) => {
     file = await getUsableFile(file);
     const { data: uploaded } = await uploadObjectFile(file, {
       contentType: file.type || "application/octet-stream",
       cause: "chat-file",
+      onProgress: messageConfig?.onProgress,
     });
-    const options = {
+    const messageOptions = {
       filePath: "",
       fileName: file.name,
       uuid: uuidV4(),
@@ -107,7 +145,7 @@ export function useFileMessage() {
       fileSize: file.size,
       fileType: file.type || "application/octet-stream",
     };
-    return (await IMSDK.createFileMessageByURL(options)).data;
+    return (await IMSDK.createFileMessageByURL(messageOptions)).data;
   };
 
   const getCardMessage = async (user: {

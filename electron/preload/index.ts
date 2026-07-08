@@ -1,4 +1,5 @@
 import fs from "fs";
+import * as iconv from "iconv-lite";
 import path from "path";
 import { DataPath, IElectronAPI } from "./../../src/types/globalExpose.d";
 import { IpcRenderToMain } from "../constants";
@@ -69,12 +70,50 @@ const getUniqueSavePath = (originalPath: string) => {
   return savePath;
 };
 
+const recoverMojibakePath = (filePath: string) => {
+  if (process.platform !== "win32") return "";
+
+  try {
+    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString(
+      "utf8",
+    );
+    if (recovered === filePath || recovered.includes("\uFFFD")) {
+      return "";
+    }
+    return recovered;
+  } catch (error) {
+    console.warn("[preload] recover mojibake file path failed", error);
+    return "";
+  }
+};
+
+const readFileAsBrowserFile = async (filePath: string) => {
+  const filename = path.basename(filePath);
+  const data = await fs.promises.readFile(filePath);
+  return new File([data], filename);
+};
+
 const getFileByPath = async (filePath: string) => {
   try {
-    const filename = path.basename(filePath);
-    const data = await fs.promises.readFile(filePath);
-    return new File([data], filename);
+    return await readFileAsBrowserFile(filePath);
   } catch (error) {
+    const recoveredPath = recoverMojibakePath(filePath);
+    if (recoveredPath) {
+      try {
+        const file = await readFileAsBrowserFile(recoveredPath);
+        console.warn("[preload] recovered mojibake file path", {
+          filePath,
+          recoveredPath,
+        });
+        return file;
+      } catch (recoveredError) {
+        console.warn("[preload] read recovered file path failed", {
+          filePath,
+          recoveredPath,
+          error: recoveredError,
+        });
+      }
+    }
     console.log(error);
     return null;
   }

@@ -61,6 +61,7 @@
     "clearChatHistory": "清空聊天记录",
     "confirmClearChatHistory": "确认清空聊天记录吗？",
     "downloading": "下载中...",
+    "uploading": "上传中...",
     "applyUpdateSuccess": "下载完成，重启应用生效，是否立即重启？",
     "later": "稍后",
     "applyDownloadSuccess": "下载完成，请跟随安装程序继续更新！",

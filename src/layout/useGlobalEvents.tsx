@@ -32,6 +32,7 @@ import { getIMHost } from "@/utils/config";
 import emitter from "@/utils/events";
 import { initStore } from "@/utils/imCommon";
 import { initReadVisibilityMonitor } from "@/utils/readVisibility";
+import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
 import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
@@ -129,6 +130,7 @@ export function useGlobalEvent() {
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     try {
+      await ensureServerEnvironmentSelected(true);
       const host = getIMHost();
       const apiAddr = `http://${host}:10002`;
       const wsAddr = `ws://${host}:10001`;
@@ -273,23 +275,47 @@ export function useGlobalEvent() {
 
   // message
   const newMessageHandler = ({ data }: WSEvent<MessageItem[]>) => {
-    console.log("[msg] OnRecvNewMessages, count:", data.length, "syncState:", useUserStore.getState().syncState, "resume:", resume.current,
-      "msgs:", data.map(m => ({ seq: m.seq, convID: m.conversationID || m.clientMsgID?.substring(0, 8), contentType: m.contentType, content: typeof m.content === 'string' ? m.content.substring(0, 20) : '' })));
+    console.log(
+      "[msg] OnRecvNewMessages, count:",
+      data.length,
+      "syncState:",
+      useUserStore.getState().syncState,
+      "resume:",
+      resume.current,
+      "msgs:",
+      data.map((m) => ({
+        seq: m.seq,
+        convID: m.conversationID || m.clientMsgID?.substring(0, 8),
+        contentType: m.contentType,
+        content: typeof m.content === "string" ? m.content.substring(0, 20) : "",
+      })),
+    );
     if (useUserStore.getState().syncState === "loading" || resume.current) {
       // During sync, still process messages for the currently open conversation
       // so they appear in the chat window immediately.
       data.forEach((message) => {
         if (inCurrentConversation(message)) {
-          console.log("[msg] processing in-current-conversation msg during sync/resume, seq:", message.seq);
+          console.log(
+            "[msg] processing in-current-conversation msg during sync/resume, seq:",
+            message.seq,
+          );
           handleNewMessage(message);
         } else {
-          console.log("[msg] skipping non-current-conversation msg during sync/resume, seq:", message.seq);
+          console.log(
+            "[msg] skipping non-current-conversation msg during sync/resume, seq:",
+            message.seq,
+          );
         }
       });
       return;
     }
     data.map((message) => {
-      console.log("[msg] processing new message, seq:", message.seq, "inCurrent:", inCurrentConversation(message));
+      console.log(
+        "[msg] processing new message, seq:",
+        message.seq,
+        "inCurrent:",
+        inCurrentConversation(message),
+      );
       handleNewMessage(message);
     });
   };
@@ -352,17 +378,34 @@ export function useGlobalEvent() {
 
   // conversation
   const conversationChnageHandler = ({ data }: WSEvent<ConversationItem[]>) => {
-    console.log("[conv] OnConversationChanged, count:", data.length,
-      "convs:", data.map(c => ({ convID: c.conversationID, unread: c.unreadCount, latestMsg: c.latestMsg?.substring(0, 20) })));
+    console.log(
+      "[conv] OnConversationChanged, count:",
+      data.length,
+      "convs:",
+      data.map((c) => ({
+        convID: c.conversationID,
+        unread: c.unreadCount,
+        latestMsg: c.latestMsg?.substring(0, 20),
+      })),
+    );
     updateConversationList(data, "filter");
   };
   const newConversationHandler = ({ data }: WSEvent<ConversationItem[]>) => {
-    console.log("[conv] OnNewConversation, count:", data.length,
-      "convs:", data.map(c => ({ convID: c.conversationID, unread: c.unreadCount })));
+    console.log(
+      "[conv] OnNewConversation, count:",
+      data.length,
+      "convs:",
+      data.map((c) => ({ convID: c.conversationID, unread: c.unreadCount })),
+    );
     updateConversationList(data, "push");
   };
   const totalUnreadChangeHandler = ({ data }: WSEvent<number>) => {
-    console.log("[conv] OnTotalUnreadMessageCountChanged, count:", data, "current:", useConversationStore.getState().unReadCount);
+    console.log(
+      "[conv] OnTotalUnreadMessageCountChanged, count:",
+      data,
+      "current:",
+      useConversationStore.getState().unReadCount,
+    );
     if (data === useConversationStore.getState().unReadCount) return;
     updateUnReadCount(data);
   };
@@ -466,8 +509,13 @@ export function useGlobalEvent() {
   // 单聊已读回执处理
   const c2cReadReceiptHandler = ({ data }: WSEvent<ReceiptInfo[]>) => {
     console.log("[read] OnRecvC2CReadReceipt, receipts:", data.length, data);
-    data.forEach(async (receipt) => {
-      console.log("[read] processing c2c receipt: userID:", receipt.userID, "msgIDList:", receipt.msgIDList);
+    data.forEach((receipt) => {
+      console.log(
+        "[read] processing c2c receipt: userID:",
+        receipt.userID,
+        "msgIDList:",
+        receipt.msgIDList,
+      );
       // 直接从本地消息列表更新，不需要调用 getMsgsInfo
       // 因为 receipt 中的 msgIDList 就是已读的消息 ID 列表
       // 我们通过 emitter 通知所有聊天页面更新这些消息的 isRead 状态
@@ -483,16 +531,29 @@ export function useGlobalEvent() {
   // 群聊已读回执处理
   const groupReadReceiptHandler = ({ data }: WSEvent<GroupMessageReceiptInfo>) => {
     const readInfos = data?.groupMessageReadInfo ?? [];
-    console.log("[read] OnRecvGroupReadReceipt, conversationID:", data?.conversationID, "receipts:", readInfos.length);
+    console.log(
+      "[read] OnRecvGroupReadReceipt, conversationID:",
+      data?.conversationID,
+      "receipts:",
+      readInfos.length,
+    );
     readInfos.forEach((receipt) => {
-      console.log("[read] processing group receipt: clientMsgID:", receipt.clientMsgID, "hasReadCount:", receipt.hasReadCount, "unreadCount:", receipt.unreadCount);
+      console.log(
+        "[read] processing group receipt: clientMsgID:",
+        receipt.clientMsgID,
+        "hasReadCount:",
+        receipt.hasReadCount,
+        "unreadCount:",
+        receipt.unreadCount,
+      );
       updateOneMessage({
         clientMsgID: receipt.clientMsgID,
         attachedInfoElem: {
           groupHasReadInfo: {
             hasReadCount: receipt.hasReadCount,
             unreadCount: receipt.unreadCount,
-            hasReadUserIDList: receipt.readMembers?.map((member) => member.userID) ?? [],
+            hasReadUserIDList:
+              receipt.readMembers?.map((member) => member.userID) ?? [],
             groupMemberCount: receipt.hasReadCount + receipt.unreadCount + 1,
           },
         },

@@ -1,15 +1,21 @@
 import { MessageItem } from "@openim/wasm-client-sdk";
-import { message as antdMessage, Popover, Upload } from "antd";
+import { Popover, Upload } from "antd";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, RefObject, useState } from "react";
 
+import { message as antdMessage } from "@/AntdGlobalComp";
+import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import cardIcon from "@/assets/images/chatFooter/card.png";
 import cutIcon from "@/assets/images/chatFooter/cut.png";
 import emojiIcon from "@/assets/images/chatFooter/emoji.png";
 import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import { CKEditorRef } from "@/components/CKEditor";
+import {
+  createFileTransferProgressKey,
+  showFileTransferProgress,
+} from "@/utils/fileTransferProgress";
 
 import { SendMessageParams } from "../useSendMessage";
 import EmojiPicker from "./EmojiPicker";
@@ -53,6 +59,11 @@ i18n.on("languageChanged", () => {
   sendActionList[4].title = t("placeholder.card");
 });
 
+const getFileSendErrorMessage = (error: unknown) =>
+  error instanceof Error && error.message === EMPTY_FILE_UPLOAD_ERROR_MESSAGE
+    ? error.message
+    : t("toast.accessFailed");
+
 const SendActionBar = ({
   sendMessage,
   getImageMessage,
@@ -62,9 +73,19 @@ const SendActionBar = ({
   onScreenshot,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
-  getImageMessage: (file: File) => Promise<MessageItem>;
-  getFileMessage: (file: File) => Promise<MessageItem>;
-  getCardMessage: (user: { userID: string; nickname: string; faceURL: string }) => Promise<MessageItem>;
+  getImageMessage: (
+    file: File,
+    options?: { onProgress?: (progress: number) => void },
+  ) => Promise<MessageItem>;
+  getFileMessage: (
+    file: File,
+    options?: { onProgress?: (progress: number) => void },
+  ) => Promise<MessageItem>;
+  getCardMessage: (user: {
+    userID: string;
+    nickname: string;
+    faceURL: string;
+  }) => Promise<MessageItem>;
   editorRef: RefObject<CKEditorRef>;
   onScreenshot: (hideWindow: boolean) => void;
 }) => {
@@ -77,19 +98,45 @@ const SendActionBar = ({
   const [configOpen, setConfigOpen] = useState(false);
 
   const fileHandle = async (options: UploadRequestOption, key: string) => {
+    const file = options.file as File;
+    const progressKey = createFileTransferProgressKey("chat-upload");
+    const updateProgress = (progress: number) => {
+      showFileTransferProgress({
+        key: progressKey,
+        fileName: file.name,
+        title: t("toast.uploading"),
+        percent: progress,
+      });
+    };
+
     try {
+      updateProgress(0);
       let message: MessageItem;
       if (key === "image") {
-        message = await getImageMessage(options.file as File);
+        message = await getImageMessage(file, { onProgress: updateProgress });
       } else if (key === "file") {
-        message = await getFileMessage(options.file as File);
+        message = await getFileMessage(file, { onProgress: updateProgress });
       } else {
         return;
       }
       await sendMessage({ message });
+      showFileTransferProgress({
+        key: progressKey,
+        fileName: file.name,
+        title: t("placeholder.uploadSuccess"),
+        percent: 100,
+        status: "success",
+      });
     } catch (error) {
       console.error("[SendActionBar] send file failed:", error);
-      antdMessage.error(t("toast.accessFailed"));
+      showFileTransferProgress({
+        key: progressKey,
+        fileName: file.name,
+        title: t("toast.uploadFailed"),
+        percent: 100,
+        status: "exception",
+      });
+      antdMessage.error(getFileSendErrorMessage(error));
     }
   };
 
@@ -114,6 +161,7 @@ const SendActionBar = ({
     console.info("[SendActionBar] native selected files", { key, filePaths });
 
     for (const filePath of filePaths) {
+      const progressKey = createFileTransferProgressKey("chat-upload");
       try {
         const file = await window.electronAPI.getFileByPath(filePath);
         if (!file) {
@@ -130,19 +178,41 @@ const SendActionBar = ({
           fileSize: file.size,
           fileType: file.type,
         });
+        const updateProgress = (progress: number) => {
+          showFileTransferProgress({
+            key: progressKey,
+            fileName: file.name,
+            title: t("toast.uploading"),
+            percent: progress,
+          });
+        };
 
         let message: MessageItem;
         if (key === "image") {
-          message = await getImageMessage(file);
+          message = await getImageMessage(file, { onProgress: updateProgress });
         } else if (key === "file") {
-          message = await getFileMessage(file);
+          message = await getFileMessage(file, { onProgress: updateProgress });
         } else {
           return;
         }
         await sendMessage({ message });
+        showFileTransferProgress({
+          key: progressKey,
+          fileName: file.name,
+          title: t("placeholder.uploadSuccess"),
+          percent: 100,
+          status: "success",
+        });
       } catch (error) {
         console.error("[SendActionBar] send native file failed:", error);
-        antdMessage.error(t("toast.accessFailed"));
+        showFileTransferProgress({
+          key: progressKey,
+          fileName: filePath,
+          title: t("toast.uploadFailed"),
+          percent: 100,
+          status: "exception",
+        });
+        antdMessage.error(getFileSendErrorMessage(error));
       }
     }
   };
@@ -246,9 +316,7 @@ const SendActionBar = ({
               <EmojiPicker onSelect={handleEmojiSelect} />
             ) : undefined,
             popoverOpen: isEmoji ? emojiOpen : undefined,
-            onPopoverOpenChange: isEmoji
-              ? (v: boolean) => setEmojiOpen(v)
-              : undefined,
+            onPopoverOpenChange: isEmoji ? (v: boolean) => setEmojiOpen(v) : undefined,
           };
 
           return (
@@ -263,7 +331,9 @@ const SendActionBar = ({
       <ShareCardModal
         open={cardModalOpen}
         onCancel={() => setCardModalOpen(false)}
-        onConfirm={handleCardSelect}
+        onConfirm={(user) => {
+          void handleCardSelect(user);
+        }}
       />
     </>
   );

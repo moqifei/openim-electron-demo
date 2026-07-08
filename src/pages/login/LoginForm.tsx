@@ -1,41 +1,45 @@
 import { Button, Form, Input, Tabs } from "antd";
 import { t } from "i18next";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useADLogin } from "@/api/login";
+import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
 import { getAdUsername, setAdUsername, setIMProfile } from "@/utils/storage";
 
 import styles from "./index.module.scss";
 
-export type LoginMethod = "phone" | "email" | "ad";
-
-type LoginFormProps = {
-  loginMethod: LoginMethod;
-  updateLoginMethod: (method: LoginMethod) => void;
+type AdLoginFormValues = {
+  username: string;
+  password: string;
 };
 
-const LoginForm = ({ loginMethod, updateLoginMethod }: LoginFormProps) => {
+const LoginForm = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
-  const { mutate: adLogin, isLoading: adLoginLoading } = useADLogin();
+  const [selectingServer, setSelectingServer] = useState(false);
+  const { mutateAsync: adLogin, isLoading: adLoginLoading } = useADLogin();
 
-  const onFinish = (params: any) => {
+  const onFinish = (params: AdLoginFormValues) => {
     // Always use AD login (phone/email removed)
-    handleAdLogin(params);
+    void handleAdLogin(params);
   };
 
-  const handleAdLogin = (params: { username: string; password: string }) => {
+  const handleAdLogin = async (params: AdLoginFormValues) => {
     setAdUsername(params.username);
-    adLogin(
-      { username: params.username, password: params.password },
-      {
-        onSuccess: (data) => {
-          const { chatToken, imToken, userID } = data.data;
-          setIMProfile({ chatToken, imToken, userID });
-          navigate("/chat");
-        },
-      },
-    );
+    setSelectingServer(true);
+    try {
+      await ensureServerEnvironmentSelected(true);
+      const data = await adLogin({
+        username: params.username,
+        password: params.password,
+      });
+      const { chatToken, imToken, userID } = data.data;
+      setIMProfile({ chatToken, imToken, userID });
+      navigate("/chat");
+    } finally {
+      setSelectingServer(false);
+    }
   };
 
   return (
@@ -73,7 +77,12 @@ const LoginForm = ({ loginMethod, updateLoginMethod }: LoginFormProps) => {
           <Input.Password allowClear placeholder={t("placeholder.inputAdPassword")} />
         </Form.Item>
         <Form.Item className="mb-4 mt-10">
-          <Button type="primary" htmlType="submit" block loading={adLoginLoading}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            block
+            loading={selectingServer || adLoginLoading}
+          >
             {t("placeholder.login")}
           </Button>
         </Form.Item>

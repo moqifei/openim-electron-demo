@@ -1,4 +1,5 @@
 import { CloseOutlined } from "@ant-design/icons";
+import { SessionType } from "@openim/wasm-client-sdk";
 import { GroupItem, WSEvent } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Avatar, Button, Empty, Input, InputRef, Spin } from "antd";
 import { t } from "i18next";
@@ -11,11 +12,11 @@ import {
   useState,
 } from "react";
 
-import { ADDepartmentMemberInfo, searchADMembers } from "@/api/organization";
 import { AgentInfo, searchAgents } from "@/api/login";
+import { ADDepartmentMemberInfo, searchADMembers } from "@/api/organization";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
+import { useConversationToggle } from "@/hooks/useConversationToggle";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
-import { CardInfo } from "@/pages/common/UserCardModal";
 import { useContactStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
@@ -25,7 +26,6 @@ import { IMSDK } from "../MainContentWrap";
 interface ISearchUserOrGroupProps {
   isSearchGroup: boolean;
   isSearchAgent?: boolean;
-  openUserCardWithData: (data: CardInfo) => void;
   openGroupCardWithData: (data: GroupItem) => void;
 }
 
@@ -43,13 +43,14 @@ interface SearchResultItem {
 const SearchUserOrGroup: ForwardRefRenderFunction<
   OverlayVisibleHandle,
   ISearchUserOrGroupProps
-> = ({ isSearchGroup, isSearchAgent, openUserCardWithData, openGroupCardWithData }, ref) => {
+> = ({ isSearchGroup, isSearchAgent, openGroupCardWithData }, ref) => {
   const [loading, setLoading] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResultItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const inputRef = useRef<InputRef>(null);
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
+  const { toSpecifiedConversation } = useConversationToggle();
 
   useEffect(() => {
     if (isOverlayOpen) {
@@ -133,7 +134,10 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
     } else {
       try {
         const trimmed = keyword.trim();
-        console.log("[SearchUserOrGroup] searchData, keyword:", JSON.stringify(trimmed));
+        console.log(
+          "[SearchUserOrGroup] searchData, keyword:",
+          JSON.stringify(trimmed),
+        );
 
         let {
           data: { total, members },
@@ -141,10 +145,20 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
           keyword: trimmed,
           pagination: { pageNumber: 1, showNumber: 200 },
         });
-        console.log("[SearchUserOrGroup] primary response total:", total, "members count:", members?.length, "first:", JSON.stringify(members?.[0]));
+        console.log(
+          "[SearchUserOrGroup] primary response total:",
+          total,
+          "members count:",
+          members?.length,
+          "first:",
+          JSON.stringify(members?.[0]),
+        );
 
         // Fallback: if no results and keyword looks like pinyin/ascii, fetch all and filter client-side
-        if ((!total || !members || members.length === 0) && /^[a-zA-Z0-9]+$/.test(trimmed)) {
+        if (
+          (!total || !members || members.length === 0) &&
+          /^[a-zA-Z0-9]+$/.test(trimmed)
+        ) {
           console.log("[SearchUserOrGroup] entering pinyin fallback");
           const resp = await searchADMembers({
             keyword: "",
@@ -152,7 +166,14 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
           });
           total = resp.data.total;
           members = resp.data.members;
-          console.log("[SearchUserOrGroup] fallback response total:", total, "members count:", members?.length, "first:", JSON.stringify(members?.[0]));
+          console.log(
+            "[SearchUserOrGroup] fallback response total:",
+            total,
+            "members count:",
+            members?.length,
+            "first:",
+            JSON.stringify(members?.[0]),
+          );
         }
 
         if (!total || !members || members.length === 0) {
@@ -177,10 +198,19 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
         const rawResults: SearchResultItem[] = members.map(
           (m: ADDepartmentMemberInfo) => {
             const url = (m.faceURL || m.avatar || "").trim();
-            const validURL =
-              url && url !== "null" && url !== "undefined" ? url : "";
-            const deptName = (m.departmentName || "").trim() || parseDeptDN(m.departmentID || "");
-            console.log("[SearchUserOrGroup] map member:", m.nickname || m.displayName || m.username, "faceURL:", validURL, "deptName:", deptName, "raw departmentID:", m.departmentID);
+            const validURL = url && url !== "null" && url !== "undefined" ? url : "";
+            const deptName =
+              (m.departmentName || "").trim() || parseDeptDN(m.departmentID || "");
+            console.log(
+              "[SearchUserOrGroup] map member:",
+              m.nickname || m.displayName || m.username,
+              "faceURL:",
+              validURL,
+              "deptName:",
+              deptName,
+              "raw departmentID:",
+              m.departmentID,
+            );
             return {
               userID: m.userID || m.username,
               nickname: m.nickname || m.displayName || m.username,
@@ -196,7 +226,12 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
 
         // Apply client-side fuzzy + pinyin filtering
         const filtered = filterByFuzzyPinyin(rawResults, trimmed);
-        console.log("[SearchUserOrGroup] after filterByFuzzyPinyin, filtered count:", filtered.length, "first:", JSON.stringify(filtered[0]));
+        console.log(
+          "[SearchUserOrGroup] after filterByFuzzyPinyin, filtered count:",
+          filtered.length,
+          "first:",
+          JSON.stringify(filtered[0]),
+        );
 
         // Enrich with friend info
         const friendList = useContactStore.getState().friendList;
@@ -204,14 +239,24 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
         const enriched = filtered.map((item) => {
           const friend = friendList.find((f) => f.userID === item.userID);
           if (friend) {
-            console.log("[SearchUserOrGroup] found friend for:", item.userID, "friend.faceURL:", friend.faceURL);
+            console.log(
+              "[SearchUserOrGroup] found friend for:",
+              item.userID,
+              "friend.faceURL:",
+              friend.faceURL,
+            );
             item.nickname = friend.nickname || item.nickname;
             item.faceURL = friend.faceURL || item.faceURL;
           }
           return item;
         });
 
-        console.log("[SearchUserOrGroup] final enriched count:", enriched.length, "first:", JSON.stringify(enriched[0]));
+        console.log(
+          "[SearchUserOrGroup] final enriched count:",
+          enriched.length,
+          "first:",
+          JSON.stringify(enriched[0]),
+        );
         setSearchResults(enriched);
         setLoading(false);
       } catch (error) {
@@ -225,22 +270,16 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
     }
   };
 
-  const handleUserClick = (item: SearchResultItem) => {
-    const friendInfo = useContactStore
-      .getState()
-      .friendList.find((friend) => friend.userID === item.userID);
-
-    openUserCardWithData({
-      ...(friendInfo ?? {}),
-      userID: item.userID,
-      nickname: item.nickname,
-      faceURL: item.faceURL,
-    });
+  const handleUserClick = async (item: SearchResultItem) => {
     closeOverlay();
+    await toSpecifiedConversation({
+      sourceID: item.userID,
+      sessionType: SessionType.Single,
+    });
   };
 
   const showEmpty =
-    hasSearched && !loading && searchResults.length === 0 && !!keyword.trim();
+    hasSearched && !loading && searchResults.length === 0 && Boolean(keyword.trim());
 
   return (
     <DraggableModalWrap
@@ -270,8 +309,8 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
           {isSearchAgent
             ? t("placeholder.searchAgents")
             : isSearchGroup
-              ? t("placeholder.addGroup")
-              : t("placeholder.addFriends")}
+            ? t("placeholder.addGroup")
+            : t("placeholder.addFriends")}
         </div>
         <CloseOutlined
           className="cursor-pointer text-[var(--sub-text)]"
@@ -334,12 +373,12 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
                   {item.nickname.slice(0, 1).toUpperCase()}
                 </Avatar>
                 <div className="ml-3 flex-1 overflow-hidden">
-                  <div className="truncate text-sm font-medium">
-                    {item.nickname}
-                  </div>
+                  <div className="truncate text-sm font-medium">{item.nickname}</div>
                   {(item.displayName || item.position || item.departmentName) && (
                     <div className="truncate text-xs text-[var(--sub-text)]">
-                      {[item.departmentName, item.displayName, item.position].filter(Boolean).join(" - ")}
+                      {[item.departmentName, item.displayName, item.position]
+                        .filter(Boolean)
+                        .join(" - ")}
                     </div>
                   )}
                 </div>

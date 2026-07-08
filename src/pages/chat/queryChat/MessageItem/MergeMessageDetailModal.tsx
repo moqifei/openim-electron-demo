@@ -1,12 +1,15 @@
-import { CloseOutlined, FileOutlined, DownloadOutlined } from "@ant-design/icons";
-import { MessageItem, MessageType, MergeElem } from "@openim/wasm-client-sdk";
+/* eslint-disable react/prop-types */
+import { CloseOutlined, DownloadOutlined, FileOutlined } from "@ant-design/icons";
+import { MergeElem, MessageItem, MessageType } from "@openim/wasm-client-sdk";
 import { Image, Modal } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
 import { FC, memo, useState } from "react";
 
+import { message as antdMessage } from "@/AntdGlobalComp";
 import OIMAvatar from "@/components/OIMAvatar";
 import { formatBr } from "@/utils/common";
+import { downloadFileWithProgress } from "@/utils/fileDownload";
 
 import styles from "./message-item.module.scss";
 
@@ -18,6 +21,103 @@ interface IMergeMessageDetailModalProps {
 
 const messageBubble = "rounded-md p-2.5";
 const messageBubbleOthers = `bg-[var(--chat-bubble)]`;
+
+const downloadMessageFile = async (
+  file?: { sourceUrl?: string; fileName?: string; fileSize?: number },
+  logSource = "MergeMessageDetailModal",
+) => {
+  if (!file?.sourceUrl) return;
+  try {
+    await downloadFileWithProgress({
+      url: file.sourceUrl,
+      fileName: file.fileName || "download",
+      knownSize: file.fileSize,
+      showProgressToast: true,
+      progressTitle: t("toast.downloading"),
+    });
+  } catch (error) {
+    console.error(`[${logSource}] download failed:`, error);
+    antdMessage.error(t("toast.downloadFailed"));
+  }
+};
+
+const QuotePreview: FC<{ m: MessageItem }> = ({ m }) => {
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  switch (m.contentType) {
+    case MessageType.TextMessage:
+      return (
+        <span className="text-xs text-[var(--sub-text)]">
+          {m.textElem?.content || ""}
+        </span>
+      );
+    case MessageType.PictureMessage: {
+      const pic = m.pictureElem;
+      const src = pic?.snapshotPicture?.url || pic?.sourcePicture?.url || "";
+      const orig = pic?.sourcePicture?.url || src;
+      return (
+        <>
+          <Image
+            className="hidden"
+            src={src}
+            preview={{
+              visible: previewVisible,
+              onVisibleChange: setPreviewVisible,
+              src: orig,
+            }}
+          />
+          <div
+            className="max-w-[120px] cursor-pointer overflow-hidden rounded"
+            onClick={() => setPreviewVisible(true)}
+          >
+            <img
+              src={src}
+              className="max-w-[120px] rounded"
+              alt=""
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = "none";
+              }}
+            />
+          </div>
+        </>
+      );
+    }
+    case MessageType.FileMessage: {
+      const file = m.fileElem;
+      return (
+        <div
+          className="flex cursor-pointer items-center gap-2 hover:opacity-80"
+          onClick={() => {
+            void downloadMessageFile(file, "MergeMessageQuotePreview");
+          }}
+        >
+          <FileOutlined className="shrink-0 text-base text-[var(--primary)]" />
+          <span className="truncate text-xs text-[var(--sub-text)]">
+            {file?.fileName}
+          </span>
+        </div>
+      );
+    }
+    case MessageType.CardMessage:
+      return (
+        <span className="text-xs text-[var(--sub-text)]">
+          {t("messageDescription.cardMessage")}
+        </span>
+      );
+    case MessageType.MergeMessage:
+      return (
+        <span className="text-xs text-[var(--sub-text)]">
+          {m.mergeElem?.title || t("messageDescription.mergeMessage")}
+        </span>
+      );
+    default:
+      return (
+        <span className="text-xs text-[var(--sub-text)]">
+          {t("messageDescription.catchMessage")}
+        </span>
+      );
+  }
+};
 
 /** Render a single message item inside the merge detail modal */
 const MergedMessageItem: FC<{ message: MessageItem }> = memo(({ message }) => {
@@ -58,14 +158,7 @@ const MergedMessageItem: FC<{ message: MessageItem }> = memo(({ message }) => {
               "flex cursor-pointer items-center gap-3 px-3 py-2 hover:opacity-80",
             )}
             onClick={() => {
-              if (!file?.sourceUrl) return;
-              const a = document.createElement("a");
-              a.href = file.sourceUrl;
-              a.download = file.fileName || "download";
-              a.target = "_blank";
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
+              void downloadMessageFile(file);
             }}
           >
             <FileOutlined className="shrink-0 text-xl text-[var(--primary)]" />
@@ -114,71 +207,10 @@ const MergedMessageItem: FC<{ message: MessageItem }> = memo(({ message }) => {
         const quoteElem = message.quoteElem;
         const quoted = quoteElem?.quoteMessage;
 
-        const QuotePreview: FC<{ m: MessageItem }> = ({ m }) => {
-          const [previewVisible, setPreviewVisible] = useState(false);
-
-          switch (m.contentType) {
-            case MessageType.TextMessage:
-              return <span className="text-xs text-[var(--sub-text)]">{m.textElem?.content || ""}</span>;
-            case MessageType.PictureMessage: {
-              const pic = m.pictureElem;
-              const src = pic?.snapshotPicture?.url || pic?.sourcePicture?.url || "";
-              const orig = pic?.sourcePicture?.url || src;
-              return (
-                <>
-                  <Image
-                    className="hidden"
-                    src={src}
-                    preview={{ visible: previewVisible, onVisibleChange: setPreviewVisible, src: orig }}
-                  />
-                  <div
-                    className="max-w-[120px] cursor-pointer overflow-hidden rounded"
-                    onClick={() => setPreviewVisible(true)}
-                  >
-                    <img
-                      src={src}
-                      className="max-w-[120px] rounded"
-                      alt=""
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                      }}
-                    />
-                  </div>
-                </>
-              );
-            }
-            case MessageType.FileMessage: {
-              const file = m.fileElem;
-              return (
-                <div
-                  className="flex cursor-pointer items-center gap-2 hover:opacity-80"
-                  onClick={() => {
-                    if (!file?.sourceUrl) return;
-                    const a = document.createElement("a");
-                    a.href = file.sourceUrl;
-                    a.download = file.fileName || "download";
-                    a.target = "_blank";
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                  }}
-                >
-                  <FileOutlined className="shrink-0 text-base text-[var(--primary)]" />
-                  <span className="truncate text-xs text-[var(--sub-text)]">{file?.fileName}</span>
-                </div>
-              );
-            }
-            case MessageType.CardMessage:
-              return <span className="text-xs text-[var(--sub-text)]">{t("messageDescription.cardMessage")}</span>;
-            case MessageType.MergeMessage:
-              return <span className="text-xs text-[var(--sub-text)]">{m.mergeElem?.title || t("messageDescription.mergeMessage")}</span>;
-            default:
-              return <span className="text-xs text-[var(--sub-text)]">{t("messageDescription.catchMessage")}</span>;
-          }
-        };
-
         return (
-          <div className={clsx(messageBubble, messageBubbleOthers, "flex flex-col gap-1")}>
+          <div
+            className={clsx(messageBubble, messageBubbleOthers, "flex flex-col gap-1")}
+          >
             {quoted && (
               <div className="rounded border-l-2 border-[var(--primary)] bg-[rgba(0,0,0,0.03)] px-2 py-1">
                 <div className="text-xs text-[var(--primary)]">
@@ -237,7 +269,10 @@ const MergeMessageDetailModal: FC<IMergeMessageDetailModalProps> = ({
       maskTransitionName=""
     >
       <div className="flex h-14 items-center justify-between border-b border-[var(--gap-text)] px-5">
-        <div className="truncate text-base font-medium text-[var(--primary-text)]" title={title}>
+        <div
+          className="truncate text-base font-medium text-[var(--primary-text)]"
+          title={title}
+        >
           {title || t("messageDescription.mergeMessage")}
         </div>
         <CloseOutlined

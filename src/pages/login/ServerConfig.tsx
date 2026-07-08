@@ -3,11 +3,10 @@ import { Button, Input, Modal, Space } from "antd";
 import { useState } from "react";
 
 import {
-  getIMHost,
-  setIMHost,
-  getChatHost,
-  setChatHost,
   clearServerHost,
+  getChatHost,
+  getIMHost,
+  setManualServerHosts,
 } from "@/utils/config";
 
 interface ServerConfigProps {
@@ -23,16 +22,17 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
     const trimmedIm = imHost.trim();
     const trimmedChat = chatHost.trim();
     if (!trimmedIm || !trimmedChat) return;
-    setIMHost(trimmedIm);
-    setChatHost(trimmedChat);
+    setManualServerHosts({ imHost: trimmedIm, chatHost: trimmedChat });
     setOpen(false);
     onConfigChanged?.();
   };
 
   const handleReset = () => {
     clearServerHost();
-    const defaultIm = (import.meta.env.VITE_IM_HOST ?? import.meta.env.VITE_BASE_HOST) as string;
-    const defaultChat = (import.meta.env.VITE_CHAT_HOST ?? import.meta.env.VITE_BASE_HOST) as string;
+    const defaultIm = (import.meta.env.VITE_IM_HOST ??
+      import.meta.env.VITE_BASE_HOST) as string;
+    const defaultChat = (import.meta.env.VITE_CHAT_HOST ??
+      import.meta.env.VITE_BASE_HOST) as string;
     setImHost(defaultIm);
     setChatHostVal(defaultChat);
     setOpen(false);

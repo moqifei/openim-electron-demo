@@ -15,6 +15,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import CKEditor, { CKEditorRef } from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
 import i18n from "@/i18n";
@@ -22,6 +23,10 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
 import { canSendImageTypeList } from "@/utils/common";
+import {
+  createFileTransferProgressKey,
+  showFileTransferProgress,
+} from "@/utils/fileTransferProgress";
 
 import AtMemberPopup, { AtMemberInfo } from "./AtMemberPopup";
 import SendActionBar from "./SendActionBar";
@@ -50,6 +55,11 @@ const isImageFile = (file: File) => {
   const ext = file.name.split(".").pop()?.toLowerCase();
   return ext ? canSendImageTypeList.includes(ext) : false;
 };
+
+const getFileSendErrorMessage = (error: unknown) =>
+  error instanceof Error && error.message === EMPTY_FILE_UPLOAD_ERROR_MESSAGE
+    ? error.message
+    : t("toast.accessFailed");
 
 interface PendingFileItem {
   id: string;
@@ -119,18 +129,42 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const handleSendPendingFiles = useCallback(
     async (files: PendingFileItem[]) => {
       for (const item of files) {
+        const progressKey = createFileTransferProgressKey("chat-upload");
+        const updateProgress = (progress: number) => {
+          showFileTransferProgress({
+            key: progressKey,
+            fileName: item.file.name,
+            title: t("toast.uploading"),
+            percent: progress,
+          });
+        };
+
         try {
           const file = item.file;
           if (isImageFile(file)) {
-            const msg = await getImageMessage(file);
+            const msg = await getImageMessage(file, { onProgress: updateProgress });
             await sendMessage({ message: msg });
           } else {
-            const msg = await getFileMessage(file);
+            const msg = await getFileMessage(file, { onProgress: updateProgress });
             await sendMessage({ message: msg });
           }
+          showFileTransferProgress({
+            key: progressKey,
+            fileName: item.file.name,
+            title: t("placeholder.uploadSuccess"),
+            percent: 100,
+            status: "success",
+          });
         } catch (error) {
           console.error("[ChatFooter] send file failed:", error);
-          message.error(t("toast.accessFailed"));
+          showFileTransferProgress({
+            key: progressKey,
+            fileName: item.file.name,
+            title: t("toast.uploadFailed"),
+            percent: 100,
+            status: "exception",
+          });
+          message.error(getFileSendErrorMessage(error));
         }
       }
     },

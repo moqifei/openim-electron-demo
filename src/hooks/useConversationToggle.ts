@@ -51,13 +51,13 @@ export function useConversationToggle() {
     async (params: ToSpecifiedConversationParams) => {
       const { sourceID, sessionType, isJump } = params;
       const conversation = await getConversation({ sourceID, sessionType });
-      if (
-        !conversation ||
+      if (!conversation) return;
+      const isCurrentConversation =
         useConversationStore.getState().currentConversation?.conversationID ===
-          conversation.conversationID
-      )
-        return;
-      await updateCurrentConversation({ ...conversation }, isJump);
+        conversation.conversationID;
+      if (!isCurrentConversation) {
+        await updateCurrentConversation({ ...conversation }, isJump);
+      }
       navigate(`/chat/${conversation.conversationID}`);
     },
     [],

@@ -1,0 +1,27 @@
+{
+  "probeTimeoutMs": 1200,
+  "probePorts": {
+    "im": [10001],
+    "chat": []
+  },
+  "environments": [
+    {
+      "key": "production",
+      "name": "production",
+      "imHost": "10.150.1.148",
+      "chatHost": "10.150.1.147"
+    },
+    {
+      "key": "test",
+      "name": "test",
+      "imHost": "10.90.23.148",
+      "chatHost": "10.90.23.149"
+    },
+    {
+      "key": "local",
+      "name": "local",
+      "imHost": "127.0.0.1",
+      "chatHost": "127.0.0.1"
+    }
+  ]
+}

@@ -61,6 +61,7 @@
     "clearChatHistory": "Clear chat history",
     "confirmClearChatHistory": "Are you sure you want to clear chat history?",
     "downloading": "Downloading...",
+    "uploading": "Uploading...",
     "applyUpdateSuccess": "Download complete, effective after restart, are you sure you want to restart now?",
     "later": "Later",
     "applyDownloadSuccess": "Download complete, follow the installer to update!",

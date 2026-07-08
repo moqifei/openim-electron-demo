@@ -1,13 +1,22 @@
 import { v4 as uuidv4 } from "uuid";
 
+import { useUserStore } from "@/store";
+import { normalizeMojibakeString } from "@/utils/mojibake";
 import { getApiAxios, getChatAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
-import { useUserStore } from "@/store";
 
 const getRequest = () => getChatAxios();
 const uploadRetryDelays = [800, 1600];
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const stringifyLogMeta = (meta: unknown) => {
+  try {
+    return JSON.stringify(meta);
+  } catch {
+    return String(meta);
+  }
+};
 
 const isRetriableUploadError = (error: unknown) => {
   const axiosError = error as {
@@ -50,6 +59,10 @@ export type ObjectUploadResp = {
   contentType: string;
 };
 
+export type ObjectUploadProgressHandler = (progress: number) => void;
+
+export const EMPTY_FILE_UPLOAD_ERROR_MESSAGE = "不能上传空文件";
+
 export const markMsgsAsRead = async (params: {
   conversationID: string;
   seqs: number[];
@@ -69,7 +82,11 @@ export const getGroupMessagesReadInfo = async (params: {
   groupID?: string;
   userID: string;
   seqs: number[];
-}) => getApiAxios().post<GroupMessageReadInfo[]>("/msg/get_group_messages_read_info", params);
+}) =>
+  getApiAxios().post<GroupMessageReadInfo[]>(
+    "/msg/get_group_messages_read_info",
+    params,
+  );
 
 export const uploadObjectFile = async (
   file: File,
@@ -77,10 +94,11 @@ export const uploadObjectFile = async (
     name?: string;
     contentType?: string;
     cause?: string;
+    onProgress?: ObjectUploadProgressHandler;
   },
 ) => {
-  const rawName = options?.name ?? file.name;
-  const filePath = (file as File & { path?: string }).path;
+  const rawName = normalizeMojibakeString(options?.name ?? file.name);
+  const filePath = normalizeMojibakeString((file as File & { path?: string }).path);
   if (!rawName || file.size === 0) {
     console.error("[uploadObjectFile] invalid file", {
       rawName,
@@ -89,14 +107,14 @@ export const uploadObjectFile = async (
       filePath,
       cause: options?.cause ?? "chat",
     });
-    throw new Error("Selected file is empty or unreadable");
+    throw new Error(
+      !rawName ? "Selected file is unreadable" : EMPTY_FILE_UPLOAD_ERROR_MESSAGE,
+    );
   }
 
   const currentUserID = useUserStore.getState()?.selfInfo?.userID;
   // Backend requires non-admin users to prefix file name with their userID
-  const uploadName = currentUserID
-    ? `${currentUserID}/${rawName}`
-    : rawName;
+  const uploadName = currentUserID ? `${currentUserID}/${rawName}` : rawName;
 
   const request = getApiAxios();
   const uploadUrl = `${request.defaults.baseURL ?? ""}/object/upload`;
@@ -119,16 +137,34 @@ export const uploadObjectFile = async (
     return formData;
   };
 
-  console.info("[uploadObjectFile] start", uploadMeta);
+  console.info("[uploadObjectFile] start", stringifyLogMeta(uploadMeta));
 
   for (let attempt = 0; attempt <= uploadRetryDelays.length; attempt += 1) {
     try {
-      const response = await request.post<ObjectUploadResp>("/object/upload", createFormData(), {
-        timeout: 10 * 60 * 1000,
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-      });
-      console.info("[uploadObjectFile] success", { ...uploadMeta, attempt: attempt + 1 });
+      options?.onProgress?.(0);
+      const response = await request.post<ObjectUploadResp>(
+        "/object/upload",
+        createFormData(),
+        {
+          timeout: 10 * 60 * 1000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          onUploadProgress: (progressEvent) => {
+            const total = progressEvent.total ?? file.size;
+            if (!total) return;
+            const progress = Math.round((progressEvent.loaded / total) * 100);
+            options?.onProgress?.(Math.min(99, Math.max(0, progress)));
+          },
+        },
+      );
+      options?.onProgress?.(100);
+      console.info(
+        "[uploadObjectFile] success",
+        stringifyLogMeta({
+          ...uploadMeta,
+          attempt: attempt + 1,
+        }),
+      );
       return response;
     } catch (error) {
       const axiosError = error as {
@@ -143,7 +179,8 @@ export const uploadObjectFile = async (
           timeout?: number;
         };
       };
-      const canRetry = attempt < uploadRetryDelays.length && isRetriableUploadError(error);
+      const canRetry =
+        attempt < uploadRetryDelays.length && isRetriableUploadError(error);
       const errorMeta = {
         ...uploadMeta,
         attempt: attempt + 1,
@@ -160,11 +197,11 @@ export const uploadObjectFile = async (
       };
 
       if (!canRetry) {
-        console.error("[uploadObjectFile] failed", errorMeta);
+        console.error("[uploadObjectFile] failed", stringifyLogMeta(errorMeta));
         throw error;
       }
 
-      console.warn("[uploadObjectFile] retrying", errorMeta);
+      console.warn("[uploadObjectFile] retrying", stringifyLogMeta(errorMeta));
       await wait(uploadRetryDelays[attempt]);
     }
   }

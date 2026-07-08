@@ -1,19 +1,29 @@
 import { MessageItem, MessageType } from "@openim/wasm-client-sdk";
 import { Image } from "antd";
+import { t } from "i18next";
 import { FC, useCallback, useState } from "react";
 
-import { t } from "i18next";
+import { message as antdMessage } from "@/AntdGlobalComp";
+import { downloadFileWithProgress } from "@/utils/fileDownload";
+
 import { IMessageItemProps } from "./index";
 
-const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "isSelected" | "onToggleSelect" | "onForward" | "onReply" | "onMultiSelect" | "onRevoke">> = ({
-  message,
-}) => {
+const QuoteMessageRender: FC<
+  Omit<
+    IMessageItemProps,
+    | "isMultiSelectActive"
+    | "isSelected"
+    | "onToggleSelect"
+    | "onForward"
+    | "onReply"
+    | "onMultiSelect"
+    | "onRevoke"
+  >
+> = ({ message }) => {
   const quoteElem = message.quoteElem;
+  const text = quoteElem?.text;
+  const quoteMessage = quoteElem?.quoteMessage;
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
-
-  if (!quoteElem) return null;
-
-  const { text, quoteMessage } = quoteElem;
 
   const getQuoteContent = (msg: MessageItem) => {
     switch (msg.contentType) {
@@ -22,7 +32,9 @@ const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "is
       case MessageType.PictureMessage:
         return t("messageDescription.imageMessage");
       case MessageType.FileMessage:
-        return t("messageDescription.fileMessage", { file: msg.fileElem?.fileName || "" });
+        return t("messageDescription.fileMessage", {
+          file: msg.fileElem?.fileName || "",
+        });
       case MessageType.CardMessage:
         return t("messageDescription.cardMessage");
       case MessageType.MergeMessage:
@@ -42,7 +54,7 @@ const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "is
   }, []);
 
   const handleQuoteClick = useCallback(
-    (e: React.MouseEvent) => {
+    async (e: React.MouseEvent) => {
       if (!quoteMessage) return;
 
       if (quoteMessage.contentType === MessageType.PictureMessage) {
@@ -55,13 +67,18 @@ const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "is
         e.stopPropagation();
         const fileElem = quoteMessage.fileElem;
         if (fileElem?.sourceUrl) {
-          const a = document.createElement("a");
-          a.href = fileElem.sourceUrl;
-          a.download = fileElem.fileName || "";
-          a.target = "_blank";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          try {
+            await downloadFileWithProgress({
+              url: fileElem.sourceUrl,
+              fileName: fileElem.fileName || "download",
+              knownSize: fileElem.fileSize,
+              showProgressToast: true,
+              progressTitle: t("toast.downloading"),
+            });
+          } catch (error) {
+            console.error("[QuoteMessageRender] download failed:", error);
+            antdMessage.error(t("toast.downloadFailed"));
+          }
         }
         return;
       }
@@ -70,6 +87,8 @@ const QuoteMessageRender: FC<Omit<IMessageItemProps, "isMultiSelectActive" | "is
     },
     [quoteMessage, jumpToOriginal],
   );
+
+  if (!quoteElem) return null;
 
   const imageUrl =
     quoteMessage?.pictureElem?.sourcePicture?.url ||

@@ -1,3 +1,4 @@
+import { SearchOutlined } from "@ant-design/icons";
 import { CbEvents, MessageType } from "@openim/wasm-client-sdk";
 import {
   GroupItem,
@@ -10,7 +11,6 @@ import i18n, { t } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBusinessUserInfo } from "@/api/login";
-import { SearchOutlined } from "@ant-design/icons";
 import add_friend from "@/assets/images/topSearchBar/add_friend.png";
 import add_group from "@/assets/images/topSearchBar/add_group.png";
 import create_group from "@/assets/images/topSearchBar/create_group.png";
@@ -23,7 +23,7 @@ import GroupCardModal from "@/pages/common/GroupCardModal";
 import RtcCallModal from "@/pages/common/RtcCallModal";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
 import UserCardModal, { CardInfo } from "@/pages/common/UserCardModal";
-import { useContactStore, useUserStore } from "@/store";
+import { useContactStore } from "@/store";
 import emitter, { OpenUserCardParams } from "@/utils/events";
 
 import { IMSDK } from "../MainContentWrap";
@@ -133,16 +133,6 @@ const TopSearchBar = () => {
     setActionVisible(false);
   };
 
-  const openUserCardWithData = useCallback((cardInfo: CardInfo) => {
-    searchModalRef.current?.closeOverlay();
-    setUserCardState({
-      userID: cardInfo.userID,
-      cardInfo,
-      isSelf: cardInfo.userID === useUserStore.getState().selfInfo.userID,
-    });
-    userCardRef.current?.openOverlay();
-  }, []);
-
   const openGroupCardWithData = useCallback((group: GroupItem) => {
     searchModalRef.current?.closeOverlay();
     const inGroup = useContactStore
@@ -188,7 +178,6 @@ const TopSearchBar = () => {
         ref={searchModalRef}
         isSearchGroup={isSearchGroup}
         isSearchAgent={isSearchAgent}
-        openUserCardWithData={openUserCardWithData}
         openGroupCardWithData={openGroupCardWithData}
       />
       <RtcCallModal ref={rtcRef} inviteData={inviteData} />
