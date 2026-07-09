@@ -8,6 +8,7 @@ import createAppMenu from "./menuManage";
 import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
+import { initAutoUpdater } from "./updateManage";
 
 if (isLinux) {
   app.disableHardwareAcceleration();
@@ -27,6 +28,7 @@ const init = () => {
   createMainWindow();
   createAppMenu();
   createTray();
+  initAutoUpdater();
 };
 
 setAppGlobalData();
