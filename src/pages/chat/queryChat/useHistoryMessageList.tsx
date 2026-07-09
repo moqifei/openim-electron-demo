@@ -6,7 +6,10 @@ import { useParams } from "react-router-dom";
 import { getGroupMessagesReadInfo, markMsgsAsRead } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useUserStore } from "@/store";
-import { compactAgentStreamMessages } from "@/utils/agentStreamMessage";
+import {
+  compactAgentStreamMessages,
+  getAgentStreamRealClientMsgID,
+} from "@/utils/agentStreamMessage";
 import emitter, { emit } from "@/utils/events";
 
 const START_INDEX = 10000;
@@ -15,6 +18,14 @@ const SPLIT_COUNT = 20;
 const canSendGroupReadReceipt = () => {
   const lib = (IMSDK as any).libOpenIMSDK;
   return typeof lib?.send_group_message_read_receipt === "function";
+};
+
+const getHistoryStartClientMsgID = (messages: MessageItem[]) => {
+  for (const message of messages) {
+    const clientMsgID = getAgentStreamRealClientMsgID(message);
+    if (clientMsgID) return clientMsgID;
+  }
+  return "";
 };
 
 export function useHistoryMessageList() {
@@ -57,7 +68,11 @@ export function useHistoryMessageList() {
     const updateOneMessage = (message: MessageItem) => {
       setLoadState((preState) => {
         const tmpList = [...preState.messageList];
-        const idx = tmpList.findIndex((msg) => msg.clientMsgID === message.clientMsgID);
+        const idx = tmpList.findIndex(
+          (msg) =>
+            msg.clientMsgID === message.clientMsgID ||
+            getAgentStreamRealClientMsgID(msg) === message.clientMsgID,
+        );
         if (idx < 0) {
           return preState;
         }
@@ -98,7 +113,7 @@ export function useHistoryMessageList() {
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: SPLIT_COUNT,
         startClientMsgID: loadMore
-          ? latestLoadState.current.messageList[0]?.clientMsgID
+          ? getHistoryStartClientMsgID(latestLoadState.current.messageList)
           : "",
         conversationID: conversationID ?? "",
         viewType: ViewType.History,

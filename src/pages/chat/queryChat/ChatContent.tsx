@@ -24,6 +24,8 @@ import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const stickyScrollFrame = useRef<number>();
+  const pauseStickyScroll = useRef(false);
+  const touchStartY = useRef<number>();
   const forwardModalRef = useRef<ForwardModalHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
   const currentConversation = useConversationStore((state) => state.currentConversation);
@@ -35,6 +37,7 @@ const ChatContent = () => {
   }>({ isActive: false, selectedIds: new Set() });
 
   const scrollToBottom = () => {
+    pauseStickyScroll.current = false;
     setTimeout(() => {
       virtuoso.current?.scrollToIndex({
         index: 9999,
@@ -45,12 +48,14 @@ const ChatContent = () => {
   };
 
   const stickToBottomIfNeeded = () => {
+    if (pauseStickyScroll.current) return;
+
     const chatList = document.getElementById("chat-list");
     const distanceToBottom = chatList
       ? chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight
       : 0;
 
-    if (distanceToBottom > 320) return;
+    if (distanceToBottom > 120) return;
 
     if (stickyScrollFrame.current) {
       window.cancelAnimationFrame(stickyScrollFrame.current);
@@ -63,6 +68,25 @@ const ChatContent = () => {
         behavior: "auto",
       });
     });
+  };
+
+  const handleChatWheel = (event: React.WheelEvent) => {
+    if (event.deltaY < 0) {
+      pauseStickyScroll.current = true;
+    }
+  };
+
+  const handleChatTouchStart = (event: React.TouchEvent) => {
+    touchStartY.current = event.touches[0]?.clientY;
+  };
+
+  const handleChatTouchMove = (event: React.TouchEvent) => {
+    const startY = touchStartY.current;
+    const currentY = event.touches[0]?.clientY;
+    if (startY === undefined || currentY === undefined) return;
+    if (currentY - startY > 8) {
+      pauseStickyScroll.current = true;
+    }
   };
 
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
@@ -82,6 +106,7 @@ const ChatContent = () => {
 
   // Clear multi-select when conversation changes
   useEffect(() => {
+    pauseStickyScroll.current = false;
     setMultiSelectState({ isActive: false, selectedIds: new Set() });
   }, [conversationID]);
 
@@ -265,6 +290,14 @@ const ChatContent = () => {
         <Virtuoso
           id="chat-list"
           className="w-full overflow-x-hidden"
+          onTouchMove={handleChatTouchMove}
+          onTouchStart={handleChatTouchStart}
+          onWheel={handleChatWheel}
+          atBottomStateChange={(atBottom) => {
+            if (atBottom) {
+              pauseStickyScroll.current = false;
+            }
+          }}
           followOutput="smooth"
           firstItemIndex={loadState.firstItemIndex}
           initialTopMostItemIndex={SPLIT_COUNT - 1}

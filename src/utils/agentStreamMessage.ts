@@ -2,6 +2,8 @@ import { MessageItem, MessageType } from "@openim/wasm-client-sdk";
 
 export const AGENT_STREAM_EXT_TYPE = "agent_stream";
 export const AGENT_STREAM_EXT_TYPE_FIELD = "openim_ext_type";
+export const AGENT_STREAM_VIRTUAL_ID_PREFIX = "agent_stream_";
+const AGENT_STREAM_REAL_CLIENT_MSG_ID_FIELD = "__agentStreamRealClientMsgID";
 
 export type AgentStreamEventType =
   | "start"
@@ -60,6 +62,17 @@ export const getAgentStreamPreview = (message?: MessageItem) => {
   return "智能体正在回复...";
 };
 
+export const getAgentStreamRealClientMsgID = (message?: MessageItem) => {
+  if (!message?.clientMsgID) return "";
+  if (!message.clientMsgID.startsWith(AGENT_STREAM_VIRTUAL_ID_PREFIX)) {
+    return message.clientMsgID;
+  }
+  const realClientMsgID = (message as unknown as Record<string, unknown>)[
+    AGENT_STREAM_REAL_CLIENT_MSG_ID_FIELD
+  ];
+  return typeof realClientMsgID === "string" ? realClientMsgID : "";
+};
+
 export const compactAgentStreamMessages = (messages: MessageItem[]) => {
   const latestByStream = new Map<string, MessageItem>();
   const output: MessageItem[] = [];
@@ -77,10 +90,15 @@ export const compactAgentStreamMessages = (messages: MessageItem[]) => {
       const itemPayload = getAgentStreamPayload(item);
       return itemPayload?.streamID === streamID;
     });
+    const existingMessage = existingIndex >= 0 ? output[existingIndex] : undefined;
 
     const stableMessage = {
       ...message,
-      clientMsgID: `agent_stream_${streamID}`,
+      [AGENT_STREAM_REAL_CLIENT_MSG_ID_FIELD]:
+        getAgentStreamRealClientMsgID(existingMessage) ||
+        getAgentStreamRealClientMsgID(message) ||
+        message.clientMsgID,
+      clientMsgID: `${AGENT_STREAM_VIRTUAL_ID_PREFIX}${streamID}`,
     };
 
     if (existingIndex >= 0) {
@@ -97,7 +115,9 @@ export const compactAgentStreamMessages = (messages: MessageItem[]) => {
     return {
       ...latestByStream.get(streamID),
       ...message,
-      clientMsgID: `agent_stream_${streamID}`,
+      [AGENT_STREAM_REAL_CLIENT_MSG_ID_FIELD]:
+        getAgentStreamRealClientMsgID(message) || message.clientMsgID,
+      clientMsgID: `${AGENT_STREAM_VIRTUAL_ID_PREFIX}${streamID}`,
     } as MessageItem;
   });
 };
