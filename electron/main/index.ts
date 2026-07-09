@@ -11,8 +11,13 @@ import { initI18n } from "../i18n";
 
 if (isLinux) {
   app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("gtk-version", "3");
   app.commandLine.appendSwitch("disable-gpu");
   app.commandLine.appendSwitch("disable-gpu-compositing");
+  if (process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === "wayland") {
+    app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+    app.commandLine.appendSwitch("enable-wayland-ime");
+  }
 }
 
 export const logger = getLogger(join(app.getPath("userData"), `/OpenIMData/logs`));

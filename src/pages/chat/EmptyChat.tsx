@@ -1,32 +1,121 @@
-import { Button, Layout } from "antd";
+import { RobotOutlined } from "@ant-design/icons";
+import { SessionType } from "@openim/wasm-client-sdk";
+import { Avatar, Empty, Layout, Spin } from "antd";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import empty_chat_bg from "@/assets/images/empty_chat_bg.png";
-import { emit } from "@/utils/events";
+import { searchAgents } from "@/api/login";
+import { useConversationToggle } from "@/hooks/useConversationToggle";
+import {
+  AgentRecommendation,
+  getVisibleAgentRecommendations,
+} from "@/utils/agentRecommendations";
+import { feedbackToast } from "@/utils/common";
 
 export const EmptyChat = () => {
   const { t } = useTranslation();
-  const createNow = () => {
-    emit("OPEN_CHOOSE_MODAL", {
-      type: "CRATE_GROUP",
-    });
+  const { toSpecifiedConversation } = useConversationToggle();
+  const [agents, setAgents] = useState<AgentRecommendation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [openingAgentID, setOpeningAgentID] = useState("");
+  const agentTitle = t("placeholder.agentRecommendations", {
+    defaultValue: "智能体推荐",
+  });
+  const agentSubtitle = t("placeholder.agentRecommendationsToast", {
+    defaultValue: "选择一个智能体，立即开始单聊",
+  });
+  const startAgentChat = t("placeholder.startAgentChat", {
+    defaultValue: "点击发起单聊",
+  });
+  const noAgents = t("empty.noAgents", {
+    defaultValue: "暂无可用智能体",
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    setLoading(true);
+    searchAgents("")
+      .then(({ data }) => {
+        if (!mounted) return;
+        setAgents(getVisibleAgentRecommendations(data.users || []));
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        setAgents([]);
+        feedbackToast({ error });
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const openAgentChat = async (agent: AgentRecommendation) => {
+    setOpeningAgentID(agent.userID);
+    try {
+      await toSpecifiedConversation({
+        sourceID: agent.userID,
+        sessionType: SessionType.Single,
+      });
+    } finally {
+      setOpeningAgentID("");
+    }
   };
 
   return (
-    <Layout className="no-mobile flex items-center justify-center bg-white">
-      <div>
-        <div className="mb-12 flex flex-col items-center">
-          <div className="mb-3 text-xl font-medium">{t("placeholder.createGroup")}</div>
-          <div className="text-[var(--sub-text)]">
-            {t("placeholder.createGroupToast")}
+    <Layout className="no-mobile flex bg-white px-10 py-10">
+      <div className="mx-auto flex h-full w-full max-w-[980px] flex-col overflow-hidden">
+        <div className="mb-7 shrink-0">
+          <div className="mb-2 flex items-center gap-2 text-2xl font-medium text-[#1f2937]">
+            <RobotOutlined rev={undefined} className="text-[var(--primary)]" />
+            <span>{agentTitle}</span>
           </div>
+          <div className="text-sm text-[var(--sub-text)]">{agentSubtitle}</div>
         </div>
-        <img src={empty_chat_bg} alt="" width={320} />
 
-        <div className="mt-28 flex justify-center">
-          <Button className="px-8" type="primary" onClick={createNow}>
-            {t("placeholder.createNow")}
-          </Button>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          {loading ? (
+            <div className="flex h-full min-h-[260px] items-center justify-center">
+              <Spin />
+            </div>
+          ) : agents.length > 0 ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 pb-2">
+              {agents.map((agent) => (
+                <button
+                  key={agent.userID}
+                  type="button"
+                  className="group flex min-h-[124px] cursor-pointer items-center rounded-lg border border-[#e5e7eb] bg-white p-5 text-left transition hover:border-[var(--primary)] hover:bg-[#f8fafc] hover:shadow-sm disabled:cursor-default disabled:opacity-80"
+                  disabled={Boolean(openingAgentID)}
+                  onClick={() => void openAgentChat(agent)}
+                >
+                  <Avatar size={58} src={agent.faceURL || undefined}>
+                    {agent.nickname.slice(0, 1).toUpperCase()}
+                  </Avatar>
+                  <div className="ml-4 min-w-0 flex-1">
+                    <div className="break-words text-base font-medium leading-5 text-[#111827]">
+                      {agent.nickname}
+                    </div>
+                    <div className="mt-2 break-all text-xs leading-4 text-[var(--sub-text)]">
+                      {agent.userID}
+                    </div>
+                    <div className="mt-3 text-xs text-[var(--sub-text)]">
+                      {openingAgentID === agent.userID
+                        ? t("connect.connecting")
+                        : startAgentChat}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-full min-h-[260px] items-center justify-center rounded-lg border border-dashed border-[#e5e7eb]">
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={noAgents} />
+            </div>
+          )}
         </div>
       </div>
     </Layout>

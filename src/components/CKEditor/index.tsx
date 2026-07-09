@@ -38,6 +38,7 @@ export interface EmojiData {
 const keyCodes = {
   delete: 46,
   backspace: 8,
+  composing: 229,
 };
 
 const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
@@ -100,6 +101,11 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     editor.editing.view.document.on(
       "keydown",
       (evt, data) => {
+        const isComposing =
+          editor.editing.view.document.isComposing ||
+          data.keyCode === keyCodes.composing ||
+          Boolean((data.domEvent as KeyboardEvent | undefined)?.isComposing);
+
         // debug: log all key events
         console.log(
           "[CKEditor keydown]",
@@ -109,7 +115,13 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
           data.domEvent?.key,
           "shift:",
           data.domEvent?.shiftKey,
+          "isComposing:",
+          isComposing,
         );
+        if (isComposing) {
+          return;
+        }
+
         // Forward event to parent first (for @mention detection)
         if (onKeydownRef.current) {
           try {

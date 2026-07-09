@@ -321,6 +321,10 @@
     "messageNotNotify": "Do Not Disturb Mode",
     "addFriends": "Search Personnel",
     "searchAgents": "Search Agents",
+    "agentRecommendations": "Recommended Agents",
+    "agentRecommendationsToast": "Choose an agent to start a direct chat.",
+    "startAgentChat": "Click to start a chat",
+    "viewAllAgents": "View all agents",
     "verifyAdd": "Add",
     "addGroup": "Add Group",
     "createGroup": "Create Group Chat",
@@ -397,6 +401,7 @@
     "noMoreMessage": "No more messages",
     "showAllResults": "All results displayed!",
     "noSearchResults": "No relevant results found!",
+    "noAgents": "No agents available",
     "fileContentEmpty": "File is empty!"
   },
   "messageDescription": {

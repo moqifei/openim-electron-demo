@@ -1152,7 +1152,7 @@ if [ "\${OPENCORP_LAUNCHER_DEBUG:-0}" = "1" ]; then
   echo "[opencorp] REAL_EXECUTABLE=$REAL_EXECUTABLE"
   echo "[opencorp] BUNDLED_INTERPRETER=$BUNDLED_INTERPRETER"
   echo "[opencorp] OPENCORP_LOG_FILE=$OPENCORP_LOG_FILE"
-  env | sort | grep -E '^(OPENCORP|LD_LIBRARY_PATH|DISPLAY|WAYLAND_DISPLAY|XDG|GDK|GIO|ICU|HOME|USER)=' || true
+  env | sort | grep -E '^(OPENCORP|LD_LIBRARY_PATH|DISPLAY|WAYLAND_DISPLAY|XDG|GDK|GIO|GTK_IM_MODULE|GTK_IM_MODULE_FILE|QT_IM_MODULE|XMODIFIERS|IBUS|FCITX|ICU|HOME|USER)=' || true
 fi
 
 if [ ! -x "$BUNDLED_INTERPRETER" ]; then
@@ -1217,6 +1217,34 @@ fi
 
 if [ -d "$APP_GIO_MODULE_DIR" ]; then
   export GIO_MODULE_DIR="$APP_GIO_MODULE_DIR"
+fi
+
+if [ -z "\${GTK_IM_MODULE_FILE:-}" ]; then
+  for candidate in \\
+    /usr/lib/*-linux-gnu*/gtk-3.0/3.0.0/immodules.cache \\
+    /usr/lib64/gtk-3.0/3.0.0/immodules.cache \\
+    /usr/lib/gtk-3.0/3.0.0/immodules.cache \\
+    /etc/gtk-3.0/gtk.immodules
+  do
+    if [ -f "$candidate" ]; then
+      export GTK_IM_MODULE_FILE="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "\${GTK_IM_MODULE:-}" ]; then
+  case "\${XMODIFIERS:-}" in
+    *@im=fcitx*) export GTK_IM_MODULE=fcitx ;;
+    *@im=ibus*) export GTK_IM_MODULE=ibus ;;
+  esac
+fi
+
+if [ -z "\${XMODIFIERS:-}" ]; then
+  case "\${GTK_IM_MODULE:-}" in
+    fcitx|fcitx5) export XMODIFIERS="@im=fcitx" ;;
+    ibus) export XMODIFIERS="@im=ibus" ;;
+  esac
 fi
 
 if [ "\${OPENCORP_INHERIT_LD_LIBRARY_PATH:-0}" = "1" ]; then
