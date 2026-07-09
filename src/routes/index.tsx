@@ -50,6 +50,13 @@ const router = createHashRouter([
               return { Component: DigitalTwin };
             },
           },
+          {
+            path: "agents",
+            async lazy() {
+              const { Agents } = await import("@/pages/agents");
+              return { Component: Agents };
+            },
+          },
         ],
       },
       {

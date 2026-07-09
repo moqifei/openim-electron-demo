@@ -1,18 +1,13 @@
-import { RobotOutlined } from "@ant-design/icons";
 import clsx from "clsx";
 import { t } from "i18next";
 import { useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import sync from "@/assets/images/common/sync.png";
 import sync_error from "@/assets/images/common/sync_error.png";
 import FlexibleSider from "@/components/FlexibleSider";
 import { useConversationStore, useUserStore } from "@/store";
-import {
-  AGENT_RECOMMENDATIONS_ROUTE,
-  isAgentRecommendationsActive,
-} from "@/utils/agentRecommendationRoute";
 
 import ConversationItemComp from "./ConversationItem";
 import styles from "./index.module.scss";
@@ -61,33 +56,20 @@ const ConnectBar = () => {
 
 const ConversationSider = () => {
   const { conversationID } = useParams();
-  const navigate = useNavigate();
   const conversationList = useConversationStore((state) => state.conversationList);
   const getConversationListByReq = useConversationStore(
     (state) => state.getConversationListByReq,
-  );
-  const updateCurrentConversation = useConversationStore(
-    (state) => state.updateCurrentConversation,
   );
   const digitalTwinSummaries = useDigitalTwinConversationSummaries(conversationList);
   const virtuoso = useRef<VirtuosoHandle>(null);
   const hasmore = useRef(true);
   const loading = useRef(false);
-  const agentRecommendationsActive = isAgentRecommendationsActive(conversationID);
 
   const endReached = async () => {
     if (!hasmore.current || loading.current) return;
     loading.current = true;
     hasmore.current = await getConversationListByReq(true);
     loading.current = false;
-  };
-
-  const showAgentRecommendations = async () => {
-    if (agentRecommendationsActive) {
-      return;
-    }
-    await updateCurrentConversation();
-    navigate(AGENT_RECOMMENDATIONS_ROUTE);
   };
 
   return (
@@ -97,35 +79,6 @@ const ConversationSider = () => {
         needHidden={Boolean(conversationID)}
         wrapClassName="left-2 right-2 top-1.5 flex flex-col"
       >
-        <button
-          type="button"
-          aria-pressed={agentRecommendationsActive}
-          className={clsx(
-            "mb-2 flex w-full items-center rounded-md border px-3 py-2 text-left transition",
-            agentRecommendationsActive
-              ? "border-[var(--primary)] bg-[var(--primary-active)]"
-              : "border-transparent bg-[#f8fafc] hover:bg-[var(--primary-active)]",
-          )}
-          onClick={() => {
-            void showAgentRecommendations();
-          }}
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#eef2ff] text-[var(--primary)]">
-            <RobotOutlined rev={undefined} />
-          </span>
-          <span className="ml-3 min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-[#111827]">
-              {t("placeholder.agentRecommendations", {
-                defaultValue: "智能体推荐",
-              })}
-            </span>
-            <span className="mt-0.5 block truncate text-xs text-[var(--sub-text)]">
-              {t("placeholder.viewAllAgents", {
-                defaultValue: "查看全部智能体",
-              })}
-            </span>
-          </span>
-        </button>
         <Virtuoso
           className="min-h-0 flex-1"
           data={conversationList}

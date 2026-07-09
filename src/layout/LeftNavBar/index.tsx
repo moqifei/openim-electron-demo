@@ -8,52 +8,20 @@ import { UNSAFE_NavigationContext, useResolvedPath } from "react-router-dom";
 
 import { modal } from "@/AntdGlobalComp";
 import { updateBusinessUserInfo } from "@/api/login";
-import contact_icon from "@/assets/images/nav/nav_bar_contact.png";
-import contact_icon_active from "@/assets/images/nav/nav_bar_contact_active.png";
-import message_icon from "@/assets/images/nav/nav_bar_message.png";
-import message_icon_active from "@/assets/images/nav/nav_bar_message_active.png";
 import change_avatar from "@/assets/images/profile/change_avatar.png";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { emit } from "@/utils/events";
 import { uploadFile } from "@/utils/imCommon";
-import { publicAsset } from "@/utils/publicAsset";
 
 import { OverlayVisibleHandle } from "../../hooks/useOverlayVisible";
 import About from "./About";
 import styles from "./left-nav-bar.module.scss";
+import { getMainNavItems, MainNavItem } from "./navItems";
 import PersonalSettings from "./PersonalSettings";
 
 const { Sider } = Layout;
-const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
-
-const NavList = [
-  {
-    icon: digitalTwinIcon,
-    icon_active: digitalTwinIcon,
-    title: "分身",
-    path: "/digital-twin",
-  },
-  {
-    icon: message_icon,
-    icon_active: message_icon_active,
-    title: t("placeholder.chat"),
-    path: "/chat",
-  },
-  {
-    icon: contact_icon,
-    icon_active: contact_icon_active,
-    title: t("placeholder.contact"),
-    path: "/contact",
-  },
-];
-
-i18n.on("languageChanged", () => {
-  NavList[0].title = "分身";
-  NavList[1].title = t("placeholder.chat");
-  NavList[2].title = t("placeholder.contact");
-});
 
 const resizeFile = (file: File): Promise<File> =>
   new Promise((resolve) => {
@@ -71,9 +39,7 @@ const resizeFile = (file: File): Promise<File> =>
     );
   });
 
-type NavItemType = (typeof NavList)[0];
-
-const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: NavItemType }) => {
+const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: MainNavItem }) => {
   const resolvedPath = useResolvedPath(path);
   const { navigator } = React.useContext(UNSAFE_NavigationContext);
   const toPathname = navigator.encodeLocation
@@ -166,6 +132,10 @@ const LeftNavBar = memo(() => {
   const selfInfo = useUserStore((state) => state.selfInfo);
   const userLogout = useUserStore((state) => state.userLogout);
   const updateSelfInfo = useUserStore((state) => state.updateSelfInfo);
+  const navList = getMainNavItems({
+    chatTitle: t("placeholder.chat"),
+    contactTitle: t("placeholder.contact"),
+  });
 
   const profileMenuClick = (idx: number) => {
     switch (idx) {
@@ -287,7 +257,7 @@ const LeftNavBar = memo(() => {
           />
         </Popover>
 
-        {NavList.map((nav) => (
+        {navList.map((nav) => (
           <NavItem nav={nav} key={nav.path} />
         ))}
       </div>

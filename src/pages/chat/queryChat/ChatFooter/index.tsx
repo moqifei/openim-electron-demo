@@ -22,7 +22,7 @@ import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
-import { canSendImageTypeList } from "@/utils/common";
+import { base64toFile, canSendImageTypeList } from "@/utils/common";
 import {
   createFileTransferProgressKey,
   showFileTransferProgress,
@@ -253,18 +253,14 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           message.error(t("toast.accessFailed"));
           return;
         }
-        // Save screenshot to temp file, then send via full path to avoid File clone issue
-        const filePath = await window.electronAPI.saveScreenshotFile(croppedBase64);
-        const imageMessage = (await IMSDK.createImageMessageFromFullPath(filePath))
-          .data;
-        imageMessage.pictureElem!.sourcePicture.url = croppedBase64;
+        const imageMessage = await getImageMessage(base64toFile(croppedBase64));
         await sendMessage({ message: imageMessage });
       } catch (error) {
         console.error("[ChatFooter] send screenshot failed:", error);
         message.error(t("toast.accessFailed"));
       }
     },
-    [sendMessage],
+    [getImageMessage, sendMessage],
   );
 
   const handleScreenshotCancel = useCallback(() => {
