@@ -9,11 +9,11 @@ import { t } from "i18next";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
-import { IMSDK } from "@/layout/MainContentWrap";
 import { SystemMessageTypes } from "@/constants/im";
+import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore, useUserStore } from "@/store";
-import emitter from "@/utils/events";
 import { feedbackToast } from "@/utils/common";
+import emitter from "@/utils/events";
 
 import ForwardModal, { ForwardModalHandle } from "./ForwardModal";
 import MessageItem from "./MessageItem";
@@ -23,6 +23,7 @@ import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
+  const stickyScrollFrame = useRef<number>();
   const forwardModalRef = useRef<ForwardModalHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
   const currentConversation = useConversationStore((state) => state.currentConversation);
@@ -43,13 +44,39 @@ const ChatContent = () => {
     });
   };
 
+  const stickToBottomIfNeeded = () => {
+    const chatList = document.getElementById("chat-list");
+    const distanceToBottom = chatList
+      ? chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight
+      : 0;
+
+    if (distanceToBottom > 320) return;
+
+    if (stickyScrollFrame.current) {
+      window.cancelAnimationFrame(stickyScrollFrame.current);
+    }
+    stickyScrollFrame.current = window.requestAnimationFrame(() => {
+      stickyScrollFrame.current = undefined;
+      virtuoso.current?.scrollToIndex({
+        index: 9999,
+        align: "end",
+        behavior: "auto",
+      });
+    });
+  };
+
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
     useHistoryMessageList();
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
+    emitter.on("CHAT_LIST_STICK_TO_BOTTOM", stickToBottomIfNeeded);
     return () => {
       emitter.off("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
+      emitter.off("CHAT_LIST_STICK_TO_BOTTOM", stickToBottomIfNeeded);
+      if (stickyScrollFrame.current) {
+        window.cancelAnimationFrame(stickyScrollFrame.current);
+      }
     };
   }, []);
 

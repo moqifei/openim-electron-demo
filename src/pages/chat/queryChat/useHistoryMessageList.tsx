@@ -6,6 +6,7 @@ import { useParams } from "react-router-dom";
 import { getGroupMessagesReadInfo, markMsgsAsRead } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useUserStore } from "@/store";
+import { compactAgentStreamMessages } from "@/utils/agentStreamMessage";
 import emitter, { emit } from "@/utils/events";
 
 const START_INDEX = 10000;
@@ -50,7 +51,7 @@ export function useHistoryMessageList() {
       }
       setLoadState((preState) => ({
         ...preState,
-        messageList: [...preState.messageList, message],
+        messageList: compactAgentStreamMessages([...preState.messageList, message]),
       }));
     };
     const updateOneMessage = (message: MessageItem) => {
@@ -71,7 +72,7 @@ export function useHistoryMessageList() {
         };
         return {
           ...preState,
-          messageList: tmpList,
+          messageList: compactAgentStreamMessages(tmpList),
         };
       });
     };
@@ -160,7 +161,7 @@ export function useHistoryMessageList() {
           ...preState,
           initLoading: false,
           hasMoreOld: !data.isEnd,
-          messageList: currentMsgList,
+          messageList: compactAgentStreamMessages(currentMsgList),
           firstItemIndex: preState.firstItemIndex - data.messageList.length,
         })),
       );

@@ -12,6 +12,7 @@ type EmitterEvents = {
   OPEN_GROUP_CARD: GroupItem;
   OPEN_CHOOSE_MODAL: ChooseModalState;
   CHAT_LIST_SCROLL_TO_BOTTOM: void;
+  CHAT_LIST_STICK_TO_BOTTOM: void;
   OPEN_RTC_MODAL: InviteData;
   // message store
   PUSH_NEW_MSG: MessageItem;

@@ -24,6 +24,10 @@ import {
   extractDigitalTwinText,
   isDigitalTwinMessage,
 } from "@/utils/digitalTwinMessage";
+import {
+  getAgentStreamPreview,
+  isAgentStreamMessage,
+} from "@/utils/agentStreamMessage";
 dayjs.extend(calendar);
 dayjs.extend(relativeTime);
 dayjs.extend(updateLocale);
@@ -267,6 +271,9 @@ export const formatMessageByType = (message?: MessageItem): string => {
   if (!message) return "";
   if (isDigitalTwinMessage(message)) {
     return extractDigitalTwinText(message) || "数字分身消息";
+  }
+  if (isAgentStreamMessage(message)) {
+    return getAgentStreamPreview(message);
   }
   const selfUserID = useUserStore.getState().selfInfo.userID;
   const isSelf = (id: string) => id === selfUserID;

@@ -12,8 +12,13 @@ import {
   extractDigitalTwinText,
   isDigitalTwinMessage,
 } from "@/utils/digitalTwinMessage";
+import {
+  getAgentStreamPayload,
+  isAgentStreamMessage,
+} from "@/utils/agentStreamMessage";
 import { formatMessageTime } from "@/utils/imCommon";
 
+import AgentStreamMessageRender from "./AgentStreamMessageRender";
 import AtTextMessageRender from "./AtTextMessageRender";
 import CardMessageRender from "./CardMessageRender";
 import CatchMessageRender from "./CatchMsgRenderer";
@@ -70,7 +75,10 @@ const MessageItem: FC<IMessageItemProps> = ({
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const isDigitalTwin = isDigitalTwinMessage(message);
-  const MessageRenderComponent = isDigitalTwin
+  const isAgentStream = isAgentStreamMessage(message);
+  const MessageRenderComponent = isAgentStream
+    ? AgentStreamMessageRender
+    : isDigitalTwin
     ? DigitalTwinMessageRender
     : components[message.contentType] || CatchMessageRender;
 
@@ -82,7 +90,7 @@ const MessageItem: FC<IMessageItemProps> = ({
 
   const showActions = !disabled && !isMultiSelectActive && (hovered || menuOpen);
   const isTextMessage =
-    message.contentType === MessageType.TextMessage || isDigitalTwin;
+    message.contentType === MessageType.TextMessage || isDigitalTwin || isAgentStream;
 
   const actionItems: MenuProps["items"] = [
     {
@@ -99,6 +107,8 @@ const MessageItem: FC<IMessageItemProps> = ({
             onClick: () => {
               const text = isDigitalTwin
                 ? extractDigitalTwinText(message)
+                : isAgentStream
+                  ? getAgentStreamPayload(message)?.answerText || ""
                 : message.textElem?.content || "";
               navigator.clipboard.writeText(text).then(
                 () => feedbackToast({ msg: t("toast.copySuccess") }),

@@ -1,6 +1,6 @@
 {
-  "name": "OpenCorp-Base",
-  "version": "3.8.4",
+  "name": "StickyCake",
+  "version": "3.8.5",
   "main": "dist-electron/main/index.js",
   "description": "OpenIM PC Client.",
   "author": "blooming",
