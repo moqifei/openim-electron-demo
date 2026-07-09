@@ -235,16 +235,19 @@ export interface AgentInfo {
   registerType: number;
 }
 
-export const searchAgents = async (keyword: string) => {
+export const searchAgents = async (
+  keyword: string,
+  pagination = {
+    pageNumber: 1,
+    showNumber: 200,
+  },
+) => {
   const token = (await getChatToken()) as string;
   return getChatAxios().post<{ total: number; users: AgentInfo[] }>(
     "/user/search/full",
     {
       keyword,
-      pagination: {
-        pageNumber: 1,
-        showNumber: 200,
-      },
+      pagination,
     },
     {
       headers: {

@@ -8,7 +8,7 @@ import { searchAgents } from "@/api/login";
 import { useConversationToggle } from "@/hooks/useConversationToggle";
 import {
   AgentRecommendation,
-  getVisibleAgentRecommendations,
+  collectVisibleAgentRecommendations,
 } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 
@@ -26,10 +26,19 @@ export const AgentList = () => {
     let mounted = true;
 
     setLoading(true);
-    searchAgents("")
-      .then(({ data }) => {
+    collectVisibleAgentRecommendations(
+      async (keyword, pageNumber, showNumber) => {
+        const { data } = await searchAgents(keyword, {
+          pageNumber,
+          showNumber,
+        });
+        return data;
+      },
+      { pageSize: 200 },
+    )
+      .then((visibleAgents) => {
         if (!mounted) return;
-        setAgents(getVisibleAgentRecommendations(data.users || []));
+        setAgents(visibleAgents);
       })
       .catch((error: unknown) => {
         if (!mounted) return;
