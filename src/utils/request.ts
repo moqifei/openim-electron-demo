@@ -59,6 +59,7 @@ const createAxiosInstance = (baseURL: string, imToken = true) => {
 // Dynamic axios instances — re-read the base host from
 // localStorage on each access so users can reconfigure at runtime.
 let _chatAxios: ReturnType<typeof createAxiosInstance> | null = null;
+let _botAxios: ReturnType<typeof createAxiosInstance> | null = null;
 let _apiAxios: ReturnType<typeof createAxiosInstance> | null = null;
 
 export const getChatAxios = () => {
@@ -68,6 +69,15 @@ export const getChatAxios = () => {
     _chatAxios = createAxiosInstance(url, false);
   }
   return _chatAxios;
+};
+
+export const getBotAxios = () => {
+  const chatHost = getChatHost();
+  const url = `http://${chatHost}:10010`;
+  if (!_botAxios || _botAxios.defaults.baseURL !== url) {
+    _botAxios = createAxiosInstance(url, false);
+  }
+  return _botAxios;
 };
 
 export const getApiAxios = () => {

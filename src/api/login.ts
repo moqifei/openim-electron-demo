@@ -3,7 +3,7 @@ import { useMutation } from "react-query";
 import { v4 as uuidv4 } from "uuid";
 
 import { useUserStore } from "@/store";
-import { getChatAxios } from "@/utils/request";
+import { getBotAxios, getChatAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
 import { errorHandle } from "./errorHandle";
@@ -226,14 +226,21 @@ export const searchBusinessUserInfo = async (keyword: string) => {
   );
 };
 
-// Agent / bot search — uses the chat user table at port 10008, same as the
-// existing user search. Bots are users with platformID=12 and userID prefix "bot_".
+// Agent / bot search — search users with registerType=2 (admin-created notification accounts)
+// AD-synced users have registerType=3, so we filter to only show admin-created agents
 export interface AgentInfo {
   userID: string;
   nickname: string;
   faceURL: string;
   registerType: number;
+  platformID?: number;
 }
+
+// Register type constants matching the backend
+const REGISTER_TYPE_PHONE = 0;      // Phone registration
+const REGISTER_TYPE_EMAIL = 1;      // Email registration  
+const REGISTER_TYPE_ADMIN = 2;      // Admin/notification account (our agents)
+const REGISTER_TYPE_AD = 3;         // AD synchronized users
 
 export const searchAgents = async (
   keyword: string,
@@ -243,11 +250,21 @@ export const searchAgents = async (
   },
 ) => {
   const token = (await getChatToken()) as string;
-  return getChatAxios().post<{ total: number; users: AgentInfo[] }>(
+  // Use chat-api's /user/search/full endpoint to search all users
+  // normal: 1 = exclude blocked users, 0 = include all users
+  // Then filter by registerType === 2 (admin-created notification accounts)
+  // The axios interceptor returns res.data which has shape: { errCode, errMsg, data: { total, users } }
+  const response = await getChatAxios().post<{
+    data: {
+      total: number;
+      users: AgentInfo[];
+    };
+  }>(
     "/user/search/full",
     {
       keyword,
       pagination,
+      normal: 1, // Exclude blocked/forbidden users
     },
     {
       headers: {
@@ -256,6 +273,17 @@ export const searchAgents = async (
       },
     },
   );
+  // Filter to only include admin-created users (registerType === 2)
+  // These are the notification accounts created via admin panel (not AD-synced)
+  const responseData = (response as unknown as { data: { total: number; users: AgentInfo[] } }).data;
+  const allUsers = responseData?.users || [];
+  const agents = allUsers.filter((user) => user.registerType === REGISTER_TYPE_ADMIN);
+  return {
+    data: {
+      total: agents.length,
+      users: agents,
+    },
+  };
 };
 
 interface UpdateBusinessUserInfoParams {

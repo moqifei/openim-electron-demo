@@ -12,7 +12,7 @@ export type AgentSearchPageFetcher = (
   showNumber: number,
 ) => Promise<AgentSearchPage>;
 
-const isDisplayableAgent = (agent: AgentInfo) =>
+export const isDisplayableAgent = (agent: AgentInfo) =>
   Boolean(agent.userID) && agent.registerType !== 3;
 
 export const getVisibleAgentRecommendations = (

@@ -27,6 +27,7 @@ import useGroupMembers from "@/hooks/useGroupMembers";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { useContactStore } from "@/store/contact";
+import { isDisplayableAgent } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 
 import CheckItem, { CheckListItem } from "./CheckItem";
@@ -587,9 +588,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           setAdLoading(true);
           try {
             const { data } = await searchAgents("");
-            const agents = (data.users || []).filter(
-              (a: AgentInfo) => a.registerType !== 3,
-            );
+            const agents = (data.users || []).filter(isDisplayableAgent);
             setCheckList(
               await checkInGroup(
                 agents.map((a: AgentInfo) => ({

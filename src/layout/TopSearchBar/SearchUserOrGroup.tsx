@@ -18,6 +18,7 @@ import DraggableModalWrap from "@/components/DraggableModalWrap";
 import { useConversationToggle } from "@/hooks/useConversationToggle";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { useContactStore } from "@/store";
+import { isDisplayableAgent } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
 
@@ -59,10 +60,9 @@ const SearchUserOrGroup: ForwardRefRenderFunction<
   }, [isOverlayOpen]);
 
   // Refresh all agents (for both auto-load and keyword search)
-  // Filter out AD synced users (registerType === 3)
   const fetchAllAgents = async (kw = ""): Promise<SearchResultItem[]> => {
     const { data } = await searchAgents(kw);
-    const users = (data.users || []).filter((a: AgentInfo) => a.registerType !== 3);
+    const users = (data.users || []).filter(isDisplayableAgent);
     return users.map((a: AgentInfo) => ({
       userID: a.userID,
       nickname: a.nickname || a.userID,
