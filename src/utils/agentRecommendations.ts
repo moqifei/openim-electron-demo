@@ -1,6 +1,12 @@
 import type { AgentInfo } from "@/api/login";
 
-export type AgentRecommendation = Pick<AgentInfo, "userID" | "nickname" | "faceURL">;
+// Register type constants matching the backend
+export const REGISTER_TYPE_PHONE = 0; // Phone registration
+export const REGISTER_TYPE_EMAIL = 1; // Email registration
+export const REGISTER_TYPE_ADMIN = 2; // Admin/notification account (our agents)
+export const REGISTER_TYPE_AD = 3; // AD synchronized users
+
+export type AgentRecommendation = Pick<AgentInfo, "userID" | "nickname" | "faceURL" | "registerType">;
 export type AgentSearchPage = {
   total?: number;
   users?: AgentInfo[];
@@ -12,8 +18,15 @@ export type AgentSearchPageFetcher = (
   showNumber: number,
 ) => Promise<AgentSearchPage>;
 
+// Check if a user is an agent (admin-created notification account)
+// This aligns with the logic in chat list (isAgentConversation)
+export const isAgentUser = (user: { registerType?: number; userID?: string }) => {
+  // Admin-created notification accounts have registerType === 2
+  return user.registerType === REGISTER_TYPE_ADMIN;
+};
+
 export const isDisplayableAgent = (agent: AgentInfo) =>
-  Boolean(agent.userID) && agent.registerType !== 3;
+  Boolean(agent.userID) && agent.registerType !== REGISTER_TYPE_AD;
 
 export const getVisibleAgentRecommendations = (
   agents: AgentInfo[],
@@ -22,6 +35,7 @@ export const getVisibleAgentRecommendations = (
     userID: agent.userID,
     nickname: agent.nickname || agent.userID,
     faceURL: agent.faceURL || "",
+    registerType: agent.registerType,
   }));
 
 export const collectVisibleAgentRecommendations = async (

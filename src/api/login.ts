@@ -250,10 +250,17 @@ export const searchAgents = async (
   },
 ) => {
   const token = (await getChatToken()) as string;
-  // Use chat-api's /user/search/full endpoint to search all users
+  // Use chat-api's /user/search/full endpoint to search users with registerType=2 (admin-created)
   // normal: 1 = exclude blocked users, 0 = include all users
-  // Then filter by registerType === 2 (admin-created notification accounts)
+  // registerTypes: [2] = only admin-created notification accounts (not AD-synced users with registerType=3)
   // The axios interceptor returns res.data which has shape: { errCode, errMsg, data: { total, users } }
+  const requestBody = {
+    keyword,
+    pagination,
+    normal: 1, // Exclude blocked/forbidden users
+    registerTypes: [REGISTER_TYPE_ADMIN], // Only search admin-created notification accounts (registerType=2)
+  };
+  console.log("[searchAgents] Request body:", JSON.stringify(requestBody));
   const response = await getChatAxios().post<{
     data: {
       total: number;
@@ -261,11 +268,7 @@ export const searchAgents = async (
     };
   }>(
     "/user/search/full",
-    {
-      keyword,
-      pagination,
-      normal: 1, // Exclude blocked/forbidden users
-    },
+    requestBody,
     {
       headers: {
         operationID: uuidv4(),
@@ -273,15 +276,13 @@ export const searchAgents = async (
       },
     },
   );
-  // Filter to only include admin-created users (registerType === 2)
-  // These are the notification accounts created via admin panel (not AD-synced)
+  // Backend now filters by registerTypes, so we don't need to filter here anymore
   const responseData = (response as unknown as { data: { total: number; users: AgentInfo[] } }).data;
-  const allUsers = responseData?.users || [];
-  const agents = allUsers.filter((user) => user.registerType === REGISTER_TYPE_ADMIN);
+  console.log("[searchAgents] Response:", { total: responseData?.total, usersCount: responseData?.users?.length });
   return {
     data: {
-      total: agents.length,
-      users: agents,
+      total: responseData?.total || 0,
+      users: responseData?.users || [],
     },
   };
 };

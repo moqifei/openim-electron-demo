@@ -9,6 +9,7 @@ import { useConversationToggle } from "@/hooks/useConversationToggle";
 import {
   AgentRecommendation,
   collectVisibleAgentRecommendations,
+  isAgentUser,
 } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 
@@ -96,8 +97,15 @@ export const AgentList = () => {
                     {agent.nickname.slice(0, 1).toUpperCase()}
                   </Avatar>
                   <div className="ml-4 min-w-0 flex-1">
-                    <div className="break-words text-base font-medium leading-5 text-[#111827]">
-                      {agent.nickname}
+                    <div className="flex items-center">
+                      <div className="break-words text-base font-medium leading-5 text-[#111827]">
+                        {agent.nickname}
+                      </div>
+                      {isAgentUser(agent) && (
+                        <span className="ml-2 shrink-0 rounded bg-[#f3e8ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#7c3aed]">
+                          智能体
+                        </span>
+                      )}
                     </div>
                     <div className="mt-2 break-all text-xs leading-4 text-[var(--sub-text)]">
                       {agent.userID}

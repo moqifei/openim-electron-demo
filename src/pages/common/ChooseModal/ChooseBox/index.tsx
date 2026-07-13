@@ -27,7 +27,7 @@ import useGroupMembers from "@/hooks/useGroupMembers";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { useContactStore } from "@/store/contact";
-import { isDisplayableAgent } from "@/utils/agentRecommendations";
+import { isAgentUser, isDisplayableAgent } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 
 import CheckItem, { CheckListItem } from "./CheckItem";
@@ -595,6 +595,8 @@ const CommonLeft: FC<ICommonLeftProps> = ({
                   userID: a.userID,
                   nickname: a.nickname || a.userID,
                   faceURL: a.faceURL || "",
+                  // Show "智能体" badge for agent users, aligning with chat list logic
+                  position: isAgentUser(a) ? "智能体" : undefined,
                 })),
               ),
             );
