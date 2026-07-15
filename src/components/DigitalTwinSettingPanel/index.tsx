@@ -20,16 +20,19 @@ import {
   DigitalTwinReplyRecord,
   DigitalTwinReplyReviewStatus,
   DigitalTwinReplySummary,
+  DigitalTwinSkillGenerateAcceptResponse,
   DigitalTwinSkillGenerateResponse,
   DigitalTwinSkillSummary,
   DigitalTwinTriggerMode,
   generateDigitalTwinSkill,
   getDigitalTwinOverview,
   getDigitalTwinUnreadTimeoutSummary,
+  getSkillGenerateTaskStatus,
   getPersistedDigitalTwinConfig,
   listDigitalTwinReplies,
   listDigitalTwinSkills,
   reviewDigitalTwinReply,
+  SkillGenerateTask,
   updateDigitalTwinConfig,
 } from "@/api/digitalTwin";
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
@@ -184,6 +187,9 @@ const normalizeSkillNameInput = (raw: string) => {
   return normalized.slice(0, 64);
 };
 
+// 检测字符串中是否包含中文字符
+const hasChinese = (text: string): boolean => /[\u4e00-\u9fff]/.test(text);
+
 const buildCorrectionSkillDescription = (
   record: DigitalTwinReplyRecord,
   correction: string,
@@ -195,7 +201,7 @@ const buildCorrectionSkillDescription = (
     "这是数字分身的一条回复纠正训练样本，请生成稳定可触发的分身回复技能。",
     "",
     "## 适用场景",
-    `- 当联系人 ${contactName} 或其他用户表达与下面“用户原始消息”相似的意思时使用。`,
+    `- 当联系人 ${contactName} 或其他用户表达与下面"用户原始消息"相似的意思时使用。`,
     "- 当用户意图、语气或上下文与该样本相近时，优先遵循“纠正要求”。",
     "",
     "## 用户原始消息",
@@ -323,6 +329,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const [loadingReplies, setLoadingReplies] = useState(false);
   const [reviewingOperationID, setReviewingOperationID] = useState("");
   const [trainingOperationID, setTrainingOperationID] = useState("");
+  const [trainingTask, setTrainingTask] = useState<SkillGenerateTask | null>(null);
   const [replyReviewFilter, setReplyReviewFilter] =
     useState<DigitalTwinReplyListReviewStatus>("");
   const [draftReviewNotes, setDraftReviewNotes] = useState<Record<string, string>>({});
@@ -719,6 +726,77 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     }
   };
 
+  const pollSkillGenerateTask = useCallback(
+    async (taskId: string, record: DigitalTwinReplyRecord, skillName: string, correction: string) => {
+      const POLL_INTERVAL_MS = 2000;
+      const MAX_POLLS = 90; // ~3 minutes max
+
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        try {
+          const taskRes = await getSkillGenerateTaskStatus(taskId);
+          const task = taskRes.data;
+          setTrainingTask(task);
+
+          if (task.status === "completed") {
+            const skillResp: DigitalTwinSkillGenerateResponse = {
+              userID: task.owner_user_id,
+              skillName: task.skill_name,
+              skillPath: task.skill_path ?? "",
+              source: task.source,
+            };
+            setLastGeneratedSkill(skillResp);
+            await reviewDigitalTwinReply(
+              record.operationID,
+              "confirmed",
+              `已训练：${task.skill_name}\n${correction}`,
+            );
+            await loadSkills();
+            await loadReplyRecords();
+            notifyDigitalTwinRepliesChanged();
+            feedbackToast({ msg: "纠正已训练，后续相似场景会优先参考" });
+            setTrainingTask(null);
+            return;
+          }
+
+          if (task.status === "failed") {
+            feedbackToast({
+              msg: `纠正训练失败：${task.error ?? "未知错误"}`,
+            });
+            setTrainingTask(null);
+            return;
+          }
+
+          // still pending or running — continue polling
+        } catch (err) {
+          // chat 返回 errCode!=0 时，拦截器会把 {errCode,errMsg} 对象直接 reject
+          const ae = err as any;
+          const pollErrCode = ae?.errCode;
+          const pollErrMsg =
+            ae?.errMsg ??
+            ae?.message ??
+            (ae?.response ? JSON.stringify(ae.response.data) : "未知错误");
+          console.warn("[trainCorrection] poll transient error, will retry:", {
+            errCode: pollErrCode,
+            errMsg: pollErrMsg,
+            httpStatus: ae?.response?.status,
+            url: ae?.config?.url,
+            code: ae?.code,
+          });
+          // orange 在任务刚创建时可能尚未将其注册进状态表，会短暂返回 404/errCode，
+          // 这属于竞态，继续轮询即可消化；真正的失败由 task.status === "failed" 处理，
+          // 超时由 MAX_POLLS 兜底。此处不提前 return，避免抢跑 404 误判为终态失败。
+          // 其余（网络抖动等）同样继续轮询。
+        }
+      }
+
+      // timeout
+      feedbackToast({ msg: "纠正训练超时，请稍后查看技能列表确认结果" });
+      setTrainingTask(null);
+    },
+    [loadSkills, loadReplyRecords],
+  );
+
   const trainCorrection = async (record: DigitalTwinReplyRecord) => {
     if (!record.operationID) return;
     if (record.reviewStatus === "confirmed") {
@@ -731,14 +809,19 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       return;
     }
 
-    const skillName = normalizeSkillNameInput(
-      draftCorrectionSkillNames[record.operationID] || "",
-    );
+    // 检测原始输入是否包含中文
+    const rawSkillName = draftCorrectionSkillNames[record.operationID] || "";
+    if (hasChinese(rawSkillName)) {
+      feedbackToast({ msg: "技能名称请使用英文输入，不要包含中文" });
+      return;
+    }
+
+    const skillName = normalizeSkillNameInput(rawSkillName);
     if (!skillName) {
       feedbackToast({ msg: "请选择已有技能，或填写英文技能名称，例如 reply-greeting" });
       return;
     }
-    if (skillName !== draftCorrectionSkillNames[record.operationID]) {
+    if (skillName !== rawSkillName) {
       setDraftCorrectionSkillNames((prevNames) => ({
         ...prevNames,
         [record.operationID as string]: skillName,
@@ -752,16 +835,15 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     setTrainingOperationID(record.operationID);
     try {
       const response = await generateDigitalTwinSkill(skillName, description);
-      setLastGeneratedSkill(response.data);
-      await reviewDigitalTwinReply(
-        record.operationID,
-        "confirmed",
-        `已训练：${response.data.skillName}\n${correction}`,
-      );
-      await loadSkills();
-      await loadReplyRecords();
-      notifyDigitalTwinRepliesChanged();
-      feedbackToast({ msg: "纠正已训练，后续相似场景会优先参考" });
+      // Async accepted — start polling for completion.
+      const taskId = response.data.task_id;
+      if (!taskId) {
+        console.error("[trainCorrection] submit returned no task_id:", response);
+        feedbackToast({ msg: "训练提交失败：未收到任务ID" });
+        return;
+      }
+      feedbackToast({ msg: "训练已提交，正在生成技能..." });
+      await pollSkillGenerateTask(taskId, record, skillName, correction);
     } catch (error) {
       feedbackToast({ error, msg: "纠正训练失败" });
     } finally {
@@ -776,13 +858,82 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       feedbackToast({ msg: "请填写技能名称和技能需求" });
       return;
     }
+    if (hasChinese(skillName)) {
+      feedbackToast({ msg: "技能名称请使用英文输入，不要包含中文" });
+      return;
+    }
     setGeneratingSkill(true);
     try {
       const response = await generateDigitalTwinSkill(skillName, description);
-      setLastGeneratedSkill(response.data);
-      setDraftSkillDescription("");
-      await loadSkills();
-      feedbackToast({ msg: `技能 ${response.data.skillName} 已生成` });
+      // Async accepted — start polling for completion.
+      const taskId = response.data.task_id;
+      if (!taskId) {
+        console.error("[generateSkill] submit returned no task_id:", response);
+        feedbackToast({ msg: "技能生成提交失败：未收到任务ID" });
+        return;
+      }
+      feedbackToast({ msg: "技能生成已提交，正在处理..." });
+
+      // Poll for completion.
+      const POLL_INTERVAL_MS = 2000;
+      const MAX_POLLS = 90; // ~3 minutes max
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        try {
+          const taskRes = await getSkillGenerateTaskStatus(taskId);
+          const task = taskRes.data;
+          setTrainingTask(task);
+
+          if (task.status === "completed") {
+            const skillResp: DigitalTwinSkillGenerateResponse = {
+              userID: task.owner_user_id,
+              skillName: task.skill_name,
+              skillPath: task.skill_path ?? "",
+              source: task.source,
+            };
+            setLastGeneratedSkill(skillResp);
+            setDraftSkillDescription("");
+            await loadSkills();
+            feedbackToast({ msg: `技能 ${task.skill_name} 已生成` });
+            setTrainingTask(null);
+            return;
+          }
+
+          if (task.status === "failed") {
+            feedbackToast({
+              msg: `生成失败：${task.error ?? "未知错误"}`,
+            });
+            setTrainingTask(null);
+            return;
+          }
+        } catch (err) {
+          // chat 返回 errCode!=0 时，拦截器会把 {errCode,errMsg} 对象直接 reject
+          const ae = err as any;
+          const pollErrCode = ae?.errCode;
+          const pollErrMsg =
+            ae?.errMsg ??
+            ae?.message ??
+            (ae?.response ? JSON.stringify(ae.response.data) : "未知错误");
+          console.warn("[generateSkill] poll error:", {
+            errCode: pollErrCode,
+            errMsg: pollErrMsg,
+            httpStatus: ae?.response?.status,
+            url: ae?.config?.url,
+            code: ae?.code,
+          });
+          // 业务错误(errCode 非空)或 404 → 明确失败，停止轮询，避免一直 loading
+          if (pollErrCode !== undefined || ae?.response?.status === 404) {
+            feedbackToast({ msg: `技能生成查询失败：${pollErrMsg}` });
+            setTrainingTask(null);
+            return;
+          }
+          // 其余视为瞬时网络错误，继续轮询
+        }
+      }
+
+      // timeout
+      feedbackToast({ msg: "生成超时，请稍后查看技能列表确认结果" });
+      setTrainingTask(null);
     } catch (error) {
       feedbackToast({ error, msg: "生成分身技能失败" });
     } finally {
@@ -999,7 +1150,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           <div className="min-w-0 text-xs text-[#98a2b3]">
-            已输入 {correctionText.length}/500，训练后下一轮 Orange 调用会加载该技能。
+            {trainingTask && trainingOperationID === record.operationID
+              ? trainingTask.status === "pending"
+                ? "训练任务已提交，等待处理..."
+                : trainingTask.status === "running"
+                  ? "模型正在生成技能内容，请稍候..."
+                  : `训练${trainingTask.status === "completed" ? "完成" : "失败"}`
+              : `已输入 ${correctionText.length}/500，训练后下一轮 Orange 调用会加载该技能。`}
           </div>
           <Button
             size="small"
@@ -1011,7 +1168,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
               void trainCorrection(record);
             }}
           >
-            纠正并训练
+            {trainingTask?.status === "running" ? "生成中..." : "纠正并训练"}
           </Button>
         </div>
       </div>
@@ -1019,89 +1176,93 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   };
 
   return (
-    <div className="min-h-full bg-[#f7f9fc] p-5 text-[#1f2937]">
+    <div className="min-h-full p-5 text-[var(--text-primary)]">
       {showOverview && (
-        <div className="mb-5 overflow-hidden rounded-lg bg-white shadow-[0_10px_30px_rgba(31,41,55,0.08)]">
-          <div className="bg-gradient-to-br from-[#eaf5ff] via-[#f7fbff] to-white px-4 py-4">
+        <div className="mb-5 overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] shadow-sm">
+          {/* 总览头部：渐变紫 + 核心信息 */}
+          <div className="bg-gradient-to-br from-[#ede9fe] via-[#f5f3ff] to-white px-6 py-5 dark:from-[#1e1b4b] dark:to-transparent">
             <div className="flex items-start justify-between gap-4">
-              <div className="flex min-w-0 items-center">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#0089ff] shadow-[0_8px_18px_rgba(0,137,255,0.24)]">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] shadow-lg shadow-purple-200 dark:shadow-purple-900/30 ring-4 ring-white dark:ring-[#1f1235]">
                   <img
-                    className="h-7 w-7 object-contain"
+                    className="h-8 w-8 object-contain brightness-0 invert"
                     src={digitalTwinIcon}
                     alt=""
                   />
+                  {/* 在线指示点 */}
+                  {config.enabled && (
+                    <span className="absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1f1235]" />
+                  )}
                 </div>
-                <div className="ml-3 min-w-0">
-                  <div className="text-lg font-semibold text-[#111827]">
-                    我的数字分身
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
+                      我的数字分身
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                        config.enabled
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                          : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+                      }`}
+                    >
+                      {config.enabled ? "已开启" : "未开启"}
+                    </span>
                   </div>
-                  <div className="mt-1 truncate text-xs text-[#667085]">
+                  <div className="mt-1 truncate text-xs text-[var(--text-tertiary)]">
                     当前用户：{selfInfo.nickname || selfUserID}
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <Switch
-                  className="bg-[#8e9aaf]"
-                  checked={config.enabled}
-                  loading={loading || switching}
-                  onChange={(checked) => {
-                    void updateEnabled(checked);
-                  }}
-                />
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    config.enabled
-                      ? "bg-[#e7f8ef] text-[#039855]"
-                      : "bg-[#f2f4f7] text-[#667085]"
-                  }`}
-                >
-                  {config.enabled ? "已开启" : "未开启"}
-                </span>
-              </div>
+              <Switch
+                checked={config.enabled}
+                loading={loading || switching}
+                onChange={(checked) => {
+                  void updateEnabled(checked);
+                }}
+              />
             </div>
-            <div className="mt-4 grid grid-cols-4 gap-2">
-              <div className="rounded-md bg-white/80 px-3 py-2">
-                <div className="text-lg font-semibold text-[#0089ff]">
-                  {skills.length}
+
+            {/* 统计卡片 */}
+            <div className="mt-5 grid grid-cols-4 gap-3">
+              {[
+                { value: skills.length, label: "已安装技能", icon: "✨", color: "from-violet-500 to-purple-600" },
+                { value: pendingUnreadTimeoutCount, label: "待接管消息", icon: "📥", color: "from-blue-500 to-cyan-500" },
+                { value: replySummary.unreviewed ?? 0, label: "待确认代回", icon: "👀", color: "from-amber-500 to-orange-500" },
+                { value: replySummary.total ?? 0, label: "累计代回", icon: "💬", color: "from-emerald-500 to-teal-500" },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="group relative overflow-hidden rounded-xl bg-white/70 px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:bg-white hover:shadow-md dark:bg-white/5 dark:hover:bg-white/10"
+                >
+                  <div className={`absolute -right-3 -top-3 text-3xl opacity-[0.06] group-hover:opacity-10 transition-opacity`}>
+                    {stat.icon}
+                  </div>
+                  <div className={`text-2xl font-bold bg-gradient-to-r ${stat.color} bg-clip-text text-transparent`}>
+                    {stat.value}
+                  </div>
+                  <div className="mt-0.5 text-xs font-medium text-[var(--text-tertiary)]">{stat.label}</div>
                 </div>
-                <div className="text-xs text-[#667085]">已安装技能</div>
-              </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
-                <div className="text-lg font-semibold text-[#0089ff]">
-                  {pendingUnreadTimeoutCount}
-                </div>
-                <div className="text-xs text-[#667085]">待接管消息</div>
-              </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
-                <div className="text-lg font-semibold text-[#0089ff]">
-                  {replySummary.unreviewed ?? 0}
-                </div>
-                <div className="text-xs text-[#667085]">待确认代回</div>
-              </div>
-              <div className="rounded-md bg-white/80 px-3 py-2">
-                <div className="text-lg font-semibold text-[#0089ff]">
-                  {replySummary.total ?? 0}
-                </div>
-                <div className="text-xs text-[#667085]">累计代回</div>
-              </div>
+              ))}
             </div>
           </div>
-          <div className="px-4 py-3 text-xs leading-5 text-[#667085]">
+
+          {/* 提示条 */}
+          <div className="border-t border-[var(--border-color)] px-6 py-3 text-xs leading-relaxed text-[var(--text-tertiary)]">
             开启后，数字分身会按策略代为回复单聊消息；你可以确认正确回复，也可以把不合适的回复纠正成训练技能。
           </div>
         </div>
       )}
 
       {showOverview && (
-        <div className="rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-[#111827]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                <span>📋</span>
                 最近代回与纠错训练
               </div>
-              <div className="mt-1 text-xs text-[#667085]">
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                 快速查看最近 3 条分身代回；确认合适回复，或将不合适回复沉淀为训练技能。
               </div>
             </div>
@@ -1119,31 +1280,35 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
           {overviewLatestReplies.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无代回动态" />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {overviewLatestReplies.map((record) => (
                 <div
-                  className="rounded-md border border-[#edf0f5] bg-[#fbfdff] px-3 py-2"
+                  className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] px-4 py-3 transition-all hover:shadow-md hover:border-[#c4b5fd]"
                   key={`${record.operationID}-${record.createdAt}`}
                 >
-                  <div className="mb-1 flex items-center justify-between gap-3 text-xs text-[#98a2b3]">
-                    <span className="truncate">
-                      联系人：{getContactDisplayName(record.senderUserID)}
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-xs text-[var(--text-quaternary)]">
+                    <span className="inline-flex items-center gap-1.5 truncate font-medium text-[var(--text-tertiary)]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {getContactDisplayName(record.senderUserID)}
                     </span>
-                    <span className="shrink-0">
-                      {formatReplyTime(record.createdAt)}
-                    </span>
+                    <span className="shrink-0 tabular-nums">{formatReplyTime(record.createdAt)}</span>
                   </div>
                   {record.messageContent && (
-                    <div className="mb-1 truncate text-xs text-[#667085]">
+                    <div className="mb-1 truncate rounded-lg bg-[var(--bg-body)] px-2.5 py-1.5 text-xs text-[var(--text-tertiary)]">
                       收到：{truncateText(record.messageContent)}
                     </div>
                   )}
-                  <div className="line-clamp-2 text-sm text-[#111827]">
-                    分身回复：{record.replyText}
+                  <div className="line-clamp-2 text-sm leading-relaxed text-[var(--text-primary)]">
+                    {record.replyText}
                   </div>
-                  <div className="mt-1 text-xs text-[#98a2b3]">
-                    状态：{reviewStatusText(record.reviewStatus)} · 来源：
-                    {record.replySource}
+                  <div className="mt-1.5 flex items-center gap-2 text-xs text-[var(--text-quaternary)]">
+                    <span className={`rounded-full px-1.5 py-px text-[10px] font-medium ${
+                      record.reviewStatus === "confirmed"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                    }`}>
+                      {reviewStatusText(record.reviewStatus)}
+                    </span>
                   </div>
                   {renderCorrectionTrainingPanel(record)}
                 </div>
@@ -1155,34 +1320,51 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
 
       {showSettings && (
         <>
-          <div className="mb-4 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
+          <div className="mb-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
             <div className="mb-3">
-              <div className="text-sm font-semibold text-[#111827]">自动接管策略</div>
-              <div className="mt-1 text-xs text-[#667085]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                <span>⚡</span>
+                自动接管策略
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                 设置分身什么时候接管，以及接管前需要等待多久。
               </div>
             </div>
             <div className="space-y-2">
               {triggerModeOptions.map((option) => (
                 <button
-                  className={`w-full rounded-md border px-3 py-2 text-left transition-all ${
+                  className={`group w-full rounded-xl border px-4 py-3.5 text-left transition-all duration-200 ${
                     draftTriggerMode === option.value
-                      ? "border-[#0089ff] bg-[#eef7ff] shadow-[0_4px_10px_rgba(0,137,255,0.08)]"
-                      : "border-[#edf0f5] bg-white hover:border-[#b9dcff]"
-                  } ${option.disabled ? "cursor-not-allowed opacity-60" : ""}`}
+                      ? "border-[#c4b5fd] bg-[#f5f3ff] shadow-sm shadow-purple-100/50 dark:border-[#5b21b6] dark:bg-[#1e1b4b]"
+                      : "border-[var(--border-color)] hover:border-[#d8b4fe] hover:shadow-sm"
+                  } ${option.disabled ? "cursor-not-allowed opacity-50" : ""}`}
                   disabled={option.disabled || loading || saving}
                   key={option.value}
                   type="button"
                   onClick={() => setDraftTriggerMode(option.value)}
                 >
-                  <div className="text-sm font-medium">{option.label}</div>
-                  <div className="mt-1 text-xs text-[var(--sub-text)]">
+                  <div className="flex items-center gap-2">
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                      draftTriggerMode === option.value
+                        ? "bg-[#7c3aed] text-white"
+                        : "border-2 border-[var(--border-color)] text-transparent group-hover:border-[#a78bfa] group-hover:text-[#a78bfa]"
+                    }`}>
+                      {draftTriggerMode === option.value ? "✓" : ""}
+                    </span>
+                    <div className="text-sm font-semibold text-[var(--text-primary)]">{option.label}</div>
+                    {draftTriggerMode === option.value && (
+                      <span className="rounded-full bg-[#ede9fe] px-1.5 py-0.5 text-[10px] font-medium text-[#7c3aed]">
+                        当前
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1.5 pl-7 text-xs leading-relaxed text-[var(--text-tertiary)]">
                     {option.description}
                   </div>
                 </button>
               ))}
             </div>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-3 flex items-center gap-2">
               <InputNumber
                 min={30}
                 max={86400}
@@ -1193,25 +1375,28 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                   setDraftUnreadTimeoutSeconds(normalizeUnreadTimeoutSeconds(value))
                 }
               />
-              <span className="text-xs text-[var(--sub-text)]">
+              <span className="text-xs text-[var(--text-tertiary)]">
                 秒后触发；触发前会再次检查开关、时间段、联系人范围和冷却。
               </span>
             </div>
             {draftTriggerMode === "unread_timeout" && (
-              <div className="mt-2 rounded bg-[#f6fbff] px-2 py-1 text-xs text-[#0089ff]">
+              <div className="mt-2 rounded-xl bg-gradient-to-r from-[#fef3c7]/80 to-[#fde68a]/30 px-3 py-2 text-xs font-medium text-amber-700 dark:from-amber-900/20 dark:text-amber-400">
                 当前有 {pendingUnreadTimeoutCount} 条消息等待分身超时接管。
               </div>
             )}
           </div>
 
-          <div className="mb-4 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
+          <div className="mb-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
             <div className="mb-3">
-              <div className="text-sm font-semibold text-[#111827]">回复风格</div>
-              <div className="mt-1 text-xs text-[#667085]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                <span>✍️</span>
+                回复风格
+              </div>
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                 让分身知道默认怎么说，以及 Orange 不可用时如何兜底。
               </div>
             </div>
-            <div className="mb-1 text-xs font-medium text-[#667085]">兜底回复</div>
+            <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">兜底回复</div>
             <Input.TextArea
               value={draftReplyText}
               rows={4}
@@ -1222,7 +1407,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
               onChange={(event) => setDraftReplyText(event.target.value)}
             />
 
-            <div className="mb-1 mt-4 text-xs font-medium text-[#667085]">
+            <div className="mb-1 mt-4 text-xs font-medium text-[var(--text-tertiary)]">
               分身提示词
             </div>
             <Input.TextArea
@@ -1236,11 +1421,12 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
             />
           </div>
 
-          <div className="mb-4 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
-            <div className="mb-1 text-sm font-semibold text-[#111827]">
+          <div className="mb-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
+            <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+              <span>⏱️</span>
               同一联系人回复间隔
             </div>
-            <div className="mb-3 text-xs text-[#667085]">
+            <div className="mb-3 text-xs text-[var(--text-tertiary)]">
               控制分身代回频率，避免连续消息被过度接管。
             </div>
             <div className="mb-2 flex flex-wrap gap-2">
@@ -1266,24 +1452,24 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                   setDraftCooldownSeconds(normalizeCooldownSeconds(value))
                 }
               />
-              <span className="text-xs text-[var(--sub-text)]">
+              <span className="text-xs text-[var(--text-tertiary)]">
                 秒内只回复一次，0 表示每条消息都可触发分身。
               </span>
             </div>
           </div>
 
-          <div className="mb-4 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
+          <div className="mb-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-[#111827]">
+                <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                  <span>🕐</span>
                   自动托管时间段
                 </div>
-                <div className="mt-1 text-xs text-[#667085]">
+                <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                   关闭时全天可自动回复；开启后只在指定时间段内由分身接管。
                 </div>
               </div>
               <Switch
-                className="bg-[#8e9aaf]"
                 size="small"
                 checked={draftScheduleEnabled}
                 disabled={loading || saving}
@@ -1301,7 +1487,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                     setDraftScheduleStartMinute(timeValueToMinute(event.target.value))
                   }
                 />
-                <span className="text-xs text-[var(--sub-text)]">到</span>
+                <span className="text-xs text-[var(--text-tertiary)]">到</span>
                 <Input
                   className="w-[120px]"
                   type="time"
@@ -1311,25 +1497,28 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                     setDraftScheduleEndMinute(timeValueToMinute(event.target.value))
                   }
                 />
-                <span className="text-xs text-[var(--sub-text)]">
+                <span className="text-xs text-[var(--text-tertiary)]">
                   支持跨午夜，当前时区 {getLocalTimezone()}。
                 </span>
               </div>
             )}
           </div>
 
-          <div className="mb-4 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
-            <div className="mb-1 text-sm font-semibold text-[#111827]">联系人范围</div>
-            <div className="mb-3 text-xs text-[#667085]">
-              默认所有联系人都可触发分身；设置“只回复”后只对列表内联系人生效。不要回复名单优先。
+          <div className="mb-4 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
+            <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+              <span>👥</span>
+              联系人范围
             </div>
-            <div className="mb-3 rounded-md border border-[#edf0f5] bg-[#fbfdff] p-3">
+            <div className="mb-3 text-xs text-[var(--text-tertiary)]">
+              默认所有联系人都可触发分身；设置"只回复"后只对列表内联系人生效。不要回复名单优先。
+            </div>
+            <div className="mb-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-body)] p-3.5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-medium text-[#667085]">
+                  <div className="text-xs font-semibold text-[var(--text-secondary)]">
                     只回复这些联系人
                   </div>
-                  <div className="mt-1 text-xs text-[var(--sub-text)]">
+                  <div className="mt-0.5 text-xs text-[var(--text-quaternary)]">
                     留空表示所有联系人都可触发分身。
                   </div>
                 </div>
@@ -1353,19 +1542,19 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 </div>
               </div>
               {selectedAllowedSenderUserIDs.length === 0 ? (
-                <div className="rounded bg-white px-3 py-2 text-xs text-[var(--sub-text)]">
+                <div className="rounded-lg bg-[var(--bg-hover)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
                   暂未限制联系人范围
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {selectedAllowedSenderUserIDs.map((userID) => (
                     <span
-                      className="inline-flex items-center gap-1 rounded-full border border-[#d8ebff] bg-white px-2 py-1 text-xs text-[#27415f]"
+                      className="inline-flex items-center gap-1 rounded-full border border-[#c4b5fd] bg-[#f5f3ff] px-2.5 py-1 text-xs font-medium text-[#7c3aed] dark:bg-[#1e1b4b]"
                       key={userID}
                     >
                       {getContactDisplayName(userID)}
                       <button
-                        className="text-[#98a2b3] hover:text-[#f04438]"
+                        className="ml-0.5 text-[#a78bfa] hover:text-[#7c3aed]"
                         type="button"
                         onClick={() => removeSelectedContact("allowed", userID)}
                       >
@@ -1376,13 +1565,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 </div>
               )}
             </div>
-            <div className="rounded-md border border-[#edf0f5] bg-[#fbfdff] p-3">
+            <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-body)] p-3.5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-medium text-[#667085]">
+                  <div className="text-xs font-semibold text-[var(--text-secondary)]">
                     不要回复这些联系人
                   </div>
-                  <div className="mt-1 text-xs text-[var(--sub-text)]">
+                  <div className="mt-0.5 text-xs text-[var(--text-quaternary)]">
                     命中后分身不会自动回复，优先级高于只回复名单。
                   </div>
                 </div>
@@ -1406,19 +1595,19 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 </div>
               </div>
               {selectedBlockedSenderUserIDs.length === 0 ? (
-                <div className="rounded bg-white px-3 py-2 text-xs text-[var(--sub-text)]">
+                <div className="rounded-lg bg-[var(--bg-hover)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
                   暂未排除联系人
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {selectedBlockedSenderUserIDs.map((userID) => (
                     <span
-                      className="inline-flex items-center gap-1 rounded-full border border-[#ffe1de] bg-white px-2 py-1 text-xs text-[#912018]"
+                      className="inline-flex items-center gap-1 rounded-full border border-[#fecaca] bg-red-50 px-2.5 py-1 text-xs font-medium text-[#991b1b] dark:bg-red-950/20 dark:border-red-800 dark:text-red-400"
                       key={userID}
                     >
                       {getContactDisplayName(userID)}
                       <button
-                        className="text-[#98a2b3] hover:text-[#f04438]"
+                        className="ml-0.5 text-red-400 hover:text-red-600"
                         type="button"
                         onClick={() => removeSelectedContact("blocked", userID)}
                       >
@@ -1431,8 +1620,8 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
             </div>
           </div>
 
-          <div className="sticky bottom-0 z-10 -mx-5 flex items-center justify-between border-t border-[#edf0f5] bg-white/95 px-5 py-3 backdrop-blur">
-            <div className="text-xs text-[var(--sub-text)]">
+          <div className="sticky bottom-0 z-10 -mx-5 flex items-center justify-between border-t border-[var(--border-color)] bg-[var(--bg-base)]/95 px-5 py-3 backdrop-blur">
+            <div className="text-xs text-[var(--text-quaternary)]">
               {config.updatedAt
                 ? `上次保存：${new Date(config.updatedAt).toLocaleString()}`
                 : "尚未保存"}
@@ -1452,59 +1641,106 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       )}
 
       {showSkills && (
-        <div className="mt-5 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
-          <div className="mb-3">
-            <div className="text-sm font-semibold text-[#111827]">分身技能</div>
-            <div className="mt-1 text-xs text-[#667085]">
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-5 shadow-sm">
+          <div className="mb-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+              <span>✨</span>
+              分身技能
+            </div>
+            <div className="mt-1 text-xs text-[var(--text-tertiary)]">
               用一句话生成技能，让分身在特定场景下更稳定地按你的偏好回复。
             </div>
           </div>
-          <div className="mb-3">
-            <div className="mb-1 text-xs text-[var(--sub-text)]">技能目录名</div>
-            <Input
-              value={draftSkillName}
-              maxLength={64}
-              disabled={loading || generatingSkill}
-              placeholder="例如：pome"
-              onChange={(event) => setDraftSkillName(event.target.value)}
-            />
-          </div>
-          <div className="mb-3">
-            <div className="mb-1 text-xs text-[var(--sub-text)]">技能需求</div>
-            <Input.TextArea
-              value={draftSkillDescription}
-              rows={4}
-              maxLength={800}
-              showCount
-              disabled={loading || generatingSkill}
-              placeholder="例如：用户让我作诗时，返回静夜思、李白的诗句"
-              onChange={(event) => setDraftSkillDescription(event.target.value)}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 text-xs text-[var(--sub-text)]">
-              {lastGeneratedSkill ? (
-                <span className="truncate">
-                  已安装：{lastGeneratedSkill.skillName} · {lastGeneratedSkill.source}
+
+          {/* 技能生成区 */}
+          <div className="mb-5 rounded-xl border border-dashed border-[#c4b5fd] bg-gradient-to-br from-[#faf5ff] to-white p-4 dark:from-[#1e1b4b] dark:to-transparent">
+            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7c3aed]">
+              <span>🧪</span>
+              生成新技能
+            </div>
+            <div className="mb-2">
+              <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能目录名</div>
+              <Input
+                value={draftSkillName}
+                maxLength={64}
+                disabled={loading || generatingSkill}
+                placeholder="例如：pome"
+                onChange={(event) => setDraftSkillName(event.target.value)}
+              />
+            </div>
+            <div className="mb-4">
+              <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能需求</div>
+              <Input.TextArea
+                value={draftSkillDescription}
+                rows={3}
+                maxLength={800}
+                showCount
+                disabled={loading || generatingSkill}
+                placeholder="例如：用户让我作诗时，返回静夜思、李白的诗句"
+                onChange={(event) => setDraftSkillDescription(event.target.value)}
+              />
+            </div>
+
+            {/* 提示 + 按钮：独立行，避免与 showCount 重叠 */}
+            <div className="-mt-1 mb-2 min-w-0 text-[11px] leading-relaxed text-[var(--text-quaternary)]">
+              {trainingTask && generatingSkill ? (
+                trainingTask.status === "pending"
+                  ? "任务已提交，等待处理..."
+                  : trainingTask.status === "running"
+                    ? "模型正在生成技能内容，请稍候..."
+                    : trainingTask.status === "completed"
+                      ? "技能已生成完成"
+                      : `生成失败：${trainingTask.error ?? "未知错误"}`
+              ) : lastGeneratedSkill ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
+                  <span>✅</span>
+                  已安装：<code className="font-mono text-xs font-semibold">{lastGeneratedSkill.skillName}</code>
+                  <span className="text-emerald-400">·</span>
+                  {lastGeneratedSkill.source}
                 </span>
               ) : (
-                "生成后会立即写入分身工作区，下一轮 Orange 调用可读取。"
+                "生成后立即写入分身工作区，下一轮 Orange 调用可读取。"
               )}
             </div>
-            <Button
-              type="primary"
-              loading={generatingSkill}
-              disabled={loading}
+            <button
+              type="button"
+              disabled={loading || generatingSkill}
               onClick={() => {
                 void generateSkill();
               }}
+              className="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-purple-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-300 active:translate-y-0 active:shadow-sm disabled:pointer-events-none disabled:opacity-50 dark:shadow-purple-900/30 dark:hover:shadow-purple-800/40"
             >
-              生成技能
-            </Button>
+              {generatingSkill ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+                  </svg>
+                  {trainingTask?.status === "running" ? "生成中…" : trainingTask?.status === "pending" ? "已提交…" : "生成中…"}
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="h-4 w-4 transition-transform group-hover:rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z" />
+                  </svg>
+                  生成技能
+                </span>
+              )}
+            </button>
           </div>
-          <div className="mt-4 border-t border-[#edf0f5] pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-medium">已安装技能</div>
+
+          {/* 已安装技能列表 */}
+          <div className="border-t border-[var(--border-color)] pt-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+                <span>📦</span>
+                已安装技能
+                {skills.length > 0 && (
+                  <span className="rounded-full bg-[#ede9fe] px-1.5 py-px text-[10px] font-bold text-[#7c3aed]">
+                    {skills.length}
+                  </span>
+                )}
+              </div>
               <Button
                 size="small"
                 loading={loadingSkills}
@@ -1521,24 +1757,28 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 description="暂无自定义技能"
               />
             ) : (
-              <div className="space-y-2">
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
                 {skills.map((skill) => (
                   <div
-                    className="rounded-md border border-[#edf0f5] bg-white px-3 py-2"
+                    className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] p-3.5 transition-all hover:shadow-md hover:border-[#d8b4fe]"
                     key={skill.name}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{skill.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs text-[var(--sub-text)]">
-                          {skill.description ||
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <code className="rounded-md bg-[#f5f3ff] px-2 py-0.5 font-mono text-sm font-bold text-[#7c3aed] dark:bg-[#1e1b4b]">
+                            {skill.name}
+                          </code>
+                        </div>
+                        <div className="mt-1.5 max-h-[120px] overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--text-tertiary)]">
+                          {skill.content || skill.description ||
                             "暂无描述，建议重新生成以提升触发稳定性。"}
                         </div>
-                        {skill.updatedAt ? (
-                          <div className="mt-1 text-xs text-[var(--sub-text)]">
+                        {skill.updatedAt && (
+                          <div className="mt-1.5 text-xs text-[var(--text-quaternary)]">
                             更新：{new Date(skill.updatedAt).toLocaleString()}
                           </div>
-                        ) : null}
+                        )}
                       </div>
                       <Popconfirm
                         title={`删除技能 ${skill.name}？`}
@@ -1554,6 +1794,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                           size="small"
                           danger
                           loading={deletingSkillName === skill.name}
+                          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                         >
                           删除
                         </Button>
@@ -1568,13 +1809,14 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       )}
 
       {showRecords && (
-        <div className="mt-5 rounded-lg border border-[#edf0f5] bg-white px-4 py-4 shadow-sm">
-          <div className="mb-3 flex items-center justify-between">
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
             <div>
-              <div className="text-sm font-semibold text-[#111827]">
+              <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                <span>📋</span>
                 代回记录与纠错训练
               </div>
-              <div className="mt-1 text-xs text-[#667085]">
+              <div className="mt-1 text-xs text-[var(--text-tertiary)]">
                 确认合适的分身回复；遇到不合适的回复，可选择已有技能或创建新技能完成纠错训练闭环。
               </div>
             </div>
@@ -1589,6 +1831,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
             </Button>
           </div>
 
+          {/* 筛选标签 */}
           <div className="mb-3 flex flex-wrap gap-2">
             {replyReviewFilters.map((filter) => (
               <Button
@@ -1602,12 +1845,20 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                   setReplyReviewFilter(filter.value);
                 }}
               >
-                {filter.label} {replySummary[filter.countKey] ?? 0}
+                {filter.label}{" "}
+                <span className={`rounded-full px-1.5 py-px text-[10px] ${
+                  replyReviewFilter === filter.value
+                    ? "bg-white/30 text-white"
+                    : "bg-gray-100 text-gray-500 dark:bg-gray-800"
+                }`}>
+                  {replySummary[filter.countKey] ?? 0}
+                </span>
               </Button>
             ))}
           </div>
 
-          <div className="mb-3 flex flex-wrap items-center gap-2">
+          {/* 搜索筛选 */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
             <Input
               className="w-[220px]"
               value={draftReplySenderUserID}
@@ -1653,53 +1904,76 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
               description="暂无分身回复记录"
             />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {replyRecords.map((record) => (
                 <div
-                  className="rounded-md border border-[#edf0f5] bg-white px-3 py-2"
+                  className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] p-4 transition-all hover:shadow-md hover:border-[#d8b4fe]"
                   key={`${record.operationID}-${record.createdAt}`}
                 >
-                  <div className="mb-2 flex items-center justify-between gap-3 text-xs text-[var(--sub-text)]">
-                    <div className="flex min-w-0 items-center gap-2">
+                  {/* 头部：联系人 + 时间 */}
+                  <div className="mb-2.5 flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
                       <OIMAvatar
-                        size={28}
+                        size={32}
                         src={getContactInfo(record.senderUserID)?.faceURL}
                         text={getContactDisplayName(record.senderUserID)}
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium text-[#111827]">
+                        <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
                           {getContactDisplayName(record.senderUserID)}
                         </div>
-                        <div className="truncate text-xs text-[var(--sub-text)]">
+                        <div className="truncate text-[11px] text-[var(--text-quaternary)]">
                           {record.senderUserID}
                         </div>
                       </div>
                     </div>
-                    <span className="shrink-0">
+                    <span className="shrink-0 tabular-nums text-xs text-[var(--text-quaternary)]">
                       {formatReplyTime(record.createdAt)}
                     </span>
                   </div>
+
+                  {/* 触发消息 */}
                   {record.messageContent && (
-                    <div className="mb-1 truncate text-xs text-[var(--sub-text)]">
-                      触发消息：{record.messageContent}
+                    <div className="mb-2 rounded-lg bg-[var(--bg-body)] px-3 py-2">
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-[var(--text-quaternary)]">收到</div>
+                      <div className="truncate text-sm text-[var(--text-secondary)]">{record.messageContent}</div>
                     </div>
                   )}
-                  <div className="line-clamp-2 text-sm text-[var(--primary-text)]">
-                    {record.replyText}
+
+                  {/* 分身回复 */}
+                  <div className="mb-2 rounded-lg border-l-2 border-l-[#7c3aed] bg-gradient-to-r from-[#faf5ff]/60 to-transparent px-3 py-2.5 dark:from-purple-950/20">
+                    <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#7c3aed]">
+                      <span>AI 分身回复</span>
+                    </div>
+                    <div className="line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--text-primary)]">
+                      {record.replyText}
+                    </div>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-[var(--sub-text)]">
-                    <span>来源：{record.replySource}</span>
-                    {record.configSource && <span>配置：{record.configSource}</span>}
-                    <span>状态：{reviewStatusText(record.reviewStatus)}</span>
+
+                  {/* 元信息 */}
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-quaternary)]">
+                    <span className={`rounded-full px-1.5 py-px font-medium {
+                      record.reviewStatus === "confirmed"
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                        : "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                    }`}>
+                      {reviewStatusText(record.reviewStatus)}
+                    </span>
                   </div>
+
+                  {/* 错误提示 */}
                   {record.generatorError && (
-                    <div className="mt-1 line-clamp-2 text-xs text-[#f04438]">
+                    <div className="mt-2 line-clamp-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-950/20 dark:text-red-400">
                       生成异常：{record.generatorError}
                     </div>
                   )}
+
+                  {/* 纠正训练面板 */}
                   {renderCorrectionTrainingPanel(record)}
-                  {record.operationID && (
-                    <div className="mt-2 flex justify-end gap-2">
+
+                  {/* 操作按钮 */}
+                  {record.operationID && record.reviewStatus !== "confirmed" && (
+                    <div className="mt-3 flex justify-end gap-2 pt-2">
                       <Button
                         size="small"
                         disabled={
@@ -1718,7 +1992,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 </div>
               ))}
               {replyHasMore && (
-                <div className="flex justify-center pt-1">
+                <div className="flex justify-center pt-2">
                   <Button
                     size="small"
                     loading={loadingReplies}

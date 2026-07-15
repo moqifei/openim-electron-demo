@@ -1,5 +1,5 @@
 import { GroupItem } from "@openim/wasm-client-sdk/lib/types/entity";
-import { Select } from "antd";
+import { Select, Empty } from "antd";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
@@ -39,13 +39,21 @@ export const MyGroups = () => {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col bg-white">
-      <div className="m-5.5 flex flex-row justify-between">
-        <p className="text-base font-extrabold">{t("placeholder.myGroup")}</p>
+    <div className="flex h-full w-full flex-col bg-[var(--bg-base)]">
+      {/* 页头 */}
+      <div className="flex items-center justify-between px-6 pt-6 pb-3">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-[var(--text-primary)]">
+            {t("placeholder.myGroup")}
+          </h2>
+          <p className="mt-0.5 text-xs text-[var(--text-quaternary)]">
+            共 {filterGroup.length} 个群组
+          </p>
+        </div>
         <Select
           defaultValue={String(selectGroup)}
           popupClassName="p-0"
-          style={{ width: 200 }}
+          className="min-w-[140px]"
           onChange={handleChange}
           options={[
             {
@@ -59,19 +67,33 @@ export const MyGroups = () => {
           ]}
         />
       </div>
-      <div className="box-border flex-1 overflow-y-auto px-2 pb-3">
-        <Virtuoso
-          className="h-full overflow-x-hidden"
-          data={filterGroup}
-          itemContent={(_, group) => (
-            <GroupListItem
-              key={group.groupID}
-              source={group}
-              showGroupCard={showGroupCard}
-            />
-          )}
+
+      {/* 群组列表 */}
+      {!filterGroup.length ? (
+        <Empty
+          className="mt-[20%]"
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <span className="text-[var(--text-quaternary)]">
+              暂无群组
+            </span>
+          }
         />
-      </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-3 pb-4">
+          <Virtuoso
+            className="h-full overflow-x-hidden"
+            data={filterGroup}
+            itemContent={(_, group) => (
+              <GroupListItem
+                key={group.groupID}
+                source={group}
+                showGroupCard={showGroupCard}
+              />
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 };

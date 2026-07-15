@@ -84,19 +84,33 @@ const ConversationItem = ({
     <div
       className={clsx(
         styles["conversation-item"],
-        "border border-transparent",
-        isActive && `bg-[var(--primary-active)]`,
+        isActive &&
+          "!bg-[var(--primary-active)] before:absolute before:left-0 before:top-1/2 before:h-6 before:w-1 before:-translate-y-1/2 before:rounded-r-md before:bg-[var(--primary)]",
       )}
       onClick={() => {
         void toSpecifiedConversation();
       }}
     >
       <div className="relative shrink-0">
-        <OIMAvatar
-          src={conversation.faceURL}
-          isgroup={Boolean(conversation.groupID)}
-          text={displayName}
-        />
+        {isAgent ? (
+          <div className="rounded-full bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] p-[2px]">
+            <OIMAvatar
+              src={conversation.faceURL}
+              isgroup={Boolean(conversation.groupID)}
+              text={displayName}
+              size={36}
+              color="#7c3aed"
+              className="!bg-white"
+            />
+          </div>
+        ) : (
+          <OIMAvatar
+            src={conversation.faceURL}
+            isgroup={Boolean(conversation.groupID)}
+            text={displayName}
+            size={40}
+          />
+        )}
         {conversation.unreadCount > 0 && (
           <span
             className={clsx(
@@ -117,8 +131,8 @@ const ConversationItem = ({
           <div className="flex min-w-0 flex-1 items-center">
             <div className="truncate font-medium">{displayName}</div>
             {isAgent && (
-              <span className="ml-2 shrink-0 rounded bg-[#f3e8ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#7c3aed]">
-                智能体
+              <span className="ml-2 shrink-0 rounded-full bg-[#ede9fe] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7c3aed]">
+                AI
               </span>
             )}
             {latestMessageIsDigitalTwin && (
@@ -137,7 +151,7 @@ const ConversationItem = ({
               </span>
             )}
           </div>
-          <div className="ml-2 text-xs text-[var(--sub-text)]">{latestMessageTime}</div>
+          <div className="ml-2 shrink-0 text-xs text-[var(--text-placeholder)]">{latestMessageTime}</div>
         </div>
 
         <div className="flex items-center">
@@ -152,7 +166,7 @@ const ConversationItem = ({
               </span>
             )}
             <div
-              className="truncate text-[rgba(81,94,112,0.5)]"
+              className="truncate text-xs text-[var(--text-tertiary)]"
               dangerouslySetInnerHTML={{
                 __html: latestMessageContent,
               }}

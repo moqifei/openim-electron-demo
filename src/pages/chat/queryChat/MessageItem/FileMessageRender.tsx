@@ -49,7 +49,7 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message }) => {
     <div
       className={`${
         styles.bubble
-      } flex max-w-[260px] cursor-pointer items-center gap-3 px-3 py-2 ${
+      } !rounded-lg !border-[var(--border-color)] !bg-[var(--bg-base)] flex max-w-[260px] cursor-pointer items-center gap-3 px-3 py-2 ${
         isSending || isDownloading ? "" : "hover:opacity-80"
       }`}
       onClick={() => {

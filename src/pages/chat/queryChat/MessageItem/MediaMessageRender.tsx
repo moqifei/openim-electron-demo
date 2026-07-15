@@ -44,7 +44,7 @@ const MediaMessageRender: FC<IMessageItemProps> = ({ message }) => {
       <div className="relative max-w-[200px]" style={minStyle}>
         <Image
           rootClassName="message-image cursor-pointer"
-          className="max-w-[200px] rounded-md"
+          className="max-w-[200px] rounded-lg border border-[var(--border-color)] shadow-sm"
           src={sourceUrl}
           preview={{
             toolbarRender: (originalNode) => (

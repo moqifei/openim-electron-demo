@@ -19,7 +19,11 @@ import ForwardModal, { ForwardModalHandle } from "./ForwardModal";
 import MessageItem from "./MessageItem";
 import MultiSelectToolbar from "./MultiSelectToolbar";
 import NotificationMessage from "./NotificationMessage";
+import TimeDivider from "./TimeDivider";
 import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList";
+
+// 与上一条消息间隔超过该值（毫秒）则显示时间分割线
+const TIME_DIVIDER_GAP = 5 * 60 * 1000;
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
@@ -279,11 +283,11 @@ const ChatContent = () => {
 
   return (
     <Layout.Content
-      className="relative flex h-full overflow-hidden !bg-white"
+      className="relative flex h-full overflow-hidden !bg-[var(--bg-body)]"
       id="chat-main"
     >
       {loadState.initLoading ? (
-        <div className="flex h-full w-full items-center justify-center bg-white pt-1">
+        <div className="flex h-full w-full items-center justify-center bg-[var(--bg-body)] pt-1">
           <Spin spinning />
         </div>
       ) : (
@@ -318,28 +322,36 @@ const ChatContent = () => {
               ) : null,
           }}
           computeItemKey={(_, item) => item.clientMsgID}
-          itemContent={(_, message) => {
+          itemContent={(index, message) => {
             if (SystemMessageTypes.includes(message.contentType)) {
               return (
                 <NotificationMessage key={message.clientMsgID} message={message} />
               );
             }
+            const prev = loadState.messageList[index - 1];
+            const showDivider =
+              !prev ||
+              SystemMessageTypes.includes(prev.contentType) ||
+              message.sendTime - prev.sendTime > TIME_DIVIDER_GAP;
             const isSender = selfUserID === message.sendID;
             return (
-              <MessageItem
-                key={message.clientMsgID}
-                conversationID={conversationID}
-                message={message}
-                messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
-                isSender={isSender}
-                isMultiSelectActive={multiSelectState.isActive}
-                isSelected={multiSelectState.selectedIds.has(message.clientMsgID)}
-                onToggleSelect={handleToggleSelect}
-                onForward={(msg) => handleForward([msg], false)}
-                onReply={handleReply}
-                onMultiSelect={handleMultiSelect}
-                onRevoke={handleRevoke}
-              />
+              <>
+                {showDivider && <TimeDivider time={message.sendTime} />}
+                <MessageItem
+                  key={message.clientMsgID}
+                  conversationID={conversationID}
+                  message={message}
+                  messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
+                  isSender={isSender}
+                  isMultiSelectActive={multiSelectState.isActive}
+                  isSelected={multiSelectState.selectedIds.has(message.clientMsgID)}
+                  onToggleSelect={handleToggleSelect}
+                  onForward={(msg) => handleForward([msg], false)}
+                  onReply={handleReply}
+                  onMultiSelect={handleMultiSelect}
+                  onRevoke={handleRevoke}
+                />
+              </>
             );
           }}
         />

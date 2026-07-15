@@ -1,4 +1,4 @@
-import type { AgentInfo } from "@/api/login";
+import { searchAgents, type AgentInfo } from "@/api/login";
 
 // Register type constants matching the backend
 export const REGISTER_TYPE_PHONE = 0; // Phone registration
@@ -37,6 +37,31 @@ export const getVisibleAgentRecommendations = (
     faceURL: agent.faceURL || "",
     registerType: agent.registerType,
   }));
+
+// GroupMemberItem returned by getGroupMemberList does NOT carry registerType,
+// so we cannot tell agents from the group member list directly. Instead we fetch
+// the full set of agent userIDs (registerType === 2) and match group members by
+// userID. The result is cached at module level since the agent set is global.
+let agentUserIDSetCache: Promise<Set<string>> | null = null;
+
+export const getAgentUserIDSet = (force = false): Promise<Set<string>> => {
+  if (!force && agentUserIDSetCache) return agentUserIDSetCache;
+  agentUserIDSetCache = (async () => {
+    const set = new Set<string>();
+    const pageSize = 200;
+    let pageNumber = 1;
+    for (let i = 0; i < 50; i += 1) {
+      const { data } = await searchAgents("", { pageNumber, showNumber: pageSize });
+      (data.users ?? []).forEach((u: AgentInfo) => {
+        if (u.userID) set.add(u.userID);
+      });
+      if ((data.users ?? []).length < pageSize) break;
+      pageNumber += 1;
+    }
+    return set;
+  })();
+  return agentUserIDSetCache;
+};
 
 export const collectVisibleAgentRecommendations = async (
   fetchPage: AgentSearchPageFetcher,

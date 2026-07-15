@@ -97,7 +97,7 @@ const GroupSettings = ({
         </div>
       </div>
 
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
+      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
       {currentGroupInfo && isJoinGroup && (
         <GroupMemberRow
           currentGroupInfo={currentGroupInfo}
@@ -105,7 +105,7 @@ const GroupSettings = ({
           updateTravel={updateTravel}
         />
       )}
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
+      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
 
       <Divider className="m-0 border-4 border-[#F4F5F7]" />
       <SettingRow className="pb-2" title={`${t("placeholder.group")}ID`}>
@@ -131,11 +131,11 @@ const GroupSettings = ({
         </span>
       </SettingRow>
 
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
+      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
 
       {isOwner && (
         <>
-          <Divider className="m-0 border-4 border-[#F4F5F7]" />
+          <Divider className="m-0 border-4 border-[var(--bg-body)]" />
           <SettingRow
             className="cursor-pointer"
             title={t("placeholder.transferGroup")}

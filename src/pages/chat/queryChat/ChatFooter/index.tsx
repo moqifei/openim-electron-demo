@@ -464,13 +464,13 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
 
   return (
     <footer
-      className="relative h-full bg-white py-px"
+      className="relative h-full bg-[var(--bg-base)] py-px"
       onPaste={handlePaste}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="flex h-full flex-col border-t border-t-[var(--gap-text)]">
+      <div className="flex h-full flex-col border-t border-t-[var(--border-color)]">
         <SendActionBar
           sendMessage={sendMessage}
           getImageMessage={getImageMessage}
@@ -484,24 +484,24 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           className="relative flex flex-1 flex-col overflow-hidden"
         >
           {quoteMessage && (
-            <div className="flex items-center justify-between border-b border-[var(--gap-text)] bg-[var(--chat-bubble)] px-4 py-2">
+            <div className="mx-3 mt-2 flex items-center justify-between rounded-lg border-l-[3px] border-[var(--primary)] bg-[var(--primary-light)] px-3 py-2">
               <div className="flex flex-1 flex-col overflow-hidden">
-                <span className="text-xs text-[var(--primary)]">
+                <span className="text-xs font-medium text-[var(--primary)]">
                   {t("placeholder.reply")} {quoteMessage.senderNickname}
                 </span>
-                <span className="truncate text-xs text-[var(--sub-text)]">
+                <span className="truncate text-xs text-[var(--text-tertiary)]">
                   {getQuotePreview(quoteMessage)}
                 </span>
               </div>
               <CloseOutlined
-                className="cursor-pointer text-[var(--sub-text)]"
+                className="cursor-pointer text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-secondary)]"
                 rev={undefined}
                 onClick={() => setQuoteMessage(undefined)}
               />
             </div>
           )}
           {pendingFiles.length > 0 && (
-            <div className="flex flex-wrap gap-2 border-b border-[var(--gap-text)] bg-[var(--chat-bubble)] px-3 py-2">
+            <div className="flex flex-wrap gap-2 border-b border-[var(--border-color)] bg-[var(--bg-body)] px-3 py-2">
               {pendingFiles.map((item) =>
                 item.file.type.startsWith("image/") ||
                 canSendImageTypeList.includes(
@@ -509,7 +509,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                 ) ? (
                   <div
                     key={item.id}
-                    className="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md border border-gray-200"
+                    className="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[var(--border-color)] bg-white"
                   >
                     <img
                       src={item.previewUrl}
@@ -526,10 +526,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                 ) : (
                   <div
                     key={item.id}
-                    className="group relative flex h-16 max-w-[120px] flex-shrink-0 items-center gap-1.5 overflow-hidden rounded-md border border-gray-200 bg-white px-2"
+                    className="group relative flex h-16 max-w-[140px] flex-shrink-0 items-center gap-1.5 overflow-hidden rounded-lg border border-[var(--border-color)] bg-white px-2"
                   >
                     <svg
-                      className="h-6 w-6 flex-shrink-0 text-gray-400"
+                      className="h-6 w-6 flex-shrink-0 text-[var(--text-placeholder)]"
                       viewBox="0 0 24 24"
                       fill="none"
                     >
@@ -540,7 +540,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                       />
                       <path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" />
                     </svg>
-                    <span className="truncate text-xs text-gray-600">
+                    <span className="truncate text-xs text-[var(--text-secondary)]">
                       {item.file.name}
                     </span>
                     <div
@@ -583,9 +583,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             onPasteFile={addPendingFiles}
             onKeydown={handleEditorKeydown}
           />
-          <div className="flex items-center justify-end py-2 pr-3">
+          <div className="flex items-center justify-end px-3 py-2">
             <Button
-              className="w-fit px-6 py-1"
+              className="h-8 rounded-lg px-6 font-medium shadow-sm transition-all hover:shadow"
               type="primary"
               onClick={enterToSend}
               loading={screenshotLoading}

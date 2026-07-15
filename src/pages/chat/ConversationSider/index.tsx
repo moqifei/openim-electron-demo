@@ -35,19 +35,19 @@ const ConnectBar = () => {
   return (
     <>
       {showLoading && (
-        <div className="flex h-6 items-center justify-center bg-[#0089FF] bg-opacity-10">
+        <div className="flex h-7 items-center justify-center bg-[var(--primary-light)]">
           <img
             src={sync}
             alt="sync"
-            className={clsx("mr-1 h-3 w-3 ", styles.loading)}
+            className={clsx("mr-1.5 h-3 w-3", styles.loading)}
           />
-          <span className=" text-xs text-[#0089FF]">{loadingTip}</span>
+          <span className="text-xs text-[var(--primary)]">{loadingTip}</span>
         </div>
       )}
       {showFailed && (
-        <div className="flex h-6 items-center justify-center bg-[#FF381F] bg-opacity-15">
-          <img src={sync_error} alt="sync" className="mr-1 h-3 w-3" />
-          <span className=" text-xs text-[#FF381F]">{errorTip}</span>
+        <div className="flex h-7 items-center justify-center bg-[rgba(245,63,63,0.06)]">
+          <img src={sync_error} alt="sync" className="mr-1.5 h-3 w-3" />
+          <span className="text-xs text-[var(--danger)]">{errorTip}</span>
         </div>
       )}
     </>

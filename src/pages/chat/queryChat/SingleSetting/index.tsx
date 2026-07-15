@@ -113,13 +113,13 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         </div>
         <RightOutlined rev={undefined} />
       </div>
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
+      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
       <SettingRow
         title={t("placeholder.moveBlacklist")}
         value={isBlack}
         tryChange={updateBlack}
       />
-      <Divider className="m-0 border-4 border-[#F4F5F7]" />
+      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
 
       <div className="flex-1" />
       {isFriend && (

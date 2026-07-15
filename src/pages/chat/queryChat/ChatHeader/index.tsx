@@ -1,6 +1,7 @@
 import { CbEvents, OnlineState, Platform, SessionType } from "@openim/wasm-client-sdk";
 import { UserOnlineState, WSEvent } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Layout, Tooltip } from "antd";
+import { UserOutlined } from "@ant-design/icons";
 import clsx from "clsx";
 import i18n, { t } from "i18next";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +14,8 @@ import { OverlayVisibleHandle } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useContactStore, useConversationStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
+import { getAgentUserIDSet } from "@/utils/agentRecommendations";
+import { isAgentConversation } from "@/utils/agentConversation";
 
 import GroupSetting from "../GroupSetting";
 import SingleSetting from "../SingleSetting";
@@ -54,7 +57,10 @@ const platformTextMap: Partial<Record<Platform, string>> = {
 };
 
 const ORANGE_AGENT_PLATFORM_ID = 12;
+const BOT_USER_ID_PREFIX = "bot_";
 
+// 群成员列表(GroupMemberItem)不含 registerType，无法直接在成员对象上判断智能体，
+// 改为用群成员 userID 匹配智能体 userID 集合（与 agentRecommendations 一致）。
 const getPrimaryPlatformText = (platformIDs?: Platform[]) => {
   const platform = platformIDs?.[0];
   if (!platform) return "";
@@ -91,6 +97,8 @@ const ChatHeader = () => {
   const inGroup = useConversationStore((state) =>
     Boolean(state.currentMemberInGroup?.groupID),
   );
+  // 智能体成员计数
+  const [agentCount, setAgentCount] = useState(0);
 
   // locale re render
   useUserStore((state) => state.appSettings.locale);
@@ -98,6 +106,13 @@ const ChatHeader = () => {
   const isSingleSession = currentConversation?.conversationType === SessionType.Single;
   const isGroupSession = currentConversation?.conversationType === SessionType.Group;
   const currentUserID = currentConversation?.userID;
+
+  // 判断当前会话是否为智能体
+  const latestMsgParsed = useMemo(() => {
+    if (!currentConversation?.latestMsg) return undefined;
+    try { return JSON.parse(currentConversation.latestMsg); } catch { return undefined; }
+  }, [currentConversation?.latestMsg]);
+  const isAgent = isAgentConversation(currentConversation, latestMsgParsed);
 
   const displayName = useContactStore((state) => {
     if (!isSingleSession) return currentConversation?.showName;
@@ -150,6 +165,31 @@ const ChatHeader = () => {
     };
   }, [currentUserID, isSingleSession]);
 
+  // 群聊时获取成员列表，统计智能体数量
+  useEffect(() => {
+    setAgentCount(0);
+    if (!isGroupSession || !currentConversation?.groupID) return;
+
+    let disposed = false;
+    Promise.all([
+      IMSDK.getGroupMemberList({
+        groupID: currentConversation.groupID,
+        filter: 0,
+        offset: 0,
+        count: 500,
+      }),
+      getAgentUserIDSet(),
+    ])
+      .then(([{ data }, agentSet]) => {
+        if (disposed || !data) return;
+        const count = data.filter((m) => agentSet.has(m.userID)).length;
+        setAgentCount(count);
+      })
+      .catch(() => {});
+
+    return () => { disposed = true; };
+  }, [currentConversation?.groupID, isGroupSession]);
+
   const onlineStatusText = useMemo(() => {
     if (!isSingleSession || !onlineState) return "";
     if (onlineState.status !== OnlineState.Online) return "离线";
@@ -184,45 +224,66 @@ const ChatHeader = () => {
   };
 
   return (
-    <Layout.Header className="relative border-b border-b-[var(--gap-text)] !bg-white !px-3">
+    <Layout.Header className="relative border-b border-b-[var(--border-color)] !bg-[var(--bg-base)] !px-4">
       <div className="flex h-full items-center leading-none">
         <div className="flex flex-1 items-center overflow-hidden">
-          <OIMAvatar
-            src={currentConversation?.faceURL}
-            text={displayName}
-            isgroup={Boolean(currentConversation?.groupID)}
-          />
+          {isAgent ? (
+            <div className="rounded-full bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] p-[2px]">
+              <OIMAvatar
+                src={currentConversation?.faceURL}
+                text={displayName}
+                isgroup={Boolean(currentConversation?.groupID)}
+                size={36}
+                color="#7c3aed"
+                className="!bg-white"
+              />
+            </div>
+          ) : (
+            <OIMAvatar
+              src={currentConversation?.faceURL}
+              text={displayName}
+              isgroup={Boolean(currentConversation?.groupID)}
+              size={40}
+            />
+          )}
           <div
             className={clsx(
-              "ml-3 flex !h-10.5 flex-1 flex-col justify-between overflow-hidden",
+              "ml-3 flex !h-11 flex-1 flex-col justify-center overflow-hidden gap-0.5",
             )}
           >
-            <div className="truncate text-base font-semibold">{displayName}</div>
+            <div className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{displayName}</div>
             {isSingleSession && onlineStatusText && (
               <div
                 className={clsx(
                   "flex items-center text-xs",
-                  isOnline ? "text-[var(--sub-text)]" : "text-[#98a2b3]",
+                  isOnline ? "text-[var(--text-tertiary)]" : "text-[var(--text-placeholder)]",
                 )}
               >
                 <span
                   className={clsx(
-                    "mr-2 h-1.5 w-1.5 rounded-full",
-                    isOnline ? "bg-[#17c964]" : "bg-[#c7ced9]",
+                    "mr-1.5 h-1.5 w-1.5 rounded-full",
+                    isOnline ? "bg-[var(--success)]" : "bg-[#c9cdd4]",
                   )}
                 />
                 <span>{onlineStatusText}</span>
               </div>
             )}
             {isGroupSession && currentUserIsInGroup && (
-              <div className="flex items-center text-xs text-[var(--sub-text)]">
-                <img width={20} src={group_member} alt="member" />
-                <span>{currentGroupInfo?.memberCount}</span>
+              <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
+                <span className="flex items-center">
+                  <UserOutlined className="mr-1 text-[11px] opacity-50" />
+                  {(currentGroupInfo?.memberCount ?? 0) - agentCount}
+                </span>
+                {agentCount > 0 && (
+                  <span className="flex items-center rounded-full bg-[#ede9fe] px-2 py-px text-[11px] font-bold tracking-wider text-[#7c3aed]">
+                    AI {agentCount}
+                  </span>
+                )}
               </div>
             )}
           </div>
         </div>
-        <div className="mr-5 flex">
+        <div className="mr-3 flex items-center">
           {menuList.map((menu) => {
             if (menu.idx === 1 && (isSingleSession || (!inGroup && !isSingleSession))) {
               return null;
@@ -233,13 +294,13 @@ const ChatHeader = () => {
 
             return (
               <Tooltip title={menu.title} key={menu.idx}>
-                <img
-                  className="ml-5 cursor-pointer"
-                  width={20}
-                  src={menu.icon}
-                  alt=""
+                <button
+                  type="button"
+                  className="ml-1 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
                   onClick={() => menuClick(menu.idx)}
-                />
+                >
+                  <img width={18} src={menu.icon} alt="" />
+                </button>
               </Tooltip>
             );
           })}

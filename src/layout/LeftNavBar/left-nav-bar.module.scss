@@ -1,5 +1,7 @@
+/* MVP1: 左侧导航栏样式 - 飞书风格 */
+
 .avatar-wrapper {
-  @apply mr-4 relative;
+  @apply relative;
 
   &:hover {
     .mask {
@@ -8,6 +10,7 @@
   }
 
   .mask {
-    @apply flex justify-center items-center bg-[rgba(0,0,0,.6)] absolute z-10 top-0 left-0 w-full h-full rounded-md opacity-0 transition-opacity;
+    @apply flex justify-center items-center bg-[rgba(0,0,0,.45)] absolute z-10 top-0 left-0 w-full rounded-full opacity-0 transition-opacity;
+    backdrop-filter: blur(2px);
   }
 }

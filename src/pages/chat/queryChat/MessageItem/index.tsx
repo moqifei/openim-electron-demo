@@ -204,7 +204,9 @@ const MessageItem: FC<IMessageItemProps> = ({
                     mouseEnterDelay={0}
                     mouseLeaveDelay={0.2}
                   >
-                    <MoreOutlined className="cursor-pointer px-1 text-[var(--sub-text)] hover:text-[var(--primary)]" />
+                    <div className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--bg-hover)]">
+                      <MoreOutlined className="text-[var(--sub-text)] hover:text-[var(--primary)]" />
+                    </div>
                   </Dropdown>
                 </div>
               )}

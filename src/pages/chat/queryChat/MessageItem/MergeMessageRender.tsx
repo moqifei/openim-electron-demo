@@ -16,21 +16,21 @@ const MergeMessageRender: FC<IMessageItemProps> = ({ message }) => {
   return (
     <>
       <div
-        className={`${styles.bubble} cursor-pointer hover:opacity-80`}
+        className={`${styles.bubble} !rounded-lg !border-[var(--border-color)] !bg-[var(--bg-base)] cursor-pointer hover:opacity-80`}
         onClick={() => setDetailOpen(true)}
       >
         <div className="max-w-[240px]">
-          <div className="text-sm font-medium text-[var(--primary-text)]">
+          <div className="text-sm font-medium text-[var(--text-primary)]">
             {mergeElem.title}
           </div>
-          <div className="mt-1 space-y-0.5 text-xs text-[var(--sub-text)]">
+          <div className="mt-1 space-y-0.5 text-xs text-[var(--text-tertiary)]">
             {mergeElem.abstractList?.slice(0, 4).map((abs, idx) => (
               <div key={idx} className="truncate">
                 {abs}
               </div>
             ))}
           </div>
-          <div className="mt-2 border-t border-[var(--gap-text)] pt-1 text-xs text-[var(--sub-text)]">
+          <div className="mt-2 border-t border-[var(--border-color)] pt-1 text-xs text-[var(--text-tertiary)]">
             {t("messageDescription.mergeMessage")}
           </div>
         </div>

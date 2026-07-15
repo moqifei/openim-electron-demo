@@ -110,19 +110,19 @@ const QuoteMessageRender: FC<
             />
           )}
           <div
-            className="cursor-pointer rounded border-l-2 border-[var(--primary)] bg-[rgba(0,0,0,0.03)] px-2 py-1 hover:bg-[rgba(0,0,0,0.06)]"
+            className="cursor-pointer rounded-md border-l-[3px] border-[var(--primary)] bg-[var(--primary-light)] px-2.5 py-1.5 hover:bg-[rgba(51,112,255,0.12)]"
             onClick={handleQuoteClick}
           >
             <div className="text-xs text-[var(--primary)]">
               {quoteMessage.senderNickname || ""}
             </div>
-            <div className="truncate text-xs text-[var(--sub-text)]">
+            <div className="truncate text-xs text-[var(--text-tertiary)]">
               {getQuoteContent(quoteMessage)}
             </div>
           </div>
         </>
       )}
-      <div className="whitespace-pre-wrap break-all text-[var(--primary-text)]">
+      <div className="whitespace-pre-wrap break-all text-[var(--text-primary)]">
         {text}
       </div>
     </div>

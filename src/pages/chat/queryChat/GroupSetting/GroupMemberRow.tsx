@@ -1,13 +1,14 @@
 import { GroupItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import clsx from "clsx";
 import { t } from "i18next";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 
 import invite from "@/assets/images/chatSetting/invite.png";
 import kick from "@/assets/images/chatSetting/kick.png";
 import OIMAvatar from "@/components/OIMAvatar";
 import useGroupMembers from "@/hooks/useGroupMembers";
 import { emit } from "@/utils/events";
+import { getAgentUserIDSet } from "@/utils/agentRecommendations";
 
 import styles from "./group-setting.module.scss";
 
@@ -21,6 +22,20 @@ const GroupMemberRow = ({
   updateTravel: () => void;
 }) => {
   const { fetchState, getMemberData, resetState } = useGroupMembers();
+  // 群成员列表(GroupMemberItem)不含 registerType，改用 userID 匹配智能体集合
+  const [agentSet, setAgentSet] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let disposed = false;
+    getAgentUserIDSet()
+      .then((set) => {
+        if (!disposed) setAgentSet(set);
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (currentGroupInfo?.groupID) {
@@ -63,7 +78,14 @@ const GroupMemberRow = ({
             className={styles["member-item"]}
             onClick={() => window.userClick(member.userID, member.groupID)}
           >
-            <OIMAvatar src={member.faceURL} text={member.nickname} size={36} />
+            <div className="relative">
+              <OIMAvatar src={member.faceURL} text={member.nickname} size={36} />
+              {agentSet.has(member.userID) && (
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#ede9fe] text-[8px] font-bold text-[#7c3aed] ring-1 ring-white shadow-sm">
+                  AI
+                </span>
+              )}
+            </div>
             <div className="mt-2 min-h-[16px] max-w-full truncate text-xs">
               {member.nickname}
             </div>

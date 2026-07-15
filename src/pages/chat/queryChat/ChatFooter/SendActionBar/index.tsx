@@ -274,12 +274,14 @@ const SendActionBar = ({
           if (isScreenshot) {
             return (
               <div key={action.key} className="flex cursor-pointer items-center">
-                <img
-                  src={cutIcon}
-                  width={20}
-                  alt={t("placeholder.screenshot")}
-                  onClick={handleScreenshotClick}
-                />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--bg-hover)]">
+                  <img
+                    src={cutIcon}
+                    width={20}
+                    alt={t("placeholder.screenshot")}
+                    onClick={handleScreenshotClick}
+                  />
+                </div>
                 <Popover
                   placement="bottomRight"
                   content={screenshotConfigContent}
@@ -289,14 +291,14 @@ const SendActionBar = ({
                   arrow={false}
                 >
                   <div
-                    className="ml-0.5 flex h-3.5 items-center border-l border-gray-300 pl-0.5"
+                    className="ml-0.5 flex h-3.5 items-center border-l border-[var(--border-color)] pl-0.5"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <svg
                       width="8"
                       height="8"
                       viewBox="0 0 8 8"
-                      className="text-gray-400"
+                      className="text-[var(--text-placeholder)]"
                     >
                       <path d="M0 2 L4 6 L8 2 Z" fill="currentColor" />
                     </svg>
@@ -321,7 +323,7 @@ const SendActionBar = ({
 
           return (
             <ActionWrap key={action.key} {...wrapProps}>
-              <div className="flex cursor-pointer items-center">
+              <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]">
                 <img src={action.icon} width={20} alt={action.title} />
               </div>
             </ActionWrap>

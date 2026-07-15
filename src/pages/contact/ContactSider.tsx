@@ -5,37 +5,59 @@ import i18n, { t } from "i18next";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import group_notifications from "@/assets/images/contact/group_notifications.png";
-import my_groups from "@/assets/images/contact/my_groups.png";
-import recently from "@/assets/images/chooseModal/recently.png";
 import FlexibleSider from "@/components/FlexibleSider";
 import { useContactStore } from "@/store";
 
 interface LinkItem {
   label: string;
-  icon: string | React.ReactNode;
+  icon: React.ReactNode;
   path: string;
 }
 
 const Links: LinkItem[] = [
   {
     label: t("placeholder.recentContact") || "最近联系人",
-    icon: recently,
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
+      </svg>
+    ),
     path: "/contact",
   },
   {
     label: t("placeholder.groupNotification"),
-    icon: group_notifications,
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8A6 6 0 106 8c0 7-3 9-3 9h18s-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 01-3.46 0" />
+      </svg>
+    ),
     path: "/contact/groupNotifications",
   },
   {
     label: t("placeholder.myGroup"),
-    icon: my_groups,
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" />
+        <line x1="23" y1="6" x2="23" y2="6.01" />
+      </svg>
+    ),
     path: "/contact/myGroups",
   },
   {
     label: t("placeholder.organization") || "组织结构",
-    icon: <ApartmentOutlined className="text-xl text-[#ff4d4f]" />,
+    icon: (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="3" width="7" height="7" rx="1" />
+        <rect x="14" y="14" width="7" height="7" rx="1" />
+        <rect x="3" y="14" width="7" height="7" rx="1" />
+      </svg>
+    ),
     path: "/contact/organization",
   },
 ];
@@ -75,40 +97,61 @@ const ContactSider = () => {
 
   return (
     <FlexibleSider needHidden={true}>
-      <div className="h-full bg-white">
-        <div className="pb-3 pl-5.5 pt-5.5 text-base font-extrabold">
-          {t("placeholder.contact")}
+      <div className="flex h-full flex-col bg-[var(--bg-base)]">
+        {/* 标题 */}
+        <div className="px-5 pt-6 pb-4">
+          <div className="text-lg font-bold tracking-tight text-[var(--text-primary)]">
+            {t("placeholder.contact")}
+          </div>
+          <div className="mt-1 text-xs text-[var(--text-quaternary)]">管理联系人与群组</div>
         </div>
-        <ul>
+
+        {/* 导航列表 */}
+        <ul className="flex-1 space-y-1 px-3">
           {Links.map((item, index) => {
+            const isSelected = index === selectIndex;
             return (
               <li
                 key={item.path}
                 className={clsx(
-                  "mx-2 flex cursor-pointer items-center rounded-md p-3 text-sm hover:bg-[var(--primary-active)]",
-                  {
-                    "bg-[#f3f8fe]": index === selectIndex,
-                  },
+                  "group relative cursor-pointer rounded-xl px-3 py-2.5 transition-all duration-200",
+                  isSelected
+                    ? "bg-gradient-to-r from-[#ede9fe] to-[#f5f3ff] dark:from-[#2e1065] dark:to-transparent"
+                    : "hover:bg-[var(--bg-hover)]",
                 )}
                 onClick={() => {
                   setSelectIndex(index);
                   navigate(String(item.path));
                 }}
               >
-                <Badge size="small" count={getBadge(index)}>
-                  {typeof item.icon === "string" ? (
-                    <img
-                      alt={item.label}
-                      src={item.icon}
-                      className="mr-3 h-10.5 w-10.5 rounded-md"
-                    />
-                  ) : (
-                    <div className="mr-3 flex h-10.5 w-10.5 items-center justify-center rounded-md bg-[#fff2f0]">
+                <div className="flex items-center gap-3">
+                  <Badge size="small" count={getBadge(index)} offset={[-2, 2]}>
+                    <span
+                      className={clsx(
+                        "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+                        isSelected
+                          ? "bg-[#7c3aed] text-white shadow-sm shadow-purple-200 dark:shadow-purple-900/30"
+                          : "bg-[var(--bg-secondary)] text-[var(--text-tertiary)] group-hover:text-[var(--text-secondary)]",
+                      )}
+                    >
                       {item.icon}
-                    </div>
-                  )}
-                </Badge>
-                <div className="text-sm">{item.label}</div>
+                    </span>
+                  </Badge>
+                  <div
+                    className={clsx(
+                      "text-sm font-medium transition-colors",
+                      isSelected
+                        ? "text-[#7c3aed]"
+                        : "text-[var(--text-secondary)]",
+                    )}
+                  >
+                    {item.label}
+                  </div>
+                </div>
+                {/* 选中指示器 */}
+                {isSelected && (
+                  <div className="absolute right-2 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#7c3aed]" />
+                )}
               </li>
             );
           })}

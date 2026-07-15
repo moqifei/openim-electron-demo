@@ -143,30 +143,29 @@ const TopSearchBar = () => {
   }, []);
 
   return (
-    <div className="no-mobile app-drag flex h-10 min-h-[40px] items-center bg-[var(--top-search-bar)] dark:bg-[#141414]">
-      <div className="flex w-full items-center justify-center">
+    <div className="no-mobile app-drag flex h-12 min-h-[48px] items-center border-b border-[var(--border-color)] bg-[var(--bg-base)]">
+      <div className="flex w-full items-center justify-center gap-3">
         <div
-          className="app-no-drag flex h-[26px] w-1/3 cursor-pointer items-center justify-center gap-1 rounded-md bg-[rgba(255,255,255,0.2)] text-white/70 hover:bg-[rgba(255,255,255,0.3)]"
+          className="app-no-drag flex h-[34px] w-[240px] cursor-pointer items-center gap-2 rounded-lg bg-[var(--bg-input)] px-3 text-sm text-[var(--text-placeholder)] transition-all hover:bg-[var(--bg-hover)]"
           onClick={() => globalSearchModalRef.current?.openOverlay()}
         >
-          <SearchOutlined className="text-xs" />
-          <span className="text-xs">{t("placeholder.search")}</span>
+          <SearchOutlined className="text-[13px] text-[var(--text-placeholder)]" />
+          <span>{t("placeholder.search")}</span>
         </div>
         <Popover
           content={<ActionPopContent actionClick={actionClick} />}
           arrow={false}
           title={null}
           trigger="click"
-          placement="bottom"
+          placement="bottomRight"
           open={actionVisible}
           onOpenChange={(vis) => setActionVisible(vis)}
         >
-          <img
-            className="app-no-drag ml-8 cursor-pointer"
-            width={20}
-            src={show_more}
-            alt=""
-          />
+          <button
+            className="app-no-drag flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+          >
+            <img width={18} src={show_more} alt="" />
+          </button>
         </Popover>
       </div>
       <WindowControlBar />
@@ -213,15 +212,15 @@ i18n.on("languageChanged", () => {
 
 const ActionPopContent = ({ actionClick }: { actionClick: (idx: number) => void }) => {
   return (
-    <div className="p-1">
+    <div className="w-40 p-1.5">
       {actionMenuList.map((action) => (
         <div
-          className="flex cursor-pointer items-center rounded px-3 py-2 text-xs hover:bg-[var(--primary-active)]"
+          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--primary-active)] hover:text-[var(--text-primary)]"
           key={action.idx}
           onClick={() => actionClick?.(action.idx)}
         >
-          <img width={20} src={action.icon} alt="call_video" />
-          <div className="ml-3">{action.title}</div>
+          <img width={18} src={action.icon} alt="" />
+          <span>{action.title}</span>
         </div>
       ))}
     </div>

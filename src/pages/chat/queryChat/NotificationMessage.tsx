@@ -10,10 +10,15 @@ const NotificationMessage: FC<{
   const messageWrapRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="relative" id={`chat_${message.clientMsgID}`}>
+    <div
+      className="relative flex justify-center py-2"
+      id={`chat_${message.clientMsgID}`}
+    >
       <div
         ref={messageWrapRef}
-        className={clsx("mx-6 py-3 text-center text-xs text-[var(--sub-text)]")}
+        className={clsx(
+          "max-w-[80%] rounded bg-black/[0.04] px-3 py-1 text-center text-xs leading-5 text-[var(--text-tertiary)] select-none",
+        )}
         dangerouslySetInnerHTML={{
           __html: String(notificationMessageFormat(message)),
         }}

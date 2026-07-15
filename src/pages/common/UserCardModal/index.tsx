@@ -232,19 +232,21 @@ const UserCardModal: ForwardRefRenderFunction<
         {isSendRequest ? (
           <SendRequest cardInfo={cardInfo!} backToCard={backToCard} />
         ) : (
-          <div className="flex max-h-[520px] min-h-[484px] flex-col overflow-hidden bg-[url(@/assets/images/common/card_bg.png)] bg-[length:332px_134px] bg-no-repeat px-5.5">
-            <div className="h-[104px] min-h-[104px] w-full cursor-move" />
-            <div className="ignore-drag flex flex-1 flex-col overflow-hidden">
+          <div className="flex max-h-[520px] min-h-[484px] flex-col overflow-hidden rounded-2xl bg-[var(--bg-base)] px-5.5 shadow-[0_8px_30px_rgba(31,35,41,0.12)]">
+            <div className="flex h-[120px] min-h-[120px] w-full items-center justify-center bg-gradient-to-br from-[var(--primary)] to-[#6d28d9] pt-4">
+              <OIMAvatar
+                size={64}
+                src={cardInfo?.faceURL}
+                text={cardInfo?.nickname}
+                className="ring-4 ring-white/20"
+              />
+            </div>
+            <div className="flex flex-1 flex-col overflow-hidden px-2 -mt-6">
               <div className="flex items-center">
-                <OIMAvatar
-                  size={60}
-                  src={cardInfo?.faceURL}
-                  text={cardInfo?.nickname}
-                />
                 <div className="ml-3 flex h-[60px] flex-1 flex-col justify-around overflow-hidden">
                   <div className="flex w-fit max-w-[80%] items-baseline">
                     <div
-                      className="flex-1 select-text truncate text-base font-medium text-white"
+                      className="flex-1 select-text truncate text-lg font-semibold text-[var(--text-primary)]"
                       title={cardInfo?.nickname}
                     >
                       {cardInfo?.nickname}
@@ -252,7 +254,7 @@ const UserCardModal: ForwardRefRenderFunction<
                   </div>
                   <div className="flex items-center">
                     <div
-                      className="mr-3 cursor-pointer text-xs text-[var(--sub-text)]"
+                      className="mr-3 cursor-pointer text-xs text-[var(--text-tertiary)] hover:text-[var(--primary)]"
                       onClick={() => {
                         copyToClipboard(cardInfo?.userID ?? "");
                         feedbackToast({ msg: t("toast.copySuccess") });
@@ -263,7 +265,7 @@ const UserCardModal: ForwardRefRenderFunction<
                   </div>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto rounded-xl bg-[var(--bg-body)] p-4">
                 <UserCardDataGroup
                   title={t("placeholder.personalInfo")}
                   userID={cardInfo?.userID}
@@ -272,7 +274,7 @@ const UserCardModal: ForwardRefRenderFunction<
                 />
               </div>
             </div>
-            <div className="mx-1 mb-6 mt-3 flex items-center gap-6">
+            <div className="mx-2 mb-5 mt-3 flex items-center gap-3">
               {showAddFriend && (
                 <Button type="primary" className="flex-1" onClick={trySendRequest}>
                   {t("placeholder.addFriends")}
@@ -346,25 +348,34 @@ const UserCardDataGroup: FC<IUserCardDataGroupProps> = ({
   };
   return (
     <div>
-      <div className="my-4 text-[var(--sub-text)]">{title}</div>
+      <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-placeholder)]">
+        {title}
+      </div>
       {fieldRows.map((fieldRow, idx) => (
-        <div className="my-4 flex items-center text-xs" key={idx}>
-          <div className="w-24 text-[var(--sub-text)]">{fieldRow.title}</div>
+        <div
+          className="flex items-center rounded-lg px-3 py-2.5 text-xs transition-colors hover:bg-[var(--bg-hover)]"
+          key={idx}
+        >
+          <div className="w-20 shrink-0 text-[var(--text-tertiary)]">
+            {fieldRow.title}
+          </div>
           {fieldRow.editable ? (
             <EditableContent
               className="!ml-0"
-              textClassName="font-medium"
+              textClassName="font-medium text-[var(--text-primary)]"
               value={fieldRow.value}
               editable={true}
               onChange={tryUpdateRemark}
             />
           ) : (
-            <div className="flex-1 select-text truncate">{fieldRow.value}</div>
+            <div className="flex-1 select-text truncate font-medium text-[var(--text-primary)]">
+              {fieldRow.value}
+            </div>
           )}
         </div>
       ))}
 
-      {divider && <Divider className="my-0 border-[var(--gap-text)]" />}
+      {divider && <Divider className="my-2 border-[var(--border-color)]" />}
     </div>
   );
 };

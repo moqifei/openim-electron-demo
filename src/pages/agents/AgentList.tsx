@@ -1,6 +1,6 @@
 import { RobotOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
-import { Avatar, Empty, Layout, Spin } from "antd";
+import { Empty, Layout, Spin } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,7 +9,6 @@ import { useConversationToggle } from "@/hooks/useConversationToggle";
 import {
   AgentRecommendation,
   collectVisibleAgentRecommendations,
-  isAgentUser,
 } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
 
@@ -68,59 +67,102 @@ export const AgentList = () => {
   };
 
   return (
-    <Layout className="no-mobile flex bg-white px-10 py-10">
-      <div className="mx-auto flex h-full w-full max-w-[980px] flex-col overflow-hidden">
-        <div className="mb-7 shrink-0">
-          <div className="mb-2 flex items-center gap-2 text-2xl font-medium text-[#1f2937]">
-            <RobotOutlined rev={undefined} className="text-[var(--primary)]" />
-            <span>智能体</span>
+    <Layout className="no-mobile flex bg-[var(--bg-body)] px-8 py-8">
+      <div className="mx-auto flex h-full w-full max-w-[720px] flex-col overflow-hidden">
+        {/* 标题区 */}
+        <div className="mb-6 shrink-0 text-center">
+          <div className="mb-1 inline-flex items-center justify-center gap-2.5">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] shadow-lg shadow-purple-200 dark:shadow-purple-900/30">
+              <RobotOutlined className="text-sm text-white" />
+            </span>
+            <h1 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
+              智能体
+            </h1>
           </div>
-          <div className="text-sm text-[var(--sub-text)]">点击智能体后直接进入对话</div>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--text-tertiary)]">
+            选择一个智能体开始对话
+          </p>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {/* 内容区 */}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
           {loading ? (
-            <div className="flex h-full min-h-[260px] items-center justify-center">
-              <Spin />
+            <div className="flex h-full min-h-[300px] items-center justify-center">
+              <Spin size="large" />
             </div>
           ) : agents.length > 0 ? (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 pb-2">
+            <div className="grid gap-3 pb-4 sm:grid-cols-2">
               {agents.map((agent) => (
                 <button
                   key={agent.userID}
                   type="button"
-                  className="group flex min-h-[124px] cursor-pointer items-center rounded-lg border border-[#e5e7eb] bg-white p-5 text-left transition hover:border-[var(--primary)] hover:bg-[#f8fafc] hover:shadow-sm disabled:cursor-default disabled:opacity-80"
+                  group
+                  className="group relative flex cursor-pointer flex-col items-center gap-3 overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] p-6 text-left shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-[#c4b5fd] hover:shadow-lg hover:shadow-purple-100/50 dark:hover:shadow-purple-900/20 active:scale-[0.98] disabled:cursor-default disabled:opacity-70"
                   disabled={Boolean(openingAgentID)}
                   onClick={() => void openAgentChat(agent)}
                 >
-                  <Avatar size={58} src={agent.faceURL || undefined}>
-                    {agent.nickname.slice(0, 1).toUpperCase()}
-                  </Avatar>
-                  <div className="ml-4 min-w-0 flex-1">
-                    <div className="flex items-center">
-                      <div className="break-words text-base font-medium leading-5 text-[#111827]">
-                        {agent.nickname}
-                      </div>
-                      {isAgentUser(agent) && (
-                        <span className="ml-2 shrink-0 rounded bg-[#f3e8ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#7c3aed]">
-                          智能体
-                        </span>
+                  {/* 头像区 */}
+                  <div className="relative">
+                    <div className="relative h-16 w-16 overflow-hidden rounded-2xl bg-gradient-to-br from-[#ede9fe] to-[#ddd6fe] ring-4 ring-white dark:from-[#2e1065] dark:to-[#4c1d95] dark:ring-[#1f1235]">
+                      {agent.faceURL ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={agent.faceURL}
+                          alt={agent.nickname}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-lg font-bold text-[#7c3aed]">
+                          {agent.nickname.slice(0, 1).toUpperCase()}
+                        </div>
                       )}
                     </div>
-                    <div className="mt-2 break-all text-xs leading-4 text-[var(--sub-text)]">
-                      {agent.userID}
+                    {/* 在线指示点 */}
+                    <span className="absolute bottom-0.5 right-0.5 block h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-[#1f1235]" />
+                  </div>
+
+                  {/* 信息区 */}
+                  <div className="w-full text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
+                        {agent.nickname}
+                      </span>
+                      <span className="shrink-0 rounded-full bg-[#ede9fe] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7c3aed] dark:bg-[#2e1065]/60">
+                        AI
+                      </span>
                     </div>
-                    <div className="mt-3 text-xs text-[var(--sub-text)]">
-                      {openingAgentID === agent.userID
-                        ? t("connect.connecting")
-                        : "点击进入对话"}
+
+                    {/* 操作提示 */}
+                    <div className="mt-3 flex items-center justify-center gap-1 text-xs text-[var(--text-quaternary)] transition-colors group-hover:text-[#7c3aed]">
+                      {openingAgentID === agent.userID ? (
+                        <>
+                          <Spin size="small" />
+                          <span>{t("connect.connecting")}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>开始对话</span>
+                          <svg
+                            className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                          </svg>
+                        </>
+                      )}
                     </div>
                   </div>
+
+                  {/* hover 渐变光晕 */}
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-b from-transparent via-transparent to-[#7c3aed]/[0.03] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                 </button>
               ))}
             </div>
           ) : (
-            <div className="flex h-full min-h-[260px] items-center justify-center rounded-lg border border-dashed border-[#e5e7eb]">
+            <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[var(--border-color)]">
               <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={noAgents} />
             </div>
           )}

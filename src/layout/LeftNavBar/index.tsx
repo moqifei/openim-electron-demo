@@ -61,21 +61,13 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: MainNavItem
   );
 
   const tryNavigate = () => {
-    if (isActive) {
-      return;
-    }
-
-    // TODO Keep answering when jumping back to chat from another page (if there is one)
+    if (isActive) return;
     navigator.push(path);
   };
 
   const getBadge = () => {
-    if (path === "/chat") {
-      return unReadCount;
-    }
-    if (path === "/contact") {
-      return unHandleFriendApplicationCount + unHandleGroupApplicationCount;
-    }
+    if (path === "/chat") return unReadCount;
+    if (path === "/contact") return unHandleFriendApplicationCount + unHandleGroupApplicationCount;
     return 0;
   };
 
@@ -83,13 +75,20 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: MainNavItem
     <Badge size="small" count={getBadge()}>
       <div
         className={clsx(
-          "mb-3 flex h-[52px] w-12 cursor-pointer flex-col items-center justify-center rounded-md",
-          { "bg-[#e9e9eb]": isActive },
+          "group flex h-[52px] w-12 cursor-pointer flex-col items-center justify-center rounded-xl transition-all duration-200",
+          isActive
+            ? "bg-[var(--primary-light)] text-[var(--primary)]"
+            : "text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]",
         )}
         onClick={tryNavigate}
       >
-        <img width={20} src={isActive ? icon_active : icon} alt="" />
-        <div className="mt-1 text-xs text-gray-500">{title}</div>
+        <img width={22} src={isActive ? icon_active : icon} alt="" className="opacity-90" />
+        <div className={clsx(
+          "mt-1 text-[11px] font-medium leading-none transition-colors",
+          isActive ? "text-[var(--primary)]" : "text-[var(--text-tertiary)]",
+        )}>
+          {title}
+        </div>
       </div>
     </Badge>
   );
@@ -196,37 +195,39 @@ const LeftNavBar = memo(() => {
   };
 
   const ProfileContent = (
-    <div className="w-72 px-2.5 pb-3 pt-5.5">
-      <div className="mb-4.5 ml-3 flex items-center">
+    <div className="w-72 px-3 pb-4 pt-5">
+      <div className="mb-5 flex items-center gap-3">
         <Upload
           accept=".jpeg,.png,.webp"
           showUploadList={false}
           customRequest={customUpload as any}
         >
           <div className={styles["avatar-wrapper"]}>
-            <OIMAvatar src={selfInfo.faceURL} text={selfInfo.nickname} />
+            <OIMAvatar
+              src={selfInfo.faceURL}
+              text={selfInfo.nickname}
+            />
             <div className={styles["mask"]}>
               <img src={change_avatar} width={19} alt="" />
             </div>
           </div>
         </Upload>
-        <div className="flex-1 overflow-hidden">
-          <div className="mb-1 truncate text-base font-medium">{selfInfo.nickname}</div>
+        <div className="flex-1 overflow-hidden min-w-0">
+          <div className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{selfInfo.nickname}</div>
+          <div className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">ID: {selfInfo.userID}</div>
         </div>
       </div>
       {profileMenuList.map((menu) => (
         <div key={menu.idx}>
           <div
-            className="flex cursor-pointer items-center justify-between rounded-md px-3 py-4 hover:bg-[var(--primary-active)]"
+            className="flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-3 transition-colors hover:bg-[var(--bg-hover)]"
             onClick={() => profileMenuClick(menu.idx)}
           >
-            <div>{menu.title}</div>
-            <RightOutlined rev={undefined} />
+            <span className="text-sm text-[var(--text-secondary)]">{menu.title}</span>
+            <RightOutlined rev={undefined} className="text-xs text-[var(--text-placeholder)]" />
           </div>
           {menu.gap && (
-            <div className="px-3">
-              <Divider className="my-1.5 border-[var(--gap-text)]" />
-            </div>
+            <Divider className="my-1 border-[var(--divider-color)]" />
           )}
         </div>
       ))}
@@ -235,11 +236,11 @@ const LeftNavBar = memo(() => {
 
   return (
     <Sider
-      className="no-mobile border-r border-gray-200 !bg-[#F4F4F4] dark:border-gray-800 dark:!bg-[#141414]"
-      width={60}
+      className="no-mobile border-r border-[var(--border-color)] !bg-[var(--bg-sidebar)]"
+      width={64}
       theme="light"
     >
-      <div className="mt-6 flex flex-col items-center">
+      <div className="mt-5 flex flex-col items-center">
         <Popover
           content={ProfileContent}
           trigger="click"
@@ -251,15 +252,17 @@ const LeftNavBar = memo(() => {
           onOpenChange={(vis) => setShowProfile(vis)}
         >
           <OIMAvatar
-            className="mb-6 cursor-pointer"
+            className="mb-5 cursor-pointer shadow-sm ring-2 ring-transparent transition-shadow hover:shadow-md hover:ring-[var(--primary-light)]"
             src={selfInfo.faceURL}
             text={selfInfo.nickname}
           />
         </Popover>
 
-        {navList.map((nav) => (
-          <NavItem nav={nav} key={nav.path} />
-        ))}
+        <div className="w-full px-2.5 space-y-1">
+          {navList.map((nav) => (
+            <NavItem nav={nav} key={nav.path} />
+          ))}
+        </div>
       </div>
       <PersonalSettings ref={personalSettingsRef} />
       <About ref={aboutRef} />

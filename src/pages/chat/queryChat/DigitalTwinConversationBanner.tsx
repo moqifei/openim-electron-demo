@@ -95,18 +95,18 @@ const DigitalTwinConversationBanner = () => {
   if (!bannerText) return null;
 
   return (
-    <div className="border-b border-[#e7edf6] bg-[#f8fbff] px-5 py-2.5 text-sm text-[#27415f]">
-      <div className="flex min-w-0 items-start gap-3 rounded-lg border border-[#d8ebff] bg-white/85 px-3 py-2 shadow-[0_6px_18px_rgba(0,137,255,0.08)]">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#e8f4ff]">
-          <img className="h-4 w-4 object-contain" src={aiIcon} alt="" />
+    <div className="border-b border-[var(--border-color)] bg-[var(--bg-body)] px-5 py-2.5">
+      <div className="flex min-w-0 items-start gap-3 rounded-xl border border-[#e9d5ff]/60 bg-gradient-to-r from-[#faf5ff] to-white px-3.5 py-2.5 shadow-sm dark:from-purple-950/20 dark:to-transparent dark:border-purple-800/30">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] shadow-sm">
+          <img className="h-4 w-4 object-contain brightness-0 invert" src={aiIcon} alt="" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="shrink-0 font-semibold text-[#0089ff]">AI 分身提醒</span>
-            <span className="min-w-0 truncate text-[#1f2a44]">{bannerText}</span>
+            <span className="shrink-0 font-semibold text-[#7c3aed]">AI 分身提醒</span>
+            <span className="min-w-0 truncate text-sm text-[var(--text-secondary)]">{bannerText}</span>
           </div>
           {latestRecord?.replyText && (
-            <div className="mt-1 min-w-0 truncate text-xs text-[#7c8ca5]">
+            <div className="mt-1 min-w-0 truncate text-xs text-[var(--text-quaternary)]">
               最近：{truncateText(latestRecord.replyText, 56)}
             </div>
           )}

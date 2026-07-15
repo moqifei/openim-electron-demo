@@ -64,26 +64,25 @@ const MessageMenu: FC<IMessageMenuProps> = ({
   ];
 
   // Adjust position to keep menu within viewport
-  const menuWidth = 120;
-  const menuHeight = menuItems.length * 36 + 8;
+  const menuWidth = 124;
+  const menuHeight = menuItems.length * 34 + 8;
   const adjustedX = Math.min(x, window.innerWidth - menuWidth - 8);
   const adjustedY = Math.min(y, window.innerHeight - menuHeight - 8);
 
   return (
     <div
       ref={menuRef}
-      className="fixed z-[1000] rounded-md bg-white py-1 shadow-lg"
+      className="fixed z-[1000] rounded-lg border border-[var(--border-color)] bg-white py-1 shadow-[0_4px_16px_rgba(31,35,41,0.12)]"
       style={{
         left: adjustedX,
         top: adjustedY,
         minWidth: menuWidth,
-        boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
       }}
     >
       {menuItems.map((item, idx) => (
         <div
           key={idx}
-          className="cursor-pointer px-4 py-2 text-sm text-[var(--primary-text)] hover:bg-[var(--chat-bubble)]"
+          className="cursor-pointer px-4 py-1.5 text-[13px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
           onClick={() => {
             item.onClick();
             onClose();

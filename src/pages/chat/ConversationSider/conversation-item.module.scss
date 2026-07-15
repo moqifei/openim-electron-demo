@@ -1,5 +1,11 @@
+/* MVP1: 会话列表项 - 飞书风格 */
+
 .conversation-item {
-  @apply relative my-1 flex items-center rounded-md p-2 hover:bg-[var(--primary-active)];
+  @apply relative flex items-center rounded-lg px-2.5 py-2.5 mx-1.5 transition-colors duration-150 cursor-pointer;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
 
   &-pined {
     &::after {
@@ -17,50 +23,51 @@
     height: 16px;
   }
 
+  /* 未读角标 - 飞书风格小红点/数字 */
   &-unread {
     position: absolute;
-    right: -7px;
-    top: -7px;
+    right: 4px;
+    top: 4px;
     z-index: 2;
     display: flex;
-    min-width: 17px;
-    height: 17px;
+    min-width: 18px;
+    height: 18px;
     align-items: center;
     justify-content: center;
-    border: 1px solid #fff;
-    border-radius: 999px;
-    background: #0289fa;
-    box-shadow: 0 2px 5px rgba(2, 137, 250, 0.25);
+    border: none;
+    border-radius: 9px;
+    background: var(--danger);
     color: #fff;
     font-size: 10px;
     font-weight: 600;
     line-height: 1;
-    padding: 0 4px;
+    padding: 0 5px;
   }
 
+  /* AI 智能体未读角标 */
   &-unread-agent {
     background: linear-gradient(135deg, #7c3aed 0%, #f97316 100%);
-    box-shadow: 0 2px 6px rgba(124, 58, 237, 0.28);
   }
 
+  /* AI 智能体标识角标 */
   &-agent-corner {
     position: absolute;
-    right: -5px;
-    bottom: -5px;
+    right: -4px;
+    bottom: -4px;
     z-index: 1;
     display: flex;
     height: 16px;
     min-width: 20px;
     align-items: center;
     justify-content: center;
-    border: 1px solid #fff;
-    border-radius: 999px;
+    border: 1.5px solid var(--bg-base);
+    border-radius: 8px;
     background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 100%);
-    box-shadow: 0 2px 5px rgba(109, 40, 217, 0.24);
     color: #fff;
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0;
+    box-shadow: 0 1px 3px rgba(109, 40, 217, 0.15);
   }
 }

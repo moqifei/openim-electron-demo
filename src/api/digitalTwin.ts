@@ -124,11 +124,40 @@ export type DigitalTwinSkillGenerateResponse = {
   metadata?: Record<string, unknown>;
 };
 
+// --- Async skill-generation task types ---
+
+export type SkillGenerateTaskStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type SkillGenerateTask = {
+  id: string;
+  status: SkillGenerateTaskStatus;
+  owner_user_id: string;
+  skill_name: string;
+  skill_path?: string;
+  skill_content?: string;
+  source?: string;
+  error?: string;
+  created_at: string;
+  completed_at?: string;
+};
+
+export type DigitalTwinSkillGenerateAcceptResponse = {
+  task_id: string;
+  status: string;
+  message: string;
+};
+
 export type DigitalTwinSkillSummary = {
   name: string;
   description?: string;
   skillPath?: string;
   updatedAt?: number;
+  /** Full SKILL.md file content (frontmatter + body) */
+  content?: string;
 };
 
 export type DigitalTwinSkillListResponse = {
@@ -214,9 +243,16 @@ export const generateDigitalTwinSkill = async (
   skillName: string,
   description: string,
 ) =>
-  getChatAxios().post<DigitalTwinSkillGenerateResponse>(
+  getChatAxios().post<DigitalTwinSkillGenerateAcceptResponse>(
     "/digital_twin/skills/generate",
     { skillName, description },
+    await withChatAuth(),
+  );
+
+export const getSkillGenerateTaskStatus = async (taskId: string) =>
+  getChatAxios().post<SkillGenerateTask>(
+    `/digital_twin/skills/tasks/${taskId}`,
+    {},
     await withChatAuth(),
   );
 
