@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
-APP_NAME="OpenCorp-Base"
-SHORTCUT_NAME="opencorp-base.desktop"
+SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
+SHORTCUT_NAME="stickycake.desktop"
+LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
 
 append_unique_line() {
@@ -59,11 +60,33 @@ remove_shortcut_for_user() {
 
 remove_shortcut_from_desktop_dir() {
   desktop_dir="$1"
-  target="$desktop_dir/$SHORTCUT_NAME"
 
-  if [ -f "$target" ] && grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then
-    rm -f "$target"
-  fi
+  for shortcut_name in "$SHORTCUT_NAME" "$LEGACY_SHORTCUT_NAME"; do
+    target="$desktop_dir/$shortcut_name"
+    if [ -f "$target" ] && grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then
+      rm -f "$target"
+    fi
+  done
+}
+
+remove_system_fallbacks() {
+  for shortcut_name in "$SHORTCUT_NAME" "$LEGACY_SHORTCUT_NAME"; do
+    target="$SYSTEM_APPLICATIONS_DIR/$shortcut_name"
+    if [ ! -f "$target" ]; then
+      continue
+    fi
+
+    if grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then
+      rm -f "$target"
+      continue
+    fi
+
+    if [ "$shortcut_name" = "$LEGACY_SHORTCUT_NAME" ] && \
+      grep -Fq 'Exec=/opt/OpenCorp-Base/opencorp-base' "$target" 2>/dev/null
+    then
+      rm -f "$target"
+    fi
+  done
 }
 
 remove_shortcuts_from_home_desktops() {
@@ -82,5 +105,6 @@ while IFS=: read -r user home_dir; do
 done
 
 remove_shortcuts_from_home_desktops
+remove_system_fallbacks
 
 exit 0

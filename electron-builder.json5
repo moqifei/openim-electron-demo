@@ -78,7 +78,7 @@
     target: [
       {
         target: "deb",
-        arch: ["arm64"]
+        arch: ["x64"]
       },
       {
         target: "AppImage",

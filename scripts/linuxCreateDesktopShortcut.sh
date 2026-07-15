@@ -1,15 +1,16 @@
 #!/bin/sh
 set -eu
 
-APP_NAME="OpenCorp-Base"
-EXECUTABLE_NAME="opencorp-base"
+APP_NAME="年糕"
+EXECUTABLE_NAME="stickycake"
 APP_ID="io.opencorp.desktop.base"
 APP_DIR="/opt/$APP_NAME"
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
-SHORTCUT_DISPLAY_NAME="$EXECUTABLE_NAME"
+SHORTCUT_DISPLAY_NAME="$APP_NAME"
 SHORTCUT_NAME="${EXECUTABLE_NAME}.desktop"
+LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
-POSTINST_LOG="/tmp/opencorp-base-postinst.log"
+POSTINST_LOG="/tmp/stickycake-postinst.log"
 
 log() {
   printf '%s\n' "$*" >> "$POSTINST_LOG" 2>/dev/null || true
@@ -50,6 +51,21 @@ find_source_desktop() {
   return 1
 }
 
+remove_legacy_system_desktop() {
+  legacy_desktop="$SYSTEM_APPLICATIONS_DIR/$LEGACY_SHORTCUT_NAME"
+
+  if [ ! -f "$legacy_desktop" ]; then
+    return 0
+  fi
+
+  if grep -q "^$MANAGED_MARKER$" "$legacy_desktop" 2>/dev/null || \
+    grep -Fq 'Exec=/opt/OpenCorp-Base/opencorp-base' "$legacy_desktop" 2>/dev/null
+  then
+    rm -f "$legacy_desktop"
+    log "removed legacy system desktop file: $legacy_desktop"
+  fi
+}
+
 create_fallback_desktop() {
   fallback="$SYSTEM_APPLICATIONS_DIR/${EXECUTABLE_NAME}.desktop"
   mkdir -p "$SYSTEM_APPLICATIONS_DIR"
@@ -62,6 +78,7 @@ Type=Application
 Icon=$EXECUTABLE_NAME
 StartupWMClass=$APP_NAME
 Categories=Utility;
+$MANAGED_MARKER
 EOF
   chmod 644 "$fallback"
   printf '%s\n' "$fallback"
@@ -154,11 +171,23 @@ install_shortcut_to_desktop_dir() {
   fi
 
   target="$desktop_dir/$SHORTCUT_NAME"
+  legacy_target="$desktop_dir/$LEGACY_SHORTCUT_NAME"
+  if [ -f "$legacy_target" ] && grep -q "^$MANAGED_MARKER$" "$legacy_target" 2>/dev/null; then
+    rm -f "$legacy_target"
+    log "removed legacy desktop shortcut for $user: $legacy_target"
+  fi
+
   cp "$source_desktop" "$target"
   if grep -q '^Name' "$target" 2>/dev/null; then
     sed -i "s/^Name\\(\\[[^]]*\\]\\)\\?=.*/Name\\1=$SHORTCUT_DISPLAY_NAME/" "$target"
   else
     sed -i "/^\[Desktop Entry\]/a Name=$SHORTCUT_DISPLAY_NAME" "$target" 2>/dev/null || true
+  fi
+
+  if grep -q '^Exec=' "$target" 2>/dev/null; then
+    sed -i "s|^Exec=.*|Exec=/opt/$APP_NAME/$EXECUTABLE_NAME %U|" "$target"
+  else
+    sed -i "/^\[Desktop Entry\]/a Exec=/opt/$APP_NAME/$EXECUTABLE_NAME %U" "$target" 2>/dev/null || true
   fi
 
   if ! grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then
@@ -295,6 +324,7 @@ install_shortcuts_for_existing_home_desktops() {
 
 log "postinst started as user $(id -u 2>/dev/null || true), SUDO_USER=${SUDO_USER:-}"
 configure_chrome_sandbox
+remove_legacy_system_desktop
 
 source_desktop="$(find_source_desktop || create_fallback_desktop)"
 log "source desktop file: $source_desktop"
