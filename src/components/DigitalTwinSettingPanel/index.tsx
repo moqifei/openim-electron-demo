@@ -10,6 +10,7 @@ import {
   Select,
   Spin,
   Switch,
+  Tabs,
 } from "antd";
 import { FC, memo, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -22,18 +23,23 @@ import {
   DigitalTwinReplySummary,
   DigitalTwinSkillGenerateAcceptResponse,
   DigitalTwinSkillGenerateResponse,
+  DigitalTwinSkillDetailResponse,
   DigitalTwinSkillSummary,
   DigitalTwinTriggerMode,
   generateDigitalTwinSkill,
   getDigitalTwinOverview,
+  getDigitalTwinSkill,
   getDigitalTwinUnreadTimeoutSummary,
   getSkillGenerateTaskStatus,
   getPersistedDigitalTwinConfig,
+  installPlazaSkill,
   listDigitalTwinReplies,
   listDigitalTwinSkills,
+  listPlazaSkills,
   reviewDigitalTwinReply,
   SkillGenerateTask,
   updateDigitalTwinConfig,
+  PlazaSkillItem,
 } from "@/api/digitalTwin";
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
 import { ADDepartmentMemberInfo, searchADMembers } from "@/api/organization";
@@ -355,21 +361,39 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const [loadingSkills, setLoadingSkills] = useState(false);
   const [deletingSkillName, setDeletingSkillName] = useState("");
 
-  const applyConfig = (nextConfig?: DigitalTwinConfig) => {
+  // --- SKILL Plaza (企业技能广场) ---
+  const [plazaSkills, setPlazaSkills] = useState<PlazaSkillItem[]>([]);
+  const [loadingPlaza, setLoadingPlaza] = useState(false);
+  const [plazaError, setPlazaError] = useState<string | null>(null);
+  const [plazaPage, setPlazaPage] = useState(1);
+  const PLAZA_PAGE_SIZE = 5;
+  const [installingSkillName, setInstallingSkillName] = useState("");
+
+  // Skill tab: "mine" | "plaza"
+  const [skillTab, setSkillTab] = useState<"mine" | "plaza">("mine");
+
+  // 查看单个技能完整内容（按需拉取，避免列表返回过大 content）
+  const [viewingSkill, setViewingSkill] =
+    useState<DigitalTwinSkillDetailResponse | null>(null);
+  const [loadingSkillDetail, setLoadingSkillDetail] = useState(false);
+
+  const applyConfig = (nextConfig?: DigitalTwinConfig, syncDrafts = true) => {
     const normalized = normalizeConfig(nextConfig);
     setConfig(normalized);
-    setDraftReplyText(normalized.replyText ?? DEFAULT_REPLY_TEXT);
-    setDraftPrompt(normalized.prompt ?? "");
-    setDraftCooldownSeconds(normalized.replyCooldownSeconds ?? 0);
-    setDraftTriggerMode(normalized.triggerMode ?? "immediate");
-    setDraftUnreadTimeoutSeconds(
-      normalizeUnreadTimeoutSeconds(normalized.unreadTimeoutSeconds),
-    );
-    setDraftScheduleEnabled(Boolean(normalized.replySchedule?.enabled));
-    setDraftScheduleStartMinute(normalized.replySchedule?.startMinute ?? 18 * 60);
-    setDraftScheduleEndMinute(normalized.replySchedule?.endMinute ?? 9 * 60);
-    setDraftAllowedSenderUserIDs(userIDListToText(normalized.allowedSenderUserIDs));
-    setDraftBlockedSenderUserIDs(userIDListToText(normalized.blockedSenderUserIDs));
+    if (syncDrafts) {
+      setDraftReplyText(normalized.replyText ?? DEFAULT_REPLY_TEXT);
+      setDraftPrompt(normalized.prompt ?? "");
+      setDraftCooldownSeconds(normalized.replyCooldownSeconds ?? 0);
+      setDraftTriggerMode(normalized.triggerMode ?? "immediate");
+      setDraftUnreadTimeoutSeconds(
+        normalizeUnreadTimeoutSeconds(normalized.unreadTimeoutSeconds),
+      );
+      setDraftScheduleEnabled(Boolean(normalized.replySchedule?.enabled));
+      setDraftScheduleStartMinute(normalized.replySchedule?.startMinute ?? 18 * 60);
+      setDraftScheduleEndMinute(normalized.replySchedule?.endMinute ?? 9 * 60);
+      setDraftAllowedSenderUserIDs(userIDListToText(normalized.allowedSenderUserIDs));
+      setDraftBlockedSenderUserIDs(userIDListToText(normalized.blockedSenderUserIDs));
+    }
   };
 
   const friendMap = useMemo(() => {
@@ -574,11 +598,11 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   }, [selfUserID]);
 
   const loadOverview = useCallback(
-    async (showError = false) => {
+    async (showError = false, syncDrafts = true) => {
       if (!selfUserID) return;
       try {
         const response = await getDigitalTwinOverview();
-        applyConfig(response.data.config);
+        applyConfig(response.data.config, syncDrafts);
         setReplySummary(response.data.replySummary ?? emptyReplySummary);
         setPendingUnreadTimeoutCount(response.data.unreadTimeoutSummary?.pending ?? 0);
         setOverviewLatestReplies(
@@ -607,6 +631,70 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       setLoadingSkills(false);
     }
   }, [selfUserID]);
+
+  const viewSkillContent = async (skillName: string) => {
+    setLoadingSkillDetail(true);
+    setViewingSkill(null);
+    try {
+      const response = await getDigitalTwinSkill(skillName);
+      setViewingSkill(response.data);
+    } catch (error) {
+      feedbackToast({ error, msg: "获取技能内容失败" });
+    } finally {
+      setLoadingSkillDetail(false);
+    }
+  };
+
+  // --- SKILL Plaza functions ---
+  const loadPlazaSkills = useCallback(async () => {
+    setLoadingPlaza(true);
+    setPlazaError(null);
+    try {
+      const response = await listPlazaSkills();
+      setPlazaSkills(
+        Array.isArray(response.data.skills) ? response.data.skills : [],
+      );
+    } catch (error: any) {
+      const msg =
+        error?.response?.data?.detail ||
+        error?.message ||
+        "SKILL广场暂不可用";
+      setPlazaError(msg);
+      // Don't show toast for plaza — the inline error UI is enough
+    } finally {
+      setLoadingPlaza(false);
+    }
+  }, []);
+
+  const installFromPlaza = useCallback(async (skillName: string) => {
+    if (installingSkillName === skillName) return;
+    console.log("[plaza-install] START installing skill:", skillName);
+    setInstallingSkillName(skillName);
+    try {
+      console.log("[plaza-install] calling installPlazaSkill API...");
+      const resp = await installPlazaSkill(skillName);
+      console.log("[plaza-install] API response received:", JSON.stringify(resp.data));
+      feedbackToast({ msg: `技能 ${skillName} 安装成功` });
+      // Refresh local skills list to show newly installed skill
+      void loadSkills();
+    } catch (error: any) {
+      console.error("[plaza-install] FAILED:", error);
+      console.error("[plaza-install] error response:", error?.response?.data);
+      feedbackToast({
+        error,
+        msg: error?.response?.data?.detail || `安装 ${skillName} 失败`,
+      });
+    } finally {
+      setInstallingSkillName("");
+    }
+  }, [installingSkillName, loadSkills]);
+
+  // Client-side pagination for plaza
+  const paginatedPlazaSkills = useMemo(() => {
+    const start = (plazaPage - 1) * PLAZA_PAGE_SIZE;
+    return plazaSkills.slice(start, start + PLAZA_PAGE_SIZE);
+  }, [plazaSkills, plazaPage]);
+  const plazaTotalPages = Math.max(1, Math.ceil(plazaSkills.length / PLAZA_PAGE_SIZE));
 
   useEffect(() => {
     if (!selfUserID) return;
@@ -638,7 +726,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       void getFriendListByReq();
     }
     const summaryTimer = window.setInterval(() => {
-      void loadOverview();
+      void loadOverview(false, false);
     }, 10000);
 
     return () => {
@@ -1641,170 +1729,343 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       )}
 
       {showSkills && (
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-5 shadow-sm">
-          <div className="mb-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
-              <span>✨</span>
-              分身技能
-            </div>
-            <div className="mt-1 text-xs text-[var(--text-tertiary)]">
-              用一句话生成技能，让分身在特定场景下更稳定地按你的偏好回复。
-            </div>
-          </div>
-
-          {/* 技能生成区 */}
-          <div className="mb-5 rounded-xl border border-dashed border-[#c4b5fd] bg-gradient-to-br from-[#faf5ff] to-white p-4 dark:from-[#1e1b4b] dark:to-transparent">
-            <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7c3aed]">
-              <span>🧪</span>
-              生成新技能
-            </div>
-            <div className="mb-2">
-              <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能目录名</div>
-              <Input
-                value={draftSkillName}
-                maxLength={64}
-                disabled={loading || generatingSkill}
-                placeholder="例如：pome"
-                onChange={(event) => setDraftSkillName(event.target.value)}
-              />
-            </div>
-            <div className="mb-4">
-              <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能需求</div>
-              <Input.TextArea
-                value={draftSkillDescription}
-                rows={3}
-                maxLength={800}
-                showCount
-                disabled={loading || generatingSkill}
-                placeholder="例如：用户让我作诗时，返回静夜思、李白的诗句"
-                onChange={(event) => setDraftSkillDescription(event.target.value)}
-              />
-            </div>
-
-            {/* 提示 + 按钮：独立行，避免与 showCount 重叠 */}
-            <div className="-mt-1 mb-2 min-w-0 text-[11px] leading-relaxed text-[var(--text-quaternary)]">
-              {trainingTask && generatingSkill ? (
-                trainingTask.status === "pending"
-                  ? "任务已提交，等待处理..."
-                  : trainingTask.status === "running"
-                    ? "模型正在生成技能内容，请稍候..."
-                    : trainingTask.status === "completed"
-                      ? "技能已生成完成"
-                      : `生成失败：${trainingTask.error ?? "未知错误"}`
-              ) : lastGeneratedSkill ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
-                  <span>✅</span>
-                  已安装：<code className="font-mono text-xs font-semibold">{lastGeneratedSkill.skillName}</code>
-                  <span className="text-emerald-400">·</span>
-                  {lastGeneratedSkill.source}
-                </span>
-              ) : (
-                "生成后立即写入分身工作区，下一轮 Orange 调用可读取。"
-              )}
-            </div>
-            <button
-              type="button"
-              disabled={loading || generatingSkill}
-              onClick={() => {
-                void generateSkill();
-              }}
-              className="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-purple-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-300 active:translate-y-0 active:shadow-sm disabled:pointer-events-none disabled:opacity-50 dark:shadow-purple-900/30 dark:hover:shadow-purple-800/40"
-            >
-              {generatingSkill ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                    <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
-                  </svg>
-                  {trainingTask?.status === "running" ? "生成中…" : trainingTask?.status === "pending" ? "已提交…" : "生成中…"}
-                </span>
-              ) : (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 transition-transform group-hover:rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z" />
-                  </svg>
-                  生成技能
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* 已安装技能列表 */}
-          <div className="border-t border-[var(--border-color)] pt-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
-                <span>📦</span>
-                已安装技能
-                {skills.length > 0 && (
-                  <span className="rounded-full bg-[#ede9fe] px-1.5 py-px text-[10px] font-bold text-[#7c3aed]">
-                    {skills.length}
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] shadow-sm overflow-hidden">
+          {/* ===== Tab 页签：我的技能 / 技能广场 ===== */}
+          <Tabs
+            activeKey={skillTab}
+            onChange={(key) => {
+              setSkillTab(key as "mine" | "plaza");
+              if (key === "plaza" && plazaSkills.length === 0 && !loadingPlaza) {
+                void loadPlazaSkills();
+              }
+            }}
+            size="middle"
+            className="[&_.ant-tabs-nav]:px-5 [&_.ant-tabs-nav]:pt-4 [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-tab]:text-sm"
+            items={[
+              {
+                key: "mine",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>✨</span> 我的技能
+                    {skills.length > 0 && (
+                      <span className="rounded-full bg-[#ede9fe] px-1.5 py-px text-[10px] font-bold text-[#7c3aed]">
+                        {skills.length}
+                      </span>
+                    )}
                   </span>
-                )}
-              </div>
-              <Button
-                size="small"
-                loading={loadingSkills}
-                onClick={() => {
-                  void loadSkills();
-                }}
-              >
-                刷新
-              </Button>
-            </div>
-            {skills.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="暂无自定义技能"
-              />
-            ) : (
-              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
-                {skills.map((skill) => (
-                  <div
-                    className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] p-3.5 transition-all hover:shadow-md hover:border-[#d8b4fe]"
-                    key={skill.name}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <code className="rounded-md bg-[#f5f3ff] px-2 py-0.5 font-mono text-sm font-bold text-[#7c3aed] dark:bg-[#1e1b4b]">
-                            {skill.name}
-                          </code>
-                        </div>
-                        <div className="mt-1.5 max-h-[120px] overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--text-tertiary)]">
-                          {skill.content || skill.description ||
-                            "暂无描述，建议重新生成以提升触发稳定性。"}
-                        </div>
-                        {skill.updatedAt && (
-                          <div className="mt-1.5 text-xs text-[var(--text-quaternary)]">
-                            更新：{new Date(skill.updatedAt).toLocaleString()}
-                          </div>
+                ),
+                children: (
+                  <div className="p-5 pt-3 space-y-4">
+                    {/* 技能生成区 */}
+                    <div className="rounded-xl border border-dashed border-[#c4b5fd] bg-gradient-to-br from-[#faf5ff] to-white p-4 dark:from-[#1e1b4b] dark:to-transparent">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7c3aed]">
+                        <span>🧪</span>
+                        生成新技能
+                      </div>
+                      <div className="mb-2">
+                        <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能目录名</div>
+                        <Input
+                          value={draftSkillName}
+                          maxLength={64}
+                          disabled={loading || generatingSkill}
+                          placeholder="例如：pome"
+                          onChange={(event) => setDraftSkillName(event.target.value)}
+                        />
+                      </div>
+                      <div className="mb-4">
+                        <div className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">技能需求</div>
+                        <Input.TextArea
+                          value={draftSkillDescription}
+                          rows={3}
+                          maxLength={800}
+                          showCount
+                          disabled={loading || generatingSkill}
+                          placeholder="例如：用户让我作诗时，返回静夜思、李白的诗句"
+                          onChange={(event) => setDraftSkillDescription(event.target.value)}
+                        />
+                      </div>
+
+                      <div className="-mt-1 mb-2 min-w-0 text-[11px] leading-relaxed text-[var(--text-quaternary)]">
+                        {trainingTask && generatingSkill ? (
+                          trainingTask.status === "pending"
+                            ? "任务已提交，等待处理..."
+                            : trainingTask.status === "running"
+                              ? "模型正在生成技能内容，请稍候..."
+                              : trainingTask.status === "completed"
+                                ? "技能已生成完成"
+                                : `生成失败：${trainingTask.error ?? "未知错误"}`
+                        ) : lastGeneratedSkill ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
+                            <span>✅</span>
+                            已安装：<code className="font-mono text-xs font-semibold">{lastGeneratedSkill.skillName}</code>
+                            <span className="text-emerald-400">·</span>
+                            {lastGeneratedSkill.source}
+                          </span>
+                        ) : (
+                          "生成后立即写入分身工作区，下一轮 Orange 调用可读取。"
                         )}
                       </div>
-                      <Popconfirm
-                        title={`删除技能 ${skill.name}？`}
-                        description="删除后下一轮分身回复将不再加载该技能。"
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={() => {
-                          void deleteSkill(skill.name);
+                      <button
+                        type="button"
+                        disabled={loading || generatingSkill}
+                        onClick={() => {
+                          void generateSkill();
                         }}
+                        className="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-purple-200 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-300 active:translate-y-0 active:shadow-sm disabled:pointer-events-none disabled:opacity-50 dark:shadow-purple-900/30 dark:hover:shadow-purple-800/40"
                       >
+                        {generatingSkill ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+                              <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="opacity-75" />
+                            </svg>
+                            {trainingTask?.status === "running" ? "生成中…" : trainingTask?.status === "pending" ? "已提交…" : "生成中…"}
+                          </span>
+                        ) : (
+                          <span className="flex items-center justify-center gap-2">
+                            <svg className="h-4 w-4 transition-transform group-hover:rotate-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z" />
+                            </svg>
+                            生成技能
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* 已安装技能列表 */}
+                    <div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+                          <span>📦</span>
+                          已安装
+                          {skills.length > 0 && (
+                            <span className="rounded-full bg-[#ede9fe] px-1.5 py-px text-[10px] font-bold text-[#7c3aed]">
+                              {skills.length}
+                            </span>
+                          )}
+                        </div>
                         <Button
                           size="small"
-                          danger
-                          loading={deletingSkillName === skill.name}
-                          className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                          loading={loadingSkills}
+                          onClick={() => {
+                            void loadSkills();
+                          }}
                         >
-                          删除
+                          刷新
                         </Button>
-                      </Popconfirm>
+                      </div>
+                      {skills.length === 0 ? (
+                        <Empty
+                          image={Empty.PRESENTED_IMAGE_SIMPLE}
+                          description="暂无自定义技能，试试生成一个或从广场安装"
+                        />
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2.5 max-h-[420px] overflow-y-auto pr-1">
+                          {skills.map((skill) => (
+                            <div
+                              className="group rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] p-3.5 transition-all hover:shadow-md hover:border-[#d8b4fe]"
+                              key={skill.name}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <code className="rounded-md bg-[#f5f3ff] px-2 py-0.5 font-mono text-sm font-bold text-[#7c3aed] dark:bg-[#1e1b4b]">
+                                      {skill.name}
+                                    </code>
+                                  </div>
+                                  <div className="mt-1.5 max-h-[120px] overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--text-tertiary)]">
+                                    {skill.content || skill.description ||
+                                      "暂无描述，建议重新生成以提升触发稳定性。"}
+                                  </div>
+                                  {skill.updatedAt && (
+                                    <div className="mt-1.5 text-xs text-[var(--text-quaternary)]">
+                                      更新：{new Date(skill.updatedAt).toLocaleString()}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <Button
+                                    size="small"
+                                    onClick={() => {
+                                      void viewSkillContent(skill.name);
+                                    }}
+                                  >
+                                    查看内容
+                                  </Button>
+                                  <Popconfirm
+                                    title={`删除技能 ${skill.name}？`}
+                                    description="删除后下一轮分身回复将不再加载该技能。"
+                                    okText="删除"
+                                    cancelText="取消"
+                                    okButtonProps={{ danger: true }}
+                                    onConfirm={() => {
+                                      void deleteSkill(skill.name);
+                                    }}
+                                  >
+                                    <Button
+                                      size="small"
+                                      danger
+                                      loading={deletingSkillName === skill.name}
+                                      className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                                    >
+                                      删除
+                                    </Button>
+                                  </Popconfirm>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                ),
+              },
+              {
+                key: "plaza",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>🏪</span> 技能广场
+                    {plazaSkills.length > 0 && (
+                      <span className="rounded-full bg-[#fef3c7] px-1.5 py-0.5 text-[10px] font-bold text-[#d97706]">
+                        {plazaSkills.length}
+                      </span>
+                    )}
+                  </span>
+                ),
+                children: (
+                  <div className="p-5 pt-3">
+                    <div className="mb-3 flex items-center justify-end">
+                      <Button
+                        size="small"
+                        loading={loadingPlaza}
+                        onClick={() => {
+                          setPlazaPage(1);
+                          void loadPlazaSkills();
+                        }}
+                      >
+                        刷新
+                      </Button>
+                    </div>
+
+                    {plazaError ? (
+                      <div className="rounded-xl border border-dashed border-[var(--border-color)] bg-[var(--bg-secondary)] p-6 text-center">
+                        <div className="text-sm text-[var(--text-tertiary)]">{plazaError}</div>
+                        <div className="mt-2 text-xs text-[var(--text-quaternary)]">
+                          不影响本地技能的生成、查看和删除
+                        </div>
+                      </div>
+                    ) : loadingPlaza && plazaSkills.length === 0 ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Spin />
+                      </div>
+                    ) : plazaSkills.length === 0 && !loadingPlaza ? (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={
+                          <span className="text-xs">
+                            暂无广场技能
+                            <button
+                              type="button"
+                              className="ml-2 text-[#7c3aed] underline"
+                              onClick={() => void loadPlazaSkills()}
+                            >
+                              点击加载
+                            </button>
+                          </span>
+                        }
+                      />
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 gap-2.5 max-h-[480px] overflow-y-auto pr-1">
+                          {paginatedPlazaSkills.map((skill) => {
+                            const isInstalled = skills.some((s) => s.name === skill.name);
+                            return (
+                              <div
+                                className={`group rounded-xl border p-3.5 transition-all hover:shadow-md ${
+                                  isInstalled
+                                    ? "border-[#d1fae5] bg-[#ecfdf5]/50 dark:border-emerald-900/40 dark:bg-emerald-950/10"
+                                    : "border-[var(--border-color)] bg-[var(--bg-base)] hover:border-[#fde68a]"
+                                }`}
+                                key={skill.name}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <code className={`rounded-md px-2 py-0.5 font-mono text-sm font-bold ${
+                                        isInstalled
+                                          ? "bg-[#d1fae5] text-[#059669] dark:bg-emerald-900/30 dark:text-emerald-400"
+                                          : "bg-[#fffbeb] text-[#d97706] dark:bg-[#1e1b4b]"
+                                      }`}>
+                                        {skill.name}
+                                      </code>
+                                      {isInstalled && (
+                                        <span className="rounded-full bg-[#d1fae5] px-1.5 py-px text-[10px] font-medium text-[#059669] dark:bg-emerald-900/30 dark:text-emerald-400">
+                                          已安装
+                                        </span>
+                                      )}
+                                      {skill.skill_type && (
+                                        <span className="rounded-full bg-[#fef3c7] px-1.5 py-px text-[10px] font-medium text-[#92400e]">
+                                          {skill.skill_type}
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] text-[var(--text-quaternary)]">
+                                        ↓{skill.downloads} · 👍{skill.thumbs_ups}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1.5 max-h-[80px] overflow-y-auto text-xs leading-relaxed whitespace-pre-wrap text-[var(--text-tertiary)]">
+                                      {skill.description || "暂无描述"}
+                                    </div>
+                                    {skill.author && (
+                                      <div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
+                                        作者：{skill.author}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Button
+                                    type={isInstalled ? "default" : "primary"}
+                                    size="small"
+                                    loading={installingSkillName === skill.name}
+                                    disabled={installingSkillName !== "" || isInstalled}
+                                    className={`shrink-0 ${isInstalled ? "cursor-default" : ""}`}
+                                    onClick={() => void installFromPlaza(skill.name)}
+                                  >
+                                    {isInstalled ? "已安装" : "安装"}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {plazaTotalPages > 1 && (
+                          <div className="mt-4 flex items-center justify-center gap-2">
+                            <Button
+                              size="small"
+                              disabled={plazaPage <= 1}
+                              onClick={() => setPlazaPage((p) => p - 1)}
+                            >
+                              ‹ 上一页
+                            </Button>
+                            <span className="text-xs text-[var(--text-quaternary)]">
+                              {plazaPage} / {plazaTotalPages}
+                            </span>
+                            <Button
+                              size="small"
+                              disabled={plazaPage >= plazaTotalPages}
+                              onClick={() => setPlazaPage((p) => p + 1)}
+                            >
+                              下一页 ›
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
       )}
 
@@ -2008,6 +2269,41 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
           )}
         </div>
       )}
+      <Modal
+        title={
+          viewingSkill ? (
+            <span className="flex items-center gap-2 font-mono text-sm">
+              <span>📄</span>
+              {viewingSkill.name}
+            </span>
+          ) : (
+            "技能内容"
+          )
+        }
+        open={viewingSkill !== null}
+        footer={null}
+        width={720}
+        bodyStyle={{ padding: 0 }}
+        onCancel={() => setViewingSkill(null)}
+      >
+        {loadingSkillDetail ? (
+          <div className="flex items-center justify-center py-16">
+            <Spin />
+          </div>
+        ) : viewingSkill ? (
+          <div className="max-h-[70vh] overflow-auto">
+            {viewingSkill.description && (
+              <div className="border-b border-[var(--border-color)] bg-[var(--bg-body)] px-5 py-3 text-xs leading-relaxed text-[var(--text-tertiary)]">
+                {viewingSkill.description}
+              </div>
+            )}
+            <pre className="overflow-auto whitespace-pre-wrap break-words bg-[#0d1117] px-5 py-4 font-mono text-xs leading-relaxed text-[#e6edf3]">
+              <code>{viewingSkill.content}</code>
+            </pre>
+          </div>
+        ) : null}
+      </Modal>
+
       <Modal
         title={contactSelectorTitle}
         open={contactSelectorOpen}
