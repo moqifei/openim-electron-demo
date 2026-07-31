@@ -15,6 +15,30 @@ const GDK_PIXBUF_RESOURCE_DIR_NAME = "gdk-pixbuf-2.0";
 const GDK_PIXBUF_VERSION_DIR_NAME = "2.10.0";
 const SHARE_RESOURCE_DIR_NAME = "share";
 const GIO_MODULE_RESOURCE_DIR_NAME = path.join("gio", "modules");
+const GTK_IM_RESOURCE_DIR_NAME = path.join("gtk-3.0", "3.0.0");
+const GTK_FCITX_MODULE_NAME = "im-fcitx.so";
+const FCITX_GCLIENT_LIBRARY_NAME = "libfcitx-gclient.so.1";
+const FCITX_UTILS_LIBRARY_NAME = "libfcitx-utils.so.0";
+const FCITX_CORE_LIBRARY_NAMES = [
+  "libfcitx-config.so.4",
+  "libfcitx-core.so.0",
+  FCITX_GCLIENT_LIBRARY_NAME,
+  FCITX_UTILS_LIBRARY_NAME,
+];
+const FCITX_LIBRARY_DIRECTORIES = [
+  "/usr/lib/x86_64-linux-gnu/fcitx",
+  "/usr/lib/x86_64-linux-gnu/fcitx-4.0",
+  "/usr/lib64/fcitx",
+  "/usr/lib64/fcitx-4.0",
+  "/usr/lib/fcitx",
+  "/usr/lib/fcitx-4.0",
+  "/lib/x86_64-linux-gnu/fcitx",
+  "/lib/x86_64-linux-gnu/fcitx-4.0",
+  "/lib64/fcitx",
+  "/lib64/fcitx-4.0",
+  "/lib/fcitx",
+  "/lib/fcitx-4.0",
+];
 const GLIBC_CORE_BASENAMES = new Set([
   "ld-linux-x86-64.so.2",
   "libc.so.6",
@@ -360,6 +384,7 @@ function getLibrarySearchPaths(context, sourceDir, systemLibsDir) {
       "assets",
       "linux_x64",
     ),
+    ...FCITX_LIBRARY_DIRECTORIES,
     "/lib/x86_64-linux-gnu/nss",
     "/usr/lib/x86_64-linux-gnu/nss",
     "/lib64/nss",
@@ -443,6 +468,33 @@ function resolveLibraryPathByName(libraryName, searchPaths) {
     const candidate = path.join(searchPath, libraryName);
     if (fs.existsSync(candidate)) {
       return normalizeExistingPath(candidate);
+    }
+  }
+
+  const versionedNameMatch = libraryName.match(/^(.*\.so\.\d+(?:\.\d+)*)$/);
+  if (!versionedNameMatch) {
+    return null;
+  }
+
+  const versionedNamePattern = new RegExp(
+    `^${versionedNameMatch[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\.\\d+)*$`,
+  );
+  for (const searchPath of searchPaths) {
+    if (!fs.existsSync(searchPath)) {
+      continue;
+    }
+
+    const fallback = fs
+      .readdirSync(searchPath, { withFileTypes: true })
+      .filter(
+        (entry) =>
+          (entry.isFile() || entry.isSymbolicLink()) && versionedNamePattern.test(entry.name),
+      )
+      .map((entry) => entry.name)
+      .sort((left, right) => left.length - right.length)[0];
+
+    if (fallback) {
+      return normalizeExistingPath(path.join(searchPath, fallback));
     }
   }
 
@@ -538,6 +590,123 @@ function findFirstDirectory(candidates, requiredChild) {
       }
       return requiredChild ? fs.existsSync(path.join(candidate, requiredChild)) : true;
     }) || null
+  );
+}
+
+function findFcitxGtkSourceDir() {
+  return findFirstDirectory([
+    path.join("/usr", "lib", "x86_64-linux-gnu", "gtk-3.0", "3.0.0"),
+    path.join("/usr", "lib64", "gtk-3.0", "3.0.0"),
+    path.join("/usr", "lib", "gtk-3.0", "3.0.0"),
+    path.join("/lib", "x86_64-linux-gnu", "gtk-3.0", "3.0.0"),
+    path.join("/lib64", "gtk-3.0", "3.0.0"),
+    path.join("/lib", "gtk-3.0", "3.0.0"),
+  ], path.join("immodules", GTK_FCITX_MODULE_NAME));
+}
+
+function rewriteGtkImmodulesCache(cacheContent, installedModulePath) {
+  return cacheContent.replace(
+    /"[^"\r\n]*\/immodules\/im-fcitx\.so"/g,
+    `"${installedModulePath}"`,
+  );
+}
+
+function patchFcitxRuntimePaths(targetModulePath, systemLibsDir) {
+  runPatchelf(
+    [
+      "--force-rpath",
+      "--set-rpath",
+      [
+        "$ORIGIN/../../../system-libs",
+        "$ORIGIN/../../../glibc/lib",
+        "$ORIGIN/../../../glibc/lib64",
+      ].join(":"),
+      targetModulePath,
+    ],
+    `set runtime library path on ${targetModulePath}`,
+  );
+
+  const fcitxLibraryPaths = fs
+    .readdirSync(systemLibsDir, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        (entry.isFile() || entry.isSymbolicLink()) &&
+        /^libfcitx[^/]*\.so(?:\..*)?$/.test(entry.name),
+    )
+    .map((entry) => path.join(systemLibsDir, entry.name));
+
+  for (const libraryPath of fcitxLibraryPaths) {
+    runPatchelf(
+      [
+        "--force-rpath",
+        "--set-rpath",
+        ["$ORIGIN", "$ORIGIN/../glibc/lib", "$ORIGIN/../glibc/lib64"].join(":"),
+        libraryPath,
+      ],
+      `set runtime library path on ${libraryPath}`,
+    );
+  }
+}
+
+function collectFcitxGtkResources(context, installDir, dependencyContext) {
+  const sourceDir = findFcitxGtkSourceDir();
+  if (!sourceDir) {
+    throw new Error(
+      `[bundled-glibc] GTK Fcitx module was not found on build machine; install Fcitx 4 GTK3 support and ensure ${GTK_FCITX_MODULE_NAME} exists.`,
+    );
+  }
+
+  const sourceModulePath = path.join(sourceDir, "immodules", GTK_FCITX_MODULE_NAME);
+  const targetDir = path.join(context.appOutDir, "resources", GTK_IM_RESOURCE_DIR_NAME);
+  const targetModuleDir = path.join(targetDir, "immodules");
+  const targetModulePath = path.join(targetModuleDir, GTK_FCITX_MODULE_NAME);
+  const installedModulePath = path.posix.join(
+    installDir,
+    "resources",
+    GTK_IM_RESOURCE_DIR_NAME.replace(/\\/g, "/"),
+    "immodules",
+    GTK_FCITX_MODULE_NAME,
+  );
+
+  fs.mkdirSync(targetModuleDir, { recursive: true });
+  fs.copyFileSync(sourceModulePath, targetModulePath);
+
+  const sourceCachePath = path.join(sourceDir, "immodules.cache");
+  const targetCachePath = path.join(targetDir, "immodules.cache");
+  if (fs.existsSync(sourceCachePath)) {
+    const cacheContent = fs.readFileSync(sourceCachePath, "utf8");
+    fs.writeFileSync(
+      targetCachePath,
+      rewriteGtkImmodulesCache(cacheContent, installedModulePath),
+    );
+  } else {
+    console.warn(`[bundled-glibc] GTK input method cache was not found: ${sourceCachePath}`);
+  }
+
+  const pluginSearchPaths = unique([
+    path.join(sourceDir, "immodules"),
+    sourceDir,
+    ...dependencyContext.searchPaths,
+  ]);
+  const result = copyLibraryClosure(
+    [
+      ...FCITX_CORE_LIBRARY_NAMES,
+      ...parseBinaryDependencies(sourceModulePath),
+    ],
+    pluginSearchPaths,
+    dependencyContext.systemLibsDir,
+    dependencyContext.copiedNames,
+  );
+  if (result.missing.size > 0) {
+    throw new Error(
+      `[bundled-glibc] Missing GTK Fcitx libraries: ${[...result.missing].sort().join(", ")}`,
+    );
+  }
+
+  patchFcitxRuntimePaths(targetModulePath, dependencyContext.systemLibsDir);
+
+  console.log(
+    `[bundled-glibc] Copied GTK Fcitx module and ${FCITX_GCLIENT_LIBRARY_NAME} dependencies`,
   );
 }
 
@@ -1141,6 +1310,9 @@ SYSTEM_LIB_DIR="\${OPENCORP_SYSTEM_LIB_DIR:-$APP_DIR/resources/system-libs}"
 GDK_PIXBUF_DIR="$APP_DIR/resources/${GDK_PIXBUF_RESOURCE_DIR_NAME}/${GDK_PIXBUF_VERSION_DIR_NAME}"
 APP_SHARE_DIR="$APP_DIR/resources/${SHARE_RESOURCE_DIR_NAME}"
 APP_GIO_MODULE_DIR="$APP_DIR/resources/${GIO_MODULE_RESOURCE_DIR_NAME.replace(/\\/g, "/")}"
+GTK_IM_RESOURCE_DIR="$APP_DIR/resources/${GTK_IM_RESOURCE_DIR_NAME.replace(/\\/g, "/")}"
+GTK_IM_MODULE_FILE_APP="$GTK_IM_RESOURCE_DIR/immodules.cache"
+GTK_IM_MODULE_PATH_APP="$GTK_IM_RESOURCE_DIR/immodules"
 ICU_DATA_FILE="$APP_DIR/icudtl.dat"
 BUNDLED_INTERPRETER="${interpreterPath}"
 REAL_EXECUTABLE="$APP_DIR/${realExecutableName}"
@@ -1231,6 +1403,22 @@ if [ -d "$APP_GIO_MODULE_DIR" ]; then
   export GIO_MODULE_DIR="$APP_GIO_MODULE_DIR"
 fi
 
+process_exists() {
+  command -v pgrep >/dev/null 2>&1 && pgrep -x "$1" >/dev/null 2>&1
+}
+
+set_fcitx_env() {
+  [ -n "\${GTK_IM_MODULE:-}" ] || export GTK_IM_MODULE=fcitx
+  [ -n "\${QT_IM_MODULE:-}" ] || export QT_IM_MODULE=fcitx
+  [ -n "\${XMODIFIERS:-}" ] || export XMODIFIERS="@im=fcitx"
+}
+
+set_ibus_env() {
+  [ -n "\${GTK_IM_MODULE:-}" ] || export GTK_IM_MODULE=ibus
+  [ -n "\${QT_IM_MODULE:-}" ] || export QT_IM_MODULE=ibus
+  [ -n "\${XMODIFIERS:-}" ] || export XMODIFIERS="@im=ibus"
+}
+
 if [ -z "\${GTK_IM_MODULE_FILE:-}" ]; then
   for candidate in \\
     /usr/lib/*-linux-gnu*/gtk-3.0/3.0.0/immodules.cache \\
@@ -1245,18 +1433,43 @@ if [ -z "\${GTK_IM_MODULE_FILE:-}" ]; then
   done
 fi
 
+if [ -f "$GTK_IM_MODULE_FILE_APP" ]; then
+  export GTK_IM_MODULE_FILE="$GTK_IM_MODULE_FILE_APP"
+fi
+
+if [ -d "$GTK_IM_MODULE_PATH_APP" ]; then
+  export GTK_IM_MODULE_PATH="$GTK_IM_MODULE_PATH_APP"
+fi
+
 if [ -z "\${GTK_IM_MODULE:-}" ]; then
   case "\${XMODIFIERS:-}" in
-    *@im=fcitx*) export GTK_IM_MODULE=fcitx ;;
-    *@im=ibus*) export GTK_IM_MODULE=ibus ;;
+    *@im=fcitx*) set_fcitx_env ;;
+    *@im=ibus*) set_ibus_env ;;
   esac
 fi
 
 if [ -z "\${XMODIFIERS:-}" ]; then
   case "\${GTK_IM_MODULE:-}" in
-    fcitx|fcitx5) export XMODIFIERS="@im=fcitx" ;;
-    ibus) export XMODIFIERS="@im=ibus" ;;
+    fcitx|fcitx5) set_fcitx_env ;;
+    ibus) set_ibus_env ;;
   esac
+fi
+
+if [ -z "\${GTK_IM_MODULE:-}" ] && [ -z "\${XMODIFIERS:-}" ]; then
+  if process_exists fcitx5 || process_exists fcitx || \\
+    command -v fcitx5-remote >/dev/null 2>&1 || command -v fcitx-remote >/dev/null 2>&1
+  then
+    set_fcitx_env
+  elif process_exists ibus-daemon || command -v ibus >/dev/null 2>&1; then
+    set_ibus_env
+  fi
+fi
+
+if [ "\${OPENCORP_LAUNCHER_DEBUG:-0}" = "1" ]; then
+  echo "[opencorp] final GTK_IM_MODULE=\${GTK_IM_MODULE:-}"
+  echo "[opencorp] final GTK_IM_MODULE_FILE=\${GTK_IM_MODULE_FILE:-}"
+  echo "[opencorp] final QT_IM_MODULE=\${QT_IM_MODULE:-}"
+  echo "[opencorp] final XMODIFIERS=\${XMODIFIERS:-}"
 fi
 
 if [ "\${OPENCORP_INHERIT_LD_LIBRARY_PATH:-0}" = "1" ]; then
@@ -1301,6 +1514,7 @@ module.exports = async function afterPackBundledGlibc(context) {
   fs.chmodSync(realExecutablePath, 0o755);
   patchRealExecutable(realExecutablePath, installDir, loaderDirName);
   const dependencyContext = collectSystemLibraries(context, sourceDir, realExecutablePath);
+  collectFcitxGtkResources(context, installDir, dependencyContext);
   collectGdkPixbufLoaders(context, installDir, dependencyContext);
   collectGtkDataResources(context);
   collectGioModules(context, dependencyContext);
