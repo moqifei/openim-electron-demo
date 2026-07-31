@@ -137,6 +137,75 @@ export const fileToBase64 = (file: File): Promise<string> =>
 
 export const formatBr = (str: string) => str.replace(/\n/g, "<br>");
 
+/**
+ * Format an @-mention message text (OpenIM AtTextElem.text) into HTML.
+ *
+ * The most reliable source of the actual mention targets is `atUsersInfo`
+ * (AtUsersInfoItem[] from AtTextElem.atUsersInfo), whose `groupNickname`
+ * matches the token rendered in the text.
+ *
+ * We wrap every known `@nickname` token in a Feishu-style inline pill tag
+ * (`<span class="atMentionTag">`) followed by a small circle dot that
+ * indicates whether the mentioned user has read the message.
+ * A legacy middle-dot (•, U+2022) suffix is tolerated and consumed.
+ *
+ * @param text              – raw text from AtTextElem.text (e.g. "@用户09 你好")
+ * @param atUsersInfo       – AtUsersInfoItem[] from AtTextElem.atUsersInfo
+ * @param hasReadUserIDList – current list of user IDs who have read this message;
+ *                           when provided each dot is rendered as solid (●) for
+ *                           read users and hollow (○) for unread ones.
+ */
+export const formatAtText = (
+  text: string,
+  atUsersInfo?: Array<{ atUserID: string; groupNickname: string }>,
+  hasReadUserIDList?: string[],
+): string => {
+  // Escape HTML entities first to prevent XSS
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Collect the known mention nicknames and escape them for use in a regex.
+  // Build a lookup map: groupNickname → atUserID so we can embed it as data.
+  const nameToID = new Map<string, string>();
+  const names = (atUsersInfo || [])
+    .filter((u) => u?.groupNickname && u?.atUserID)
+    .map((u) => {
+      const escaped = u.groupNickname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      nameToID.set(u.groupNickname, u.atUserID);
+      return escaped;
+    });
+
+  // Primary: match exactly the nicknames we know were mentioned.
+  if (names.length > 0) {
+    const pattern = new RegExp(`@(${names.join("|")})•?`, "g");
+    html = html.replace(pattern, (_match, nickname) => {
+      const rawName = [...nameToID.keys()].find(
+        (k) =>
+          k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") === nickname,
+      ) ?? nickname;
+      const uid = nameToID.get(rawName) || "";
+      const isRead = hasReadUserIDList?.includes(uid) ?? false;
+      const dotClass = isRead ? "atDot--read" : "atDot--unread";
+      return `<span class="atMentionTag" data-at-user-id="${uid}">@${rawName}</span><span class="atDot ${dotClass}" data-at-user-id="${uid}"></span>`;
+    });
+  }
+
+  // Fallback: legacy payloads without populated atUsersInfo.
+  if (!html.includes("atMentionTag")) {
+    html = html.replace(
+      /@([^\s\u2022<>]+)\u2022?/g,
+      '<span class="atMentionTag">$&</span>',
+    );
+  }
+
+  // Convert newlines
+  html = html.replace(/\n/g, "<br>");
+
+  return html;
+};
+
 export const getFileType = (name: string) => {
   const idx = name.lastIndexOf(".");
   return name.slice(idx + 1);

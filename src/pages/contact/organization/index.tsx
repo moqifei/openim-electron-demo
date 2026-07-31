@@ -16,11 +16,61 @@ import {
 import OIMAvatar from "@/components/OIMAvatar";
 import { emit } from "@/utils/events";
 
+// Allowed top-level OUs for enterprise organization display.
+// Only departments and users under these OUs will be shown in the
+// organization tree and search results.
+// Order determines display order in the tree (百信行员 first).
+const ALLOWED_TOP_OUS = ["ZXBXUsers", "COUsers", "PJUsers"];
+
+/** Enterprise (top-level) display name shown above all OU categories. */
+const ENTERPRISE_NAME = "中信百信银行";
+
+/** Human-friendly display names for the top-level OU categories. */
+const OU_DISPLAY_NAMES: Record<string, string> = {
+  ZXBXUsers: "百信行员",
+  COUsers: "百信外包",
+  PJUsers: "项目团队",
+};
+
+/** Check whether a departmentID (DN) is under an allowed top-level OU. */
+function isAllowedDept(deptID: string): boolean {
+  if (!deptID) return false;
+  const idLower = deptID.toLowerCase();
+  return ALLOWED_TOP_OUS.some((ou) => {
+    const pattern = `ou=${ou.toLowerCase()}`;
+    // Match ",ou=cousers," (middle of DN) or "ou=cousers," (start of DN)
+    return idLower.includes(`,${pattern},`) || idLower.startsWith(`${pattern},`);
+  });
+}
+
+/** Map a raw department name to its display name (e.g. "ZXBXUsers" → "百信行员"). */
+function displayDeptName(name: string): string {
+  return OU_DISPLAY_NAMES[name] ?? name;
+}
+
+/**
+ * Extract the top-level allowed OU name from a department's DN.
+ * e.g. "ou=产品创新部,ou=ZXBXUsers,ou=中信百信银行,dc=qa,dc=bx" → "ZXBXUsers"
+ * Returns null if no allowed OU is found.
+ */
+function extractTopOU(deptID: string): string | null {
+  if (!deptID) return null;
+  const idLower = deptID.toLowerCase();
+  for (const ou of ALLOWED_TOP_OUS) {
+    const pattern = `ou=${ou.toLowerCase()}`;
+    if (idLower.includes(`,${pattern},`) || idLower.startsWith(`${pattern},`)) {
+      return ou;
+    }
+  }
+  return null;
+}
+
 interface TreeNode {
   key: string;
   title: string;
   children?: TreeNode[];
   department?: ADDepartmentInfo;
+  selectable?: boolean;
 }
 
 export const Organization = () => {
@@ -74,35 +124,90 @@ export const Organization = () => {
 
   const departments = deptResp?.data?.departments ?? [];
 
-  const treeData = useMemo((): TreeNode[] => {
-    if (!departments.length) return [];
-    const deptMap = new Map<string, ADDepartmentInfo>();
-    departments.forEach((d: ADDepartmentInfo) => deptMap.set(d.departmentID, d));
+  // Filter to only allowed OUs for both tree and member display.
+  const allowedDepts = useMemo(
+    () => departments.filter((d: ADDepartmentInfo) => isAllowedDept(d.departmentID)),
+    [departments],
+  );
 
-    const buildTree = (parentID: string): TreeNode[] => {
-      return departments
+  // DEBUG: 在浏览器控制台查看数据流（确认上线后可删除此行）
+  console.log("[OrgDebug] totalDepts=", departments.length, "allowedDepts=", allowedDepts.length,
+    departments.length > 0 ? "sampleDN=" + departments[0].departmentID : "");
+
+  const treeData = useMemo((): TreeNode[] => {
+    if (!allowedDepts.length) return [];
+
+    // Group real departments by their top-level allowed OU (extracted from DN).
+    const ouGroups = new Map<string, ADDepartmentInfo[]>();
+    for (const ou of ALLOWED_TOP_OUS) {
+      ouGroups.set(ou, []);
+    }
+    for (const d of allowedDepts) {
+      const ou = extractTopOU(d.departmentID);
+      if (ou && ouGroups.has(ou)) {
+        ouGroups.get(ou)!.push(d);
+      }
+    }
+
+    // Build the real department sub-tree under each OU group using parentID.
+    const deptMap = new Map<string, ADDepartmentInfo>();
+    allowedDepts.forEach((d: ADDepartmentInfo) => deptMap.set(d.departmentID, d));
+
+    const buildSubTree = (parentID: string): TreeNode[] => {
+      return allowedDepts
         .filter((d: ADDepartmentInfo) => d.parentID === parentID)
         .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) => a.name.localeCompare(b.name, "zh-CN"))
         .map((d: ADDepartmentInfo) => ({
           key: d.departmentID,
           title: d.name,
           department: d,
-          children: buildTree(d.departmentID),
+          children: buildSubTree(d.departmentID),
         }));
     };
 
-    const roots = departments.filter(
-      (d: ADDepartmentInfo) => !d.parentID || !deptMap.has(d.parentID),
-    );
-    return roots
-      .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) => a.name.localeCompare(b.name, "zh-CN"))
-      .map((d: ADDepartmentInfo) => ({
-        key: d.departmentID,
-        title: d.name,
-        department: d,
-        children: buildTree(d.departmentID),
-      }));
-  }, [departments]);
+    // For each OU group, find root-level departments (those whose parent is not in allowedDepts).
+    // These become direct children of the virtual OU node.
+    const buildOUGroupChildren = (ou: string): TreeNode[] => {
+      const groupDepts = ouGroups.get(ou) ?? [];
+      // Roots within this group: parent not in deptMap or parent is outside allowed OUs
+      const roots = groupDepts.filter(
+        (d: ADDepartmentInfo) => !d.parentID || !deptMap.has(d.parentID),
+      );
+      return roots
+        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) => a.name.localeCompare(b.name, "zh-CN"))
+        .map((d: ADDepartmentInfo) => ({
+          key: d.departmentID,
+          title: d.name,
+          department: d,
+          children: buildSubTree(d.departmentID),
+        }));
+    };
+
+    // Create virtual OU category nodes in fixed order.
+    const ouNodes: TreeNode[] = ALLOWED_TOP_OUS
+      .map((ou) => {
+        const children = buildOUGroupChildren(ou);
+        if (!children.length) return null;
+        return {
+          key: `__ou_${ou}__`,
+          title: displayDeptName(ou),
+          selectable: false,
+          children,
+        } as TreeNode;
+      })
+      .filter(Boolean) as TreeNode[];
+
+    // Wrap all under the virtual enterprise root.
+    if (ouNodes.length === 0) return [];
+    return [
+      {
+        key: "__enterprise__",
+        title: ENTERPRISE_NAME,
+        selectable: false,
+        children: ouNodes,
+      },
+    ];
+  }, [allowedDepts]);
 
   const handleSelect = useCallback(
     (_: React.Key[], { node }: { node: TreeNode }) => {
@@ -120,13 +225,18 @@ export const Organization = () => {
     });
   };
 
-  const members = searchKeyword
+  // Filter members to only show those under allowed OUs.
+  const rawMembers = searchKeyword
     ? searchResp?.data?.members ?? []
     : memberResp?.data?.members ?? [];
+  const members = useMemo(
+    () => rawMembers.filter((m: ADDepartmentMemberInfo) => isAllowedDept(m.departmentID)),
+    [rawMembers],
+  );
 
   const isSearching = searchKeyword.length > 0;
   const listTitle = isSearching
-    ? `搜索结果 (${searchResp?.data?.total ?? 0})`
+    ? `搜索结果 (${members.length})`
     : selectedDept
       ? `${selectedDept.name} (${memberResp?.data?.total ?? 0})`
       : "请选择部门";

@@ -7,6 +7,11 @@ import { useUserStore } from "@/store";
 import { getChatToken, getIMToken } from "./storage";
 import { feedbackToast } from "./common";
 import { getIMHost, getChatHost } from "./config";
+import {
+  getPlazaUrl,
+  getOrangeUrl,
+  getOrangeToken,
+} from "./config";
 
 const tokenErrorCodeList = [1501, 1503, 1504, 1505];
 
@@ -87,6 +92,59 @@ export const getApiAxios = () => {
     _apiAxios = createAxiosInstance(url, true);
   }
   return _apiAxios;
+};
+
+// --- Plain axios (no token) for direct plaza / orange access ---
+
+/**
+ * Create a plain axios instance without IM/chat token auth.
+ * Used for direct plaza API calls and Orange admin APIs that use Bearer tokens.
+ */
+const createPlainAxios = (baseURL: string, bearerToken?: string) => {
+  const instance = axios.create({
+    baseURL,
+    timeout: 60000, // downloads may be slow
+  });
+
+  instance.interceptors.request.use((config) => {
+    config.headers.operationID = uuidv4();
+    if (bearerToken) {
+      config.headers.Authorization = `Bearer ${bearerToken}`;
+    }
+    return config;
+  });
+
+  // Plaza returns raw data; Orange returns { errCode, data } like chat
+  instance.interceptors.response.use(
+    (res) => res.data,
+    (err) => Promise.reject(err),
+  );
+
+  return instance;
+};
+
+let _plazaAxios: ReturnType<typeof createPlainAxios> | null = null;
+let _orangeAxios: ReturnType<typeof createPlainAxios> | null = null;
+
+/** Axios instance pointing directly at the SKILL plaza server (no token) */
+export const getPlazaAxios = () => {
+  const plazaUrl = getPlazaUrl();
+  if (!plazaUrl) throw new Error("plaza URL not configured");
+  if (!_plazaAxios || _plazaAxios.defaults.baseURL !== plazaUrl) {
+    _plazaAxios = createPlainAxios(plazaUrl);
+  }
+  return _plazaAxios;
+};
+
+/** Axios instance pointing directly at Orange (Bearer token auth) */
+export const getOrangeAxios = () => {
+  const orangeUrl = getOrangeUrl();
+  if (!orangeUrl) throw new Error("orange URL not configured");
+  const token = getOrangeToken();
+  if (!_orangeAxios || _orangeAxios.defaults.baseURL !== orangeUrl) {
+    _orangeAxios = createPlainAxios(orangeUrl, token);
+  }
+  return _orangeAxios;
 };
 
 export default createAxiosInstance;

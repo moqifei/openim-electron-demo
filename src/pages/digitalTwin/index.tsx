@@ -34,6 +34,12 @@ const sections: Array<{
     icon: "✨",
   },
   {
+    key: "knowledge",
+    title: "知识库能力",
+    description: "配置知识库检索与回答策略",
+    icon: "📚",
+  },
+  {
     key: "records",
     title: "代回记录",
     description: "确认分身回复，标记后续跟进",

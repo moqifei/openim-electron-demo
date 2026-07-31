@@ -70,4 +70,13 @@
     letter-spacing: 0;
     box-shadow: 0 1px 3px rgba(109, 40, 217, 0.15);
   }
+
+  /* 草稿指示器 — 飞书风格 */
+  &-draft {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    color: var(--primary);
+    font-size: 12px;
+  }
 }

@@ -47,8 +47,15 @@ export interface ConversationStore {
   currentConversation?: ConversationItem;
   unReadCount: number;
   currentGroupInfo?: GroupItem;
-  currentMemberInGroup?: GroupMemberItem;
+  currentMemberInGroup?: GroupItem;
   quoteMessage?: MessageItem;
+
+  /* Per-conversation input draft (unsent text) */
+  conversationDrafts: Record<string, string>;
+  saveConversationDraft: (conversationID: string, draftText: string) => void;
+  getConversationDraft: (conversationID: string) => string;
+  clearConversationDraft: (conversationID: string) => void;
+
   getConversationListByReq: (
     isOffset?: boolean
   ) => Promise<boolean>;
@@ -81,24 +88,23 @@ export interface ContactStore {
   sendGroupApplicationList: GroupApplicationItem[];
   unHandleFriendApplicationCount: number;
   unHandleGroupApplicationCount: number;
-  getFriendListByReq: () => Promise<void>;
+  getFriendListByReq: () => void;
   setFriendList: (list: FriendUserItem[]) => void;
   updateFriend: (friend: FriendUserItem, remove?: boolean) => void;
   pushNewFriend: (friend: FriendUserItem) => void;
-  getBlackListByReq: () => Promise<void>;
+  getBlackListByReq: () => void;
   updateBlack: (black: BlackUserItem, remove?: boolean) => void;
   pushNewBlack: (black: BlackUserItem) => void;
-  getGroupListByReq: () => Promise<void>;
+  getGroupListByReq: () => void;
   setGroupList: (list: GroupItem[]) => void;
   updateGroup: (group: GroupItem, remove?: boolean) => void;
   pushNewGroup: (group: GroupItem) => void;
-  getRecvFriendApplicationListByReq: () => Promise<void>;
+  getRecvFriendApplicationListByReq: () => void;
   updateRecvFriendApplication: (application: FriendApplicationItem) => Promise<void>;
-  getSendFriendApplicationListByReq: () => Promise<void>;
-  updateSendFriendApplication: (application: FriendApplicationItem) => void;
-  getRecvGroupApplicationListByReq: () => Promise<void>;
-  updateRecvGroupApplication: (application: GroupApplicationItem) => Promise<void>;
-  getSendGroupApplicationListByReq: () => Promise<void>;
+  getSendFriendApplicationListByReq: () => void;
+  updateSendFriendApplication: (application: FriendApplicationItem) => Promise<void>;
+  getRecvGroupApplicationListByReq: () => void;
+  updateSendGroupApplication: (application: GroupApplicationItem) => Promise<void>;
   updateSendGroupApplication: (application: GroupApplicationItem) => void;
   updateUnHandleFriendApplicationCount: (num: number) => void;
   updateUnHandleGroupApplicationCount: (num: number) => void;

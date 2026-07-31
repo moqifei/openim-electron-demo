@@ -4,6 +4,7 @@ import type {
   ConversationItem as ConversationItemType,
   MessageItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
+import { EditOutlined } from "@ant-design/icons";
 import clsx from "clsx";
 import { t } from "i18next";
 import { memo, useMemo } from "react";
@@ -11,6 +12,7 @@ import { useNavigate } from "react-router-dom";
 
 import { DigitalTwinReplySummary } from "@/api/digitalTwin";
 import OIMAvatar from "@/components/OIMAvatar";
+import { getCleanText } from "@/components/CKEditor/utils";
 import { useContactStore, useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
@@ -26,6 +28,8 @@ interface IConversationProps {
 
 const formatUnreadCount = (count: number) => (count > 99 ? "99+" : String(count));
 
+const MAX_DRAFT_PREVIEW_LENGTH = 20;
+
 const ConversationItem = ({
   isActive,
   conversation,
@@ -34,6 +38,9 @@ const ConversationItem = ({
   const navigate = useNavigate();
   const updateCurrentConversation = useConversationStore(
     (state) => state.updateCurrentConversation,
+  );
+  const draftText = useConversationStore((state) =>
+    state.getConversationDraft(conversation.conversationID),
   );
   const displayName = useContactStore((state) => {
     if (conversation.groupID) return conversation.showName;
@@ -70,6 +77,15 @@ const ConversationItem = ({
       return t("messageDescription.catchMessage");
     }
   }, [latestMessage]);
+
+  const draftPreview = useMemo(() => {
+    if (!draftText) return null;
+    const clean = getCleanText(draftText);
+    if (!clean) return null;
+    return clean.length > MAX_DRAFT_PREVIEW_LENGTH
+      ? `${clean.slice(0, MAX_DRAFT_PREVIEW_LENGTH)}...`
+      : clean;
+  }, [draftText]);
 
   const isSingleConversation = conversation.conversationType === SessionType.Single;
   const isAgent = isAgentConversation(conversation, latestMessage);
@@ -156,21 +172,31 @@ const ConversationItem = ({
 
         <div className="flex items-center">
           <div className="flex min-h-[16px] flex-1 items-center overflow-hidden text-xs">
-            {latestMessageIsDigitalTwin && (
-              <span className="mr-1 shrink-0 text-[#0089ff]">
-                分身已代回
-                {conversation.unreadCount > 0
-                  ? ` · 未读 ${conversation.unreadCount}`
-                  : ""}
-                :
-              </span>
+            {draftPreview !== null && !isActive ? (
+              /* Draft preview — shown when not active and draft exists */
+              <div className={styles["conversation-item-draft"]}>
+                <EditOutlined className="mr-1 shrink-0 text-[11px]" />
+                <span className="truncate">{draftPreview}</span>
+              </div>
+            ) : (
+              <>
+                {latestMessageIsDigitalTwin && (
+                  <span className="mr-1 shrink-0 text-[#0089ff]">
+                    分身已代回
+                    {conversation.unreadCount > 0
+                      ? ` · 未读 ${conversation.unreadCount}`
+                      : ""}
+                    :
+                  </span>
+                )}
+                <div
+                  className="truncate text-xs text-[var(--text-tertiary)]"
+                  dangerouslySetInnerHTML={{
+                    __html: latestMessageContent,
+                  }}
+                ></div>
+              </>
             )}
-            <div
-              className="truncate text-xs text-[var(--text-tertiary)]"
-              dangerouslySetInnerHTML={{
-                __html: latestMessageContent,
-              }}
-            ></div>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { MessageItem, SessionType, ViewType } from "@openim/wasm-client-sdk";
 import { useLatest, useRequest } from "ahooks";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { getGroupMessagesReadInfo, markMsgsAsRead } from "@/api/imApi";
@@ -38,6 +38,10 @@ export function useHistoryMessageList() {
     firstItemIndex: START_INDEX,
   });
   const latestLoadState = useLatest(loadState);
+  // Shared handle so the message-push handler can trigger an immediate seq
+  // resolution for freshly-sent group messages (instead of waiting for the
+  // next poll tick).
+  const resolvePendingSeqsRef = useRef<() => void>();
 
   useEffect(() => {
     loadHistoryMessages();
@@ -53,17 +57,43 @@ export function useHistoryMessageList() {
 
   useEffect(() => {
     const pushNewMessage = (message: MessageItem) => {
-      if (
-        latestLoadState.current.messageList.find(
-          (item) => item.clientMsgID === message.clientMsgID,
-        )
-      ) {
+      const existingIdx = latestLoadState.current.messageList.findIndex(
+        (item) => item.clientMsgID === message.clientMsgID,
+      );
+      // When the server echoes back a message we just sent (same clientMsgID),
+      // merge server-assigned fields (especially `seq`) into our local copy.
+      // Without this, locally-sent messages keep seq=0 forever and are never
+      // picked up by the group-read polling filter (m.seq > 0), so their
+      // @-mention dots never update in real time.
+      if (existingIdx >= 0) {
+        const existing = latestLoadState.current.messageList[existingIdx];
+        // Only merge if server has assigned a real seq and we don't have one yet
+        if (message.seq > 0 && existing.seq === 0) {
+          console.log(
+            "[pushNewMessage] merging server echo for clientMsgID:",
+            message.clientMsgID,
+            "seq: 0 ->",
+            message.seq,
+          );
+          updateOneMessage({
+            clientMsgID: message.clientMsgID,
+            seq: message.seq,
+            serverMsgID: message.serverMsgID,
+            status: message.status,
+          } as MessageItem);
+        }
         return;
       }
       setLoadState((preState) => ({
         ...preState,
         messageList: compactAgentStreamMessages([...preState.messageList, message]),
       }));
+      // A freshly-sent group message starts at seq===0. Trigger an immediate
+      // seq resolution so its @-mention dot can update in real time without
+      // waiting for the next poll tick. setTimeout lets the state flush first.
+      if (message.sendID === currentUserID && message.seq === 0 && message.groupID) {
+        setTimeout(() => resolvePendingSeqsRef.current?.(), 0);
+      }
     };
     const updateOneMessage = (message: MessageItem) => {
       setLoadState((preState) => {
@@ -103,6 +133,171 @@ export function useHistoryMessageList() {
       emitter.off("RELOAD_CHAT_MESSAGES", reloadChatMessages);
     };
   }, []);
+
+  // ── Real-time poll for own group messages' read status ──────────────
+  // The SDK's OnRecvGroupReadReceipt callback does NOT fire reliably when
+  // a message is read on another client (e.g. the web app), so the
+  // groupHasReadInfo.hasReadUserIDList never updates in real time.  We
+  // therefore poll getGroupMessagesReadInfo on an interval for the
+  // messages THIS user sent, and push updates to drive the @-mention dot
+  // solid in real time — no conversation switch required.
+  //
+  // IMPORTANT: locally-sent group messages start out with seq===0. The
+  // server only assigns the real seq once the message is persisted, and in
+  // this build the send callback's successMessage still carries seq===0.
+  // Because the polling below filters on `seq > 0`, those messages would
+  // never be polled and their @-mention dots would never update in place —
+  // which is exactly why switching chats "fixes" it (a history reload brings
+  // back the real seq). `resolvePendingSeqs` closes that gap: it matches the
+  // seq===0 message against the latest history (by clientMsgID) to recover
+  // the real seq, then immediately fetches its read info.
+  useEffect(() => {
+    if (!conversationID || !conversationID.startsWith("sg_")) return;
+    let cancelled = false;
+    const POLL_INTERVAL = 4000;
+    let lastSeqResolve = 0;
+
+    // Recover the server-assigned seq for any own group message still at
+    // seq===0, then fetch its read info right away.
+    const resolvePendingSeqs = async () => {
+      const list = latestLoadState.current.messageList;
+      const pending = list.filter(
+        (m) => m.sendID === currentUserID && m.seq === 0,
+      );
+      if (pending.length === 0) return;
+      try {
+        const { data } = await IMSDK.getAdvancedHistoryMessageList({
+          count: SPLIT_COUNT,
+          startClientMsgID: "",
+          conversationID: conversationID ?? "",
+          viewType: ViewType.History,
+        });
+        if (cancelled) return;
+        const byClientID = new Map(
+          data.messageList.map((m) => [m.clientMsgID, m]),
+        );
+        const resolved = pending
+          .map((m) => byClientID.get(m.clientMsgID))
+          .filter((m): m is MessageItem => Boolean(m) && m!.seq > 0);
+        if (resolved.length === 0) return;
+
+        // Merge the real seq so the polling below picks it up next tick.
+        resolved.forEach((m) => {
+          updateOneMessage({
+            clientMsgID: m.clientMsgID,
+            seq: m.seq,
+            serverMsgID: m.serverMsgID,
+            status: m.status,
+          } as MessageItem);
+        });
+
+        // Fetch read info immediately so the dot can flip without waiting
+        // for the next poll cycle.
+        const groupID =
+          resolved[0].groupID ?? list.find((m) => m.groupID)?.groupID;
+        const { data: readInfos } = await getGroupMessagesReadInfo({
+          conversationID: conversationID ?? "",
+          groupID,
+          userID: currentUserID,
+          seqs: resolved.map((m) => m.seq),
+        });
+        if (cancelled) return;
+        const readInfoMap = new Map(readInfos.map((info) => [info.seq, info]));
+        resolved.forEach((m) => {
+          const info = readInfoMap.get(m.seq);
+          if (!info) return;
+          updateOneMessage({
+            clientMsgID: m.clientMsgID,
+            attachedInfoElem: {
+              groupHasReadInfo: {
+                hasReadCount: info.hasReadCount,
+                unreadCount: info.unreadCount,
+                groupMemberCount: info.groupMemberCount,
+                hasReadUserIDList: info.hasReadUserIDList ?? [],
+              },
+            },
+          } as MessageItem);
+        });
+        console.log(
+          "[poll] resolved seq + read info for",
+          resolved.length,
+          "pending message(s)",
+        );
+      } catch (err) {
+        // Resolution failure should not affect the main flow
+      }
+    };
+    resolvePendingSeqsRef.current = resolvePendingSeqs;
+
+    const poll = async () => {
+      if (cancelled) return;
+      const list = latestLoadState.current.messageList;
+
+      // Resolve any locally-sent message that still lacks a real seq so it
+      // can be included in the read-info polling below.
+      if (list.some((m) => m.sendID === currentUserID && m.seq === 0)) {
+        const now = Date.now();
+        if (now - lastSeqResolve > 3000) {
+          lastSeqResolve = now;
+          resolvePendingSeqs();
+        }
+      }
+
+      const ownSeqs = list
+        .filter((m) => m.sendID === currentUserID && m.seq > 0)
+        .map((m) => m.seq);
+      if (ownSeqs.length === 0) return;
+      const groupID = list.find((m) => m.groupID)?.groupID;
+      try {
+        const { data: readInfos } = await getGroupMessagesReadInfo({
+          conversationID,
+          groupID,
+          userID: currentUserID,
+          seqs: ownSeqs,
+        });
+        if (cancelled) return;
+        const readInfoMap = new Map(readInfos.map((info) => [info.seq, info]));
+        list.forEach((msg) => {
+          const info = readInfoMap.get(msg.seq);
+          if (!info) return;
+          const next = info.hasReadUserIDList ?? [];
+          const prev =
+            msg.attachedInfoElem?.groupHasReadInfo?.hasReadUserIDList ?? [];
+          // Only log when there's an actual change (helps diagnose real-time updates)
+          if (next.join(",") !== prev.join(",")) {
+            console.log(
+              "[poll] seq:",
+              msg.seq,
+              "readers changed:",
+              prev.length === 0 ? "(none)" : prev,
+              "->",
+              next,
+            );
+          }
+          updateOneMessage({
+            clientMsgID: msg.clientMsgID,
+            attachedInfoElem: {
+              groupHasReadInfo: {
+                hasReadCount: info.hasReadCount,
+                unreadCount: info.unreadCount,
+                groupMemberCount: info.groupMemberCount,
+                hasReadUserIDList: next,
+              },
+            },
+          } as MessageItem);
+        });
+      } catch (err) {
+        // Polling failure should not affect main flow
+      }
+    };
+
+    poll();
+    const timer = setInterval(poll, POLL_INTERVAL);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [conversationID]);
 
   const loadHistoryMessages = () => getMoreOldMessages(false);
 

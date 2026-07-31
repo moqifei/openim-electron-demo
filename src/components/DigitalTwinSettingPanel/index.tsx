@@ -17,6 +17,7 @@ import { FC, memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteDigitalTwinSkill,
   DigitalTwinConfig,
+  DigitalTwinKnowledgeBaseConfig,
   DigitalTwinReplyListReviewStatus,
   DigitalTwinReplyRecord,
   DigitalTwinReplyReviewStatus,
@@ -26,6 +27,7 @@ import {
   DigitalTwinSkillDetailResponse,
   DigitalTwinSkillSummary,
   DigitalTwinTriggerMode,
+  WikiSpace,
   generateDigitalTwinSkill,
   getDigitalTwinOverview,
   getDigitalTwinSkill,
@@ -33,9 +35,12 @@ import {
   getSkillGenerateTaskStatus,
   getPersistedDigitalTwinConfig,
   installPlazaSkill,
+  installPlazaSkillDirect,
   listDigitalTwinReplies,
   listDigitalTwinSkills,
   listPlazaSkills,
+  listPlazaSkillsDirect,
+  listWikiSpaces,
   reviewDigitalTwinReply,
   SkillGenerateTask,
   updateDigitalTwinConfig,
@@ -49,10 +54,11 @@ import { feedbackToast } from "@/utils/common";
 import { notifyDigitalTwinRepliesChanged } from "@/utils/digitalTwinEvents";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
 import { publicAsset } from "@/utils/publicAsset";
+import { isPlazaDirectMode } from "@/utils/config";
 
 const DEFAULT_REPLY_TEXT = "我现在不方便回复，数字分身已收到你的消息。";
 const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
-export type DigitalTwinPanelSection = "overview" | "settings" | "skills" | "records";
+export type DigitalTwinPanelSection = "overview" | "settings" | "skills" | "knowledge" | "records";
 
 type DigitalTwinSettingPanelProps = {
   activeSection?: DigitalTwinPanelSection;
@@ -83,6 +89,11 @@ const normalizeConfig = (config?: DigitalTwinConfig): DigitalTwinConfig => ({
   },
   allowedSenderUserIDs: normalizeUserIDList(config?.allowedSenderUserIDs ?? []),
   blockedSenderUserIDs: normalizeUserIDList(config?.blockedSenderUserIDs ?? []),
+  knowledgeBase: config?.knowledgeBase ?? {
+    enabled: false,
+    spaceIds: [],
+    answerStrategy: "knowledge_only",
+  },
   version: config?.version,
   updatedAt: config?.updatedAt,
 });
@@ -207,8 +218,8 @@ const buildCorrectionSkillDescription = (
     "这是数字分身的一条回复纠正训练样本，请生成稳定可触发的分身回复技能。",
     "",
     "## 适用场景",
-    `- 当联系人 ${contactName} 或其他用户表达与下面"用户原始消息"相似的意思时使用。`,
-    "- 当用户意图、语气或上下文与该样本相近时，优先遵循“纠正要求”。",
+    `- 当联系人 ${contactName} 或其他用户表达与下面「用户原始消息」相似的意思时使用。`,
+    "- 当用户意图、语气或上下文与该样本相近时，优先遵循「纠正要求」。",
     "",
     "## 用户原始消息",
     triggerText,
@@ -220,7 +231,7 @@ const buildCorrectionSkillDescription = (
     correction,
     "",
     "## 输出要求",
-    "- 以后遇到相似场景时，避免重复“分身原回复”里的问题。",
+    "- 以后遇到相似场景时，避免重复「分身原回复」里的问题。",
     "- 直接给出更符合纠正要求的自然回复。",
     "- 回复要像本人，简洁、礼貌、不过度解释。",
   ].join("\n");
@@ -328,6 +339,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const [businessContactMap, setBusinessContactMap] = useState<
     Record<string, ContactSelectorUser>
   >({});
+  // ── 知识库状态 ──
+  const [kbEnabled, setKbEnabled] = useState(false);
+  const [kbSpaceIds, setKbSpaceIds] = useState<string[]>([]);
+  const [kbAnswerStrategy, setKbAnswerStrategy] = useState<"auto_search" | "knowledge_only">("auto_search");
+  const [kbChecking, setKbChecking] = useState(false);
+  const [wikiSpaces, setWikiSpaces] = useState<WikiSpace[]>([]);
+  const [loadingWikiSpaces, setLoadingWikiSpaces] = useState(false);
   const [replyRecords, setReplyRecords] = useState<DigitalTwinReplyRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -393,6 +411,19 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       setDraftScheduleEndMinute(normalized.replySchedule?.endMinute ?? 9 * 60);
       setDraftAllowedSenderUserIDs(userIDListToText(normalized.allowedSenderUserIDs));
       setDraftBlockedSenderUserIDs(userIDListToText(normalized.blockedSenderUserIDs));
+      // Sync knowledge base config
+      const kb = normalized.knowledgeBase;
+      setKbEnabled(kb?.enabled ?? false);
+      setKbSpaceIds(kb?.spaceIds ?? []);
+      // 策略迁移：仅 no_fabricate（已废弃选项）→ 映射为 knowledge_only（强制每次搜索）；auto_search 保留原值
+      const rawStrategy: string = kb?.answerStrategy ?? "auto_search";
+      if (rawStrategy === "no_fabricate") {
+        setKbAnswerStrategy("knowledge_only");
+      } else {
+        setKbAnswerStrategy(rawStrategy as "auto_search" | "knowledge_only");
+      }
+      // 开启状态下主动加载知识空间列表
+      if (kb?.enabled && wikiSpaces.length === 0) void loadWikiSpaces();
     }
   };
 
@@ -650,7 +681,11 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     setLoadingPlaza(true);
     setPlazaError(null);
     try {
-      const response = await listPlazaSkills();
+      const direct = isPlazaDirectMode();
+      console.log(`[plaza] loading skills via ${direct ? "DIRECT" : "chat-proxy"} mode`);
+      const response = direct
+        ? await listPlazaSkillsDirect()
+        : await listPlazaSkills();
       setPlazaSkills(
         Array.isArray(response.data.skills) ? response.data.skills : [],
       );
@@ -671,9 +706,19 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     console.log("[plaza-install] START installing skill:", skillName);
     setInstallingSkillName(skillName);
     try {
-      console.log("[plaza-install] calling installPlazaSkill API...");
-      const resp = await installPlazaSkill(skillName);
-      console.log("[plaza-install] API response received:", JSON.stringify(resp.data));
+      const direct = isPlazaDirectMode();
+      console.log(`[plaza-install] using ${direct ? "DIRECT" : "chat-proxy"} mode`);
+      if (direct) {
+        // Client-direct path: download from plaza → upload to Orange
+        if (!selfUserID) throw new Error("user ID not available for direct install");
+        const resp = await installPlazaSkillDirect(skillName, selfUserID);
+        console.log("[plaza-install] direct API response received:", JSON.stringify(resp.data));
+      } else {
+        // Legacy path: chat service proxies both download + install
+        console.log("[plaza-install] calling installPlazaSkill API (chat proxy)...");
+        const resp = await installPlazaSkill(skillName);
+        console.log("[plaza-install] API response received:", JSON.stringify(resp.data));
+      }
       feedbackToast({ msg: `技能 ${skillName} 安装成功` });
       // Refresh local skills list to show newly installed skill
       void loadSkills();
@@ -687,7 +732,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     } finally {
       setInstallingSkillName("");
     }
-  }, [installingSkillName, loadSkills]);
+  }, [installingSkillName, loadSkills, selfUserID]);
 
   // Client-side pagination for plaza
   const paginatedPlazaSkills = useMemo(() => {
@@ -725,6 +770,10 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     if (friendList.length === 0) {
       void getFriendListByReq();
     }
+    // Pre-load wiki spaces if KB was previously enabled
+    if (config?.knowledgeBase?.enabled) {
+      void loadWikiSpaces();
+    }
     const summaryTimer = window.setInterval(() => {
       void loadOverview(false, false);
     }, 10000);
@@ -754,6 +803,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
         unreadTimeoutSeconds: draftUnreadTimeoutSeconds,
         replySchedule: buildReplySchedule(),
         ...buildSenderPolicy(),
+        knowledgeBase: buildKnowledgeBaseConfig(),
       });
       applyConfig(response.data.config);
       void loadReplyRecords();
@@ -765,6 +815,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       setSwitching(false);
     }
   };
+
+  /** 构建知识库配置对象 */
+  const buildKnowledgeBaseConfig = (): DigitalTwinKnowledgeBaseConfig => ({
+    enabled: kbEnabled,
+    spaceIds: kbSpaceIds,
+    answerStrategy: kbAnswerStrategy,
+  });
 
   const saveConfig = async () => {
     setSaving(true);
@@ -778,6 +835,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
         unreadTimeoutSeconds: draftUnreadTimeoutSeconds,
         replySchedule: buildReplySchedule(),
         ...buildSenderPolicy(),
+        knowledgeBase: buildKnowledgeBaseConfig(),
       });
       applyConfig(response.data.config);
       void loadReplyRecords();
@@ -789,6 +847,20 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       setSaving(false);
     }
   };
+
+  /** 加载知识空间列表（用于知识库设置中的空间选择） */
+  const loadWikiSpaces = useCallback(async () => {
+    setLoadingWikiSpaces(true);
+    try {
+      const { data } = await listWikiSpaces();
+      setWikiSpaces(data.spaces ?? []);
+    } catch {
+      // 静默失败，知识库功能可选
+      setWikiSpaces([]);
+    } finally {
+      setLoadingWikiSpaces(false);
+    }
+  }, []);
 
   const reviewReply = async (
     operationID: string | undefined,
@@ -1050,6 +1122,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const showOverview = showAllSections || activeSection === "overview";
   const showSettings = showAllSections || activeSection === "settings";
   const showSkills = showAllSections || activeSection === "skills";
+  const showKnowledge = showAllSections || activeSection === "knowledge";
   const showRecords = showAllSections || activeSection === "records";
 
   const knownContactUserIDs = useMemo(() => {
@@ -1227,8 +1300,8 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
         <Input.TextArea
           value={correctionText}
           rows={4}
-          maxLength={500}
-          placeholder="例如：以后遇到这类问题，先简短确认对方意图，再给出具体建议；不要只回复“收到”。"
+          maxLength={1600}
+          placeholder="例如：以后遇到这类问题，先简短确认对方意图，再给出具体建议；不要只回复「收到」。"
           onChange={(event) =>
             setDraftReviewNotes((prevNotes) => ({
               ...prevNotes,
@@ -1244,7 +1317,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 : trainingTask.status === "running"
                   ? "模型正在生成技能内容，请稍候..."
                   : `训练${trainingTask.status === "completed" ? "完成" : "失败"}`
-              : `已输入 ${correctionText.length}/500，训练后下一轮 Orange 调用会加载该技能。`}
+              : `已输入 ${correctionText.length}/1600，训练后下一轮 Orange 调用会加载该技能。`}
           </div>
           <Button
             size="small"
@@ -1777,7 +1850,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                         <Input.TextArea
                           value={draftSkillDescription}
                           rows={3}
-                          maxLength={800}
+                          maxLength={1600}
                           showCount
                           disabled={loading || generatingSkill}
                           placeholder="例如：用户让我作诗时，返回静夜思、李白的诗句"
@@ -2066,6 +2139,125 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
               },
             ]}
           />
+        </div>
+      )}
+
+      {showKnowledge && (
+        <div className="space-y-4">
+          {/* 知识库能力 */}
+          <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-base)] px-5 py-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+                  <span>📚</span>
+                  知识库能力
+                </div>
+                <div className="mt-1 text-xs text-[var(--text-tertiary)]">
+                  开启后分身回复时可引用知识库内容，提升回答准确性。
+                </div>
+              </div>
+              <Switch
+                size="small"
+                checked={kbEnabled}
+                disabled={loading || saving || kbChecking}
+                onChange={(checked) => {
+                  if (!checked) {
+                    // 关闭：直接关闭，无需校验
+                    setKbEnabled(false);
+                    return;
+                  }
+                  // 开启：先探测知识空间是否可用
+                  (async () => {
+                    setKbChecking(true);
+                    try {
+                      const { data } = await listWikiSpaces();
+                      const spaces = data.spaces ?? [];
+                      setWikiSpaces(spaces);
+                      // 无空间不拦截，仅不开启（用户可能尚未配置知识库）
+                      if (spaces.length === 0) return;
+                      setKbEnabled(true);
+                    } catch {
+                      Modal.info({
+                        title: "知识库能力暂未开通",
+                        content: "无法连接到知识库服务，请稍后重试或联系管理员。",
+                        okText: "我知道了",
+                      });
+                    } finally {
+                      setKbChecking(false);
+                    }
+                  })();
+                }}
+              />
+            </div>
+
+            {kbEnabled && (
+              <div className="space-y-3">
+                {/* 可用知识空间 */}
+                <div>
+                  <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">
+                    可用知识空间
+                  </div>
+                  {loadingWikiSpaces ? (
+                    <div className="flex items-center gap-2 rounded-lg bg-[var(--bg-body)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
+                      <Spin size="small" /> 正在加载知识空间...
+                    </div>
+                  ) : wikiSpaces.length === 0 ? (
+                    <div className="rounded-lg bg-[var(--bg-body)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
+                      暂无可用的知识空间，请联系管理员配置 Arkon 知识库。
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {wikiSpaces.map((sp) => (
+                        <span
+                          key={sp.spaceId}
+                          className="inline-flex items-center rounded-full border border-[#e0e7ff] bg-[#f0f4ff] px-2.5 py-1 text-xs font-medium text-[#4338ca] dark:border-[#3730a3] dark:bg-[#1e1b4b] dark:text-[#a5b4fc]"
+                        >
+                          {sp.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 回答策略 */}
+                <div>
+                  <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">回答策略</div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: "auto_search" as const, label: "仅知识型问题", desc: "LLM 判断是否查库（推荐）" },
+                      { value: "knowledge_only" as const, label: "自动查知识库", desc: "每次都搜索" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`rounded-lg border px-3 py-1.5 text-left transition-all ${
+                          kbAnswerStrategy === opt.value
+                            ? "border-[#818cf8] bg-[#eef2ff] text-[#4f46e5] dark:bg-[#1e1b4b]"
+                            : "border-[var(--border-color)] hover:border-[#a5b4fc]"
+                        }`}
+                        onClick={() => setKbAnswerStrategy(opt.value)}
+                      >
+                        <div className="text-xs font-semibold">{opt.label}</div>
+                        <div className="text-[10px] text-[var(--text-quaternary)]">{opt.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 保存按钮 */}
+          <div className="sticky bottom-0 z-10 -mx-5 flex items-center justify-end border-t border-[var(--border-color)] bg-[var(--bg-base)]/95 px-5 py-3 backdrop-blur">
+            <Button
+              type="primary"
+              loading={saving}
+              disabled={loading}
+              onClick={() => void saveConfig()}
+            >
+              保存配置
+            </Button>
+          </div>
         </div>
       )}
 

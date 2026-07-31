@@ -140,6 +140,31 @@ export const getDigitalTwinTrace = (
   return isRecord(trace) ? trace : undefined;
 };
 
+export type DigitalTwinCitation = {
+  title?: string;
+  spaceName?: string;
+  relevanceScore?: number;
+};
+
+export const extractDigitalTwinCitations = (
+  message: MessageItem,
+): DigitalTwinCitation[] => {
+  const ext = getDigitalTwinExt(message);
+  const raw = ext?.["citations"];
+  if (!Array.isArray(raw)) return [];
+
+  return raw
+    .filter(isRecord)
+    .map((item) => ({
+      title: stringField(item, "title"),
+      spaceName: stringField(item, "spaceName"),
+      relevanceScore: typeof item["relevanceScore"] === "number"
+        ? (item["relevanceScore"] as number)
+        : undefined,
+    }))
+    .filter((c) => c.title || c.spaceName);
+};
+
 export const isDigitalTwinMessage = (message: MessageItem) => {
   if (isBotPlatformMessage(message)) return false;
 

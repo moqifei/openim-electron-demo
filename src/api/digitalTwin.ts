@@ -4,7 +4,7 @@ import {
   getCachedDigitalTwinConfig,
   setCachedDigitalTwinConfig,
 } from "@/utils/digitalTwinStorage";
-import { getChatAxios } from "@/utils/request";
+import { getChatAxios, getPlazaAxios, getOrangeAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
 export type DigitalTwinConfig = {
@@ -17,6 +17,8 @@ export type DigitalTwinConfig = {
   replySchedule?: DigitalTwinReplySchedule;
   allowedSenderUserIDs?: string[];
   blockedSenderUserIDs?: string[];
+  /** 知识库能力配置 */
+  knowledgeBase?: DigitalTwinKnowledgeBaseConfig;
   version?: number;
   updatedAt?: number;
 };
@@ -30,6 +32,71 @@ export type DigitalTwinReplySchedule = {
   timezone?: string;
 };
 
+// ── 知识库相关类型 ──────────────────────────────────────────────
+
+/** 知识空间（Wiki Space）—— 来自 Arkon 知识库 */
+export type WikiSpace = {
+  spaceId: string;
+  name: string;
+  description: string;
+  documentCount: number;
+  tags: string[];
+  createdAt: string;
+};
+
+/** Wiki 索引条目（某空间下的文档目录） */
+export type WikiIndexEntry = {
+  docId: string;
+  title: string;
+  path: string;
+  tags: string[];
+  updatedAt: string;
+};
+
+/** 某空间的完整 Wiki 索引 */
+export type WikiIndex = {
+  spaceId: string;
+  name: string;
+  index: WikiIndexEntry[];
+};
+
+/** 知识语义搜索结果条目 */
+export type KnowledgeSearchResult = {
+  searchId: string;
+  docId: string;
+  title: string;
+  spaceId: string;
+  spaceName: string;
+  snippet: string;
+  relevanceScore: number;
+  tags: string[];
+  searchedAt: string;
+};
+
+/** 知识语义搜索响应 */
+export type KnowledgeSearchResponse = {
+  query: string;
+  total: number;
+  results: KnowledgeSearchResult[];
+};
+
+// ── 知识库配置类型 ────────────────────────────────────────────
+
+/** 回答策略枚举 */
+export type KnowledgeAnswerStrategy =
+  | "auto_search"         // 仅知识型问题查（LLM 判断是否查库，推荐）
+  | "knowledge_only";     // 自动查知识库（每次都强制搜索）
+
+/** 知识库能力配置 */
+export type DigitalTwinKnowledgeBaseConfig = {
+  /** 是否启用知识库增强 */
+  enabled: boolean;
+  /** 关联的知识空间 ID 列表（当前检索不支持按空间过滤，仅作记录） */
+  spaceIds: string[];
+  /** 回答策略 */
+  answerStrategy: KnowledgeAnswerStrategy;
+};
+
 export type DigitalTwinConfigPatch = {
   enabled?: boolean;
   replyText?: string;
@@ -40,6 +107,7 @@ export type DigitalTwinConfigPatch = {
   replySchedule?: DigitalTwinReplySchedule;
   allowedSenderUserIDs?: string[];
   blockedSenderUserIDs?: string[];
+  knowledgeBase?: DigitalTwinKnowledgeBaseConfig;
 };
 
 export type DigitalTwinConfigResponse = {
@@ -334,5 +402,119 @@ export const installPlazaSkill = async (skillName: string) =>
   getChatAxios().post<PlazaInstallResponse>(
     "/digital_twin/skills/plaza/install",
     { skillName },
+    await withChatAuth(),
+  );
+
+// --- Direct plaza access (bypasses chat proxy) ---
+
+/**
+ * Raw plaza skill item as returned by GET /api/get_all_skill.
+ * The response is a map: { "skill-name": PlazaSkillItemRaw }.
+ */
+type PlazaSkillItemRaw = {
+  name: string;
+  author: string;
+  description: string;
+  downloads: number;
+  skill_type: string;
+  thumbs_up: number;
+  url?: string;
+};
+
+type PlazaDirectListResponse = Record<string, PlazaSkillItemRaw>;
+
+/**
+ * Fetch the skill catalog directly from the plaza server.
+ * Mirrors chat's ListPlazaSkills but calls the plaza URL directly.
+ */
+export const listPlazaSkillsDirect = async () => {
+  const data: PlazaDirectListResponse = await getPlazaAxios().get(
+    "/api/get_all_skill",
+  );
+  // Flatten map to array (same shape as the chat-proxied response)
+  const skills: PlazaSkillItem[] = Object.entries(data).map(
+    ([name, item]) => ({
+      name,
+      author: item.author,
+      description: item.description,
+      downloads: item.downloads,
+      skill_type: item.skill_type,
+      thumbs_ups: item.thumbs_up,
+    }),
+  );
+  return { data: { skills } };
+};
+
+/**
+ * Download a skill zip from the plaza and install it into Orange directly.
+ * This replicates what chat's DownloadAndInstallPlazaSkill does client-side:
+ *   1. POST {plazaUrl}/api/download_skill  → get zip bytes
+ *   2. POST {orangeUrl}/api/v1/digital-twin/skills/install  → upload to Orange
+ *
+ * @param skillName  Normalized skill name
+ * @param ownerUserID  Current user ID for Orange sandbox path
+ */
+export const installPlazaSkillDirect = async (
+  skillName: string,
+  ownerUserID: string,
+): Promise<{ data: PlazaInstallResponse }> => {
+  // Step 1: Download zip from plaza
+  const zipBlob: Blob = await getPlazaAxios().post(
+    "/api/download_skill",
+    { skill_name: skillName },
+    { responseType: "blob" },
+  );
+
+  // Step 2: Upload to Orange's digital-twin skill install endpoint
+  const formData = new FormData();
+  formData.append("ownerUserID", ownerUserID);
+  formData.append("file", zipBlob, `${skillName}.zip`);
+
+  const resp = await getOrangeAxios().post(
+    "/api/v1/digital-twin/skills/install",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    },
+  );
+
+  // Orange returns { errCode, data }; normalize to our shape
+  return {
+    data: {
+      userID: ownerUserID,
+      skillName,
+      installed: true,
+      message: "skill installed successfully (direct)",
+    },
+  };
+};
+
+// ── 知识库 API（通过 chat 后端代理到 Arkon）──────────────────────
+
+/** 获取当前用户有权限的知识空间列表 */
+export const listWikiSpaces = async () =>
+  getChatAxios().post<{ spaces: WikiSpace[]; total: number }>(
+    "/digital_twin/kb/spaces",
+    {},
+    await withChatAuth(),
+  );
+
+/** 获取指定知识空间的 Wiki 索引（文档目录） */
+export const getWikiIndex = async (spaceId: string) =>
+  getChatAxios().post<WikiIndex>(
+    "/digital_twin/kb/index",
+    { spaceId },
+    await withChatAuth(),
+  );
+
+/** 知识语义搜索 */
+export const knowledgeSearch = async (params: {
+  query: string;
+  spaceIds?: string[];
+  topK?: number;
+}) =>
+  getChatAxios().post<KnowledgeSearchResponse>(
+    "/digital_twin/kb/search",
+    params,
     await withChatAuth(),
   );

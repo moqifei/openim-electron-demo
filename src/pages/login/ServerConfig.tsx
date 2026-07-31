@@ -6,7 +6,11 @@ import {
   clearServerHost,
   getChatHost,
   getIMHost,
+  getOrangeUrl,
+  getPlazaUrl,
   setManualServerHosts,
+  setOrangeUrl,
+  setPlazaUrl,
 } from "@/utils/config";
 
 interface ServerConfigProps {
@@ -17,12 +21,17 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
   const [open, setOpen] = useState(false);
   const [imHost, setImHost] = useState(getIMHost());
   const [chatHost, setChatHostVal] = useState(getChatHost());
+  const [orangeUrl, setOrangeUrlVal] = useState(getOrangeUrl());
+  const [plazaUrl, setPlazaUrlVal] = useState(getPlazaUrl());
 
   const handleSave = () => {
     const trimmedIm = imHost.trim();
     const trimmedChat = chatHost.trim();
     if (!trimmedIm || !trimmedChat) return;
     setManualServerHosts({ imHost: trimmedIm, chatHost: trimmedChat });
+    // 留空则交回自动解析（启动时按所选环境派生）
+    setOrangeUrl(orangeUrl.trim());
+    setPlazaUrl(plazaUrl.trim());
     setOpen(false);
     onConfigChanged?.();
   };
@@ -35,6 +44,8 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
       import.meta.env.VITE_BASE_HOST) as string;
     setImHost(defaultIm);
     setChatHostVal(defaultChat);
+    setOrangeUrlVal(getOrangeUrl());
+    setPlazaUrlVal(getPlazaUrl());
     setOpen(false);
     onConfigChanged?.();
   };
@@ -46,6 +57,8 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
         onClick={() => {
           setImHost(getIMHost());
           setChatHostVal(getChatHost());
+          setOrangeUrlVal(getOrangeUrl());
+          setPlazaUrlVal(getPlazaUrl());
           setOpen(true);
         }}
       />
@@ -79,6 +92,28 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
             placeholder="例如: 192.168.1.200"
             value={chatHost}
             onChange={(e) => setChatHostVal(e.target.value)}
+          />
+        </div>
+        <div className="mb-2">
+          <div className="mb-1 text-sm font-medium">Orange 地址</div>
+          <div className="mb-1 text-xs text-gray-400">
+            分身技能直连安装地址，留空则按所选环境自动解析
+          </div>
+          <Input
+            placeholder="例如: http://orange:3000"
+            value={orangeUrl}
+            onChange={(e) => setOrangeUrlVal(e.target.value)}
+          />
+        </div>
+        <div className="mb-3">
+          <div className="mb-1 text-sm font-medium">技能广场地址</div>
+          <div className="mb-1 text-xs text-gray-400">
+            技能广场地址，留空则按所选环境自动解析
+          </div>
+          <Input
+            placeholder="例如: http://llm-tools.oa.bx"
+            value={plazaUrl}
+            onChange={(e) => setPlazaUrlVal(e.target.value)}
           />
         </div>
         <div className="flex items-center justify-between text-xs text-gray-400">

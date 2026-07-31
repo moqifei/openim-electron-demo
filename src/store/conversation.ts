@@ -23,6 +23,28 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
   currentGroupInfo: undefined,
   currentMemberInGroup: undefined,
   quoteMessage: undefined,
+
+  /* Per-conversation input draft (unsent text) */
+  conversationDrafts: {},
+  saveConversationDraft: (conversationID, draftText) => {
+    set((state) => ({
+      conversationDrafts: {
+        ...state.conversationDrafts,
+        [conversationID]: draftText,
+      },
+    }));
+  },
+  getConversationDraft: (conversationID) => {
+    return get().conversationDrafts[conversationID] ?? "";
+  },
+  clearConversationDraft: (conversationID) => {
+    set((state) => {
+      const drafts = { ...state.conversationDrafts };
+      delete drafts[conversationID];
+      return { conversationDrafts: drafts };
+    });
+  },
+
   getConversationListByReq: async (isOffset?: boolean) => {
     let tmpConversationList = [] as ConversationItem[];
     try {
@@ -158,6 +180,7 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
       currentGroupInfo: undefined,
       currentMemberInGroup: undefined,
       quoteMessage: undefined,
+      conversationDrafts: {},
     }));
   },
 }));

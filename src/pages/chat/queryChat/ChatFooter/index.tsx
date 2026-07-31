@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useDebounceFn } from "ahooks";
 
 import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import CKEditor, { CKEditorRef } from "@/components/CKEditor";
@@ -95,6 +96,38 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     (state) => state.currentConversation,
   );
   const isAgentChat = isAgentConversation(currentConversation);
+
+  /* ---- Draft save / restore ---- */
+  const convID = currentConversation?.conversationID;
+  const saveDraft = useConversationStore((state) => state.saveConversationDraft);
+  const getDraft = useConversationStore((state) => state.getConversationDraft);
+  const clearDraft = useConversationStore((state) => state.clearConversationDraft);
+
+  // Restore saved draft when switching to a different conversation
+  const prevConvIDRef = useRef(convID);
+  useEffect(() => {
+    if (convID && convID !== prevConvIDRef.current) {
+      const saved = getDraft(convID);
+      setHtml(saved);
+      prevConvIDRef.current = convID;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convID]);
+
+  // Debounce-save the current input as a draft
+  const { run: debouncedSaveDraft } = useDebounceFn(
+    (text: string) => {
+      if (convID) {
+        saveDraft(convID, text);
+      }
+    },
+    { wait: 300 },
+  );
+
+  useEffect(() => {
+    debouncedSaveDraft(html);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -441,7 +474,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     }
 
     await sendMessage({ message });
-  }, [pendingFiles, handleSendPendingFiles, sendMessage]);
+    // Clear draft after successful send
+    if (convID) clearDraft(convID);
+  }, [pendingFiles, handleSendPendingFiles, sendMessage, convID, clearDraft]);
 
   const getQuotePreview = (msg: MessageItem) => {
     switch (msg.contentType) {
