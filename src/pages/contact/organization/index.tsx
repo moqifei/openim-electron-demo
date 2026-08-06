@@ -1,20 +1,23 @@
 import { ReloadOutlined, UserOutlined } from "@ant-design/icons";
-import { Empty, Spin, Tree, Button, message, Avatar } from "antd";
 import { useRequest } from "ahooks";
+import { Avatar, Button, Empty, message, Spin, Tree } from "antd";
 import clsx from "clsx";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  type ADDepartmentInfo,
+  type ADDepartmentMemberInfo,
   getADDepartmentList,
   getADDepartmentMembers,
   searchADMembers,
   syncADOrganization,
-  type ADDepartmentInfo,
-  type ADDepartmentMemberInfo,
 } from "@/api/organization";
 import OIMAvatar from "@/components/OIMAvatar";
 import { emit } from "@/utils/events";
+
+import styles from "./organization.module.scss";
+import { getOrganizationNodeClassName } from "./treePresentation";
 
 // Allowed top-level OUs for enterprise organization display.
 // Only departments and users under these OUs will be shown in the
@@ -93,7 +96,7 @@ export const Organization = () => {
         pagination: { pageNumber: 1, showNumber: 1000 },
       }),
     {
-      ready: !!selectedDept,
+      ready: Boolean(selectedDept),
       refreshDeps: [selectedDept],
     },
   );
@@ -131,8 +134,13 @@ export const Organization = () => {
   );
 
   // DEBUG: 在浏览器控制台查看数据流（确认上线后可删除此行）
-  console.log("[OrgDebug] totalDepts=", departments.length, "allowedDepts=", allowedDepts.length,
-    departments.length > 0 ? "sampleDN=" + departments[0].departmentID : "");
+  console.log(
+    "[OrgDebug] totalDepts=",
+    departments.length,
+    "allowedDepts=",
+    allowedDepts.length,
+    departments.length > 0 ? `sampleDN=${departments[0].departmentID}` : "",
+  );
 
   const treeData = useMemo((): TreeNode[] => {
     if (!allowedDepts.length) return [];
@@ -156,7 +164,9 @@ export const Organization = () => {
     const buildSubTree = (parentID: string): TreeNode[] => {
       return allowedDepts
         .filter((d: ADDepartmentInfo) => d.parentID === parentID)
-        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) => a.name.localeCompare(b.name, "zh-CN"))
+        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
+          a.name.localeCompare(b.name, "zh-CN"),
+        )
         .map((d: ADDepartmentInfo) => ({
           key: d.departmentID,
           title: d.name,
@@ -174,7 +184,9 @@ export const Organization = () => {
         (d: ADDepartmentInfo) => !d.parentID || !deptMap.has(d.parentID),
       );
       return roots
-        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) => a.name.localeCompare(b.name, "zh-CN"))
+        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
+          a.name.localeCompare(b.name, "zh-CN"),
+        )
         .map((d: ADDepartmentInfo) => ({
           key: d.departmentID,
           title: d.name,
@@ -184,18 +196,16 @@ export const Organization = () => {
     };
 
     // Create virtual OU category nodes in fixed order.
-    const ouNodes: TreeNode[] = ALLOWED_TOP_OUS
-      .map((ou) => {
-        const children = buildOUGroupChildren(ou);
-        if (!children.length) return null;
-        return {
-          key: `__ou_${ou}__`,
-          title: displayDeptName(ou),
-          selectable: false,
-          children,
-        } as TreeNode;
-      })
-      .filter(Boolean) as TreeNode[];
+    const ouNodes: TreeNode[] = ALLOWED_TOP_OUS.map((ou) => {
+      const children = buildOUGroupChildren(ou);
+      if (!children.length) return null;
+      return {
+        key: `__ou_${ou}__`,
+        title: displayDeptName(ou),
+        selectable: false,
+        children,
+      } as TreeNode;
+    }).filter(Boolean) as TreeNode[];
 
     // Wrap all under the virtual enterprise root.
     if (ouNodes.length === 0) return [];
@@ -209,15 +219,12 @@ export const Organization = () => {
     ];
   }, [allowedDepts]);
 
-  const handleSelect = useCallback(
-    (_: React.Key[], { node }: { node: TreeNode }) => {
-      setSearchKeyword("");
-      if (node.department) {
-        setSelectedDept(node.department);
-      }
-    },
-    [],
-  );
+  const handleSelect = useCallback((_: React.Key[], { node }: { node: TreeNode }) => {
+    setSearchKeyword("");
+    if (node.department) {
+      setSelectedDept(node.department);
+    }
+  }, []);
 
   const showUserCard = (member: ADDepartmentMemberInfo) => {
     emit("OPEN_USER_CARD", {
@@ -230,7 +237,8 @@ export const Organization = () => {
     ? searchResp?.data?.members ?? []
     : memberResp?.data?.members ?? [];
   const members = useMemo(
-    () => rawMembers.filter((m: ADDepartmentMemberInfo) => isAllowedDept(m.departmentID)),
+    () =>
+      rawMembers.filter((m: ADDepartmentMemberInfo) => isAllowedDept(m.departmentID)),
     [rawMembers],
   );
 
@@ -238,12 +246,20 @@ export const Organization = () => {
   const listTitle = isSearching
     ? `搜索结果 (${members.length})`
     : selectedDept
-      ? `${selectedDept.name} (${memberResp?.data?.total ?? 0})`
-      : "请选择部门";
+    ? `${selectedDept.name} (${memberResp?.data?.total ?? 0})`
+    : "请选择部门";
 
   // 自定义树节点图标（紫色风格）
   const iconRender = () => (
-    <svg className="h-4 w-4 text-[#7c3aed]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className="h-4 w-4 text-[#7c3aed]"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <rect x="3" y="3" width="7" height="7" rx="1" />
       <rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="14" y="14" width="7" height="7" rx="1" />
@@ -251,10 +267,29 @@ export const Organization = () => {
     </svg>
   );
 
+  const switcherIcon = ({
+    expanded,
+    isLeaf,
+  }: {
+    expanded?: boolean;
+    isLeaf?: boolean;
+  }) =>
+    isLeaf ? null : (
+      <span
+        className={clsx(
+          "text-xs text-[#a78bfa] transition-transform duration-150",
+          !expanded && "-rotate-90",
+        )}
+        aria-hidden="true"
+      >
+        ▾
+      </span>
+    );
+
   return (
     <div className="flex h-full w-full flex-col bg-[var(--bg-base)]">
       {/* 页头 */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-2">
+      <div className="flex items-center justify-between px-6 pb-2 pt-6">
         <div>
           <h2 className="text-lg font-bold tracking-tight text-[var(--text-primary)]">
             {t("placeholder.organization") || "组织结构"}
@@ -267,14 +302,16 @@ export const Organization = () => {
           onClick={runSync}
           className="group flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-base)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] shadow-sm transition-all duration-200 hover:border-[#c4b5fd] hover:text-[#7c3aed] hover:shadow-md disabled:opacity-50 dark:hover:border-purple-800"
         >
-          <ReloadOutlined className={clsx("transition-transform", syncLoading && "animate-spin")} />
+          <ReloadOutlined
+            className={clsx("transition-transform", syncLoading && "animate-spin")}
+          />
           同步
         </button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Department Tree */}
-        <div className="w-60 flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] p-4">
+        <div className="w-[min(360px,32vw)] min-w-[280px] flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] p-4">
           {deptLoading ? (
             <div className="flex h-40 items-center justify-center">
               <Spin tip="加载中..." />
@@ -294,7 +331,24 @@ export const Organization = () => {
               defaultExpandAll
               showIcon
               icon={iconRender()}
-              className="[&_.ant-tree-treenode]:rounded-lg [&_.ant-tree-treenode]:px-2 [&_.ant-tree-treenode]:py-1 [&_.ant-tree-treenode-selected]:bg-gradient-to-r [&_.ant-tree-treenode-selected]:from-[#ede9fe] [&_.ant-tree-treenode-selected]:to-[#f5f3ff] [&_.ant-tree-switcher]:text-[#a78bfa]"
+              blockNode
+              switcherIcon={switcherIcon}
+              titleRender={(node) => {
+                const nodeClass = getOrganizationNodeClassName(node);
+                const nodeTitle = typeof node.title === "string" ? node.title : "";
+                return (
+                  <span
+                    className={clsx(
+                      styles.nodeTitle,
+                      nodeClass === "branch" ? styles.branchNode : styles.leafNode,
+                    )}
+                    title={nodeTitle}
+                  >
+                    {node.title}
+                  </span>
+                );
+              }}
+              className={styles.tree}
             />
           )}
         </div>
@@ -313,7 +367,7 @@ export const Organization = () => {
                   setSearchKeyword(e.target.value);
                   if (!e.target.value) setSelectedDept(null);
                 }}
-                className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] pl-9 pr-4 py-2.5 text-sm outline-none transition-all placeholder:text-[var(--text-quaternary)] focus:border-[#a78bfa] focus:shadow-[0_0_0_3px_rgba(124,58,237,0.08)] focus:ring-0"
+                className="w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-base)] py-2.5 pl-9 pr-4 text-sm outline-none transition-all placeholder:text-[var(--text-quaternary)] focus:border-[#a78bfa] focus:shadow-[0_0_0_3px_rgba(124,58,237,0.08)] focus:ring-0"
               />
             </div>
           </div>
@@ -349,13 +403,17 @@ export const Organization = () => {
                   >
                     <OIMAvatar
                       src={undefined}
-                      text={(member.nickname || member.displayName || member.username)?.charAt(0)}
+                      text={(
+                        member.nickname ||
+                        member.displayName ||
+                        member.username
+                      )?.charAt(0)}
                       size={38}
                       bgColor="#7c3aed"
                       color="#fff"
                     />
                     <div className="ml-3 min-w-0 flex-1 overflow-hidden">
-                      <div className="truncate text-sm font-semibold text-[var(--text-primary)] group-hover:text-[#7c3aed] transition-colors">
+                      <div className="truncate text-sm font-semibold text-[var(--text-primary)] transition-colors group-hover:text-[#7c3aed]">
                         {member.nickname || member.displayName || member.username}
                       </div>
                       <div className="truncate text-xs leading-relaxed text-[var(--text-quaternary)]">

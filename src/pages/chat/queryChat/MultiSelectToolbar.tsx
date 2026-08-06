@@ -2,7 +2,6 @@ import {
   CopyOutlined,
   DeleteOutlined,
   FileTextOutlined,
-  ForwardOutlined,
   SaveOutlined,
   StarOutlined,
 } from "@ant-design/icons";
@@ -13,6 +12,8 @@ import { FC, useMemo } from "react";
 
 import { feedbackToast } from "@/utils/common";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
+
+import ForwardMessageIcon from "./MessageItem/ForwardMessageIcon";
 
 interface IMultiSelectToolbarProps {
   selectedMessages: MessageItem[];
@@ -96,7 +97,7 @@ const MultiSelectToolbar: FC<IMultiSelectToolbarProps> = ({
     <div className="absolute bottom-0 left-0 z-50 flex w-full items-center justify-between border-t border-[var(--gap-text)] bg-white px-6 py-3">
       <div className="flex items-center gap-6">
         <ToolbarButton
-          icon={<ForwardOutlined />}
+          icon={<ForwardMessageIcon />}
           label={t("placeholder.forward")}
           onClick={onForwardOneByOne}
         />

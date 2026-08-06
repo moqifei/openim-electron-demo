@@ -17,6 +17,7 @@ export const IpcRenderToMain = {
   getDataPath: "getDataPath",
   openFileDialog: "openFileDialog",
   startScreenshot: "startScreenshot",
+  readClipboardImage: "readClipboardImage",
   saveScreenshotFile: "saveScreenshotFile",
   probeServerEnvironment: "probeServerEnvironment",
 };

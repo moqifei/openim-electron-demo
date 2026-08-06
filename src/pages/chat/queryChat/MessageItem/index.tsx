@@ -1,21 +1,26 @@
-import { MoreOutlined } from "@ant-design/icons";
+import {
+  CopyOutlined,
+  MessageOutlined,
+  RollbackOutlined,
+  SelectOutlined,
+} from "@ant-design/icons";
 import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client-sdk";
-import { Checkbox, Dropdown, MenuProps } from "antd";
+import { Checkbox, Tooltip } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
 import { FC, memo, useRef, useState } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore } from "@/store";
+import {
+  getAgentStreamPayload,
+  isAgentStreamMessage,
+} from "@/utils/agentStreamMessage";
 import { feedbackToast } from "@/utils/common";
 import {
   extractDigitalTwinText,
   isDigitalTwinMessage,
 } from "@/utils/digitalTwinMessage";
-import {
-  getAgentStreamPayload,
-  isAgentStreamMessage,
-} from "@/utils/agentStreamMessage";
 import { formatMessageTime } from "@/utils/imCommon";
 
 import AgentStreamMessageRender from "./AgentStreamMessageRender";
@@ -24,6 +29,7 @@ import CardMessageRender from "./CardMessageRender";
 import CatchMessageRender from "./CatchMsgRenderer";
 import DigitalTwinMessageRender from "./DigitalTwinMessageRender";
 import FileMessageRender from "./FileMessageRender";
+import ForwardMessageIcon from "./ForwardMessageIcon";
 import MediaMessageRender from "./MediaMessageRender";
 import MergeMessageRender from "./MergeMessageRender";
 import styles from "./message-item.module.scss";
@@ -73,7 +79,6 @@ const MessageItem: FC<IMessageItemProps> = ({
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const isDigitalTwin = isDigitalTwinMessage(message);
   const isAgentStream = isAgentStreamMessage(message);
   const MessageRenderComponent = isAgentStream
@@ -88,44 +93,52 @@ const MessageItem: FC<IMessageItemProps> = ({
     return friend?.remark || friend?.nickname || message.senderNickname;
   });
 
-  const showActions = !disabled && !isMultiSelectActive && (hovered || menuOpen);
+  const showActions = !disabled && !isMultiSelectActive && hovered;
   const isTextMessage =
     message.contentType === MessageType.TextMessage || isDigitalTwin || isAgentStream;
 
-  const actionItems: MenuProps["items"] = [
+  const copyMessage = () => {
+    if (!isTextMessage) return;
+    const text = isDigitalTwin
+      ? extractDigitalTwinText(message)
+      : isAgentStream
+      ? getAgentStreamPayload(message)?.answerText || ""
+      : message.textElem?.content || "";
+    navigator.clipboard.writeText(text).then(
+      () => feedbackToast({ msg: t("toast.copySuccess") }),
+      () => feedbackToast({ msg: t("toast.copyFailed") }),
+    );
+  };
+
+  const directActions = [
+    {
+      key: "reply",
+      label: t("placeholder.reply"),
+      icon: <MessageOutlined />,
+      onClick: () => onReply?.(message),
+    },
     {
       key: "forward",
       label: t("placeholder.forward"),
+      icon: <ForwardMessageIcon />,
       onClick: () => onForward?.(message),
     },
-    { key: "reply", label: t("placeholder.reply"), onClick: () => onReply?.(message) },
-    ...(isTextMessage
-      ? [
-          {
-            key: "copy",
-            label: t("placeholder.copy"),
-            onClick: () => {
-              const text = isDigitalTwin
-                ? extractDigitalTwinText(message)
-                : isAgentStream
-                  ? getAgentStreamPayload(message)?.answerText || ""
-                : message.textElem?.content || "";
-              navigator.clipboard.writeText(text).then(
-                () => feedbackToast({ msg: t("toast.copySuccess") }),
-                () => feedbackToast({ msg: t("toast.copyFailed") }),
-              );
-            },
-          },
-        ]
-      : []),
+    {
+      key: "copy",
+      label: t("placeholder.copy"),
+      icon: <CopyOutlined />,
+      onClick: copyMessage,
+    },
     {
       key: "check",
       label: t("placeholder.check"),
+      icon: <SelectOutlined />,
       onClick: () => onMultiSelect?.(message),
     },
     {
       key: "revoke",
       label: t("placeholder.revoke"),
+      icon: <RollbackOutlined />,
       onClick: () => onRevoke?.(message),
     },
   ];
@@ -196,18 +209,22 @@ const MessageItem: FC<IMessageItemProps> = ({
               />
 
               {showActions && (
-                <div className="flex items-center">
-                  <Dropdown
-                    menu={{ items: actionItems }}
-                    trigger={["hover"]}
-                    onOpenChange={setMenuOpen}
-                    mouseEnterDelay={0}
-                    mouseLeaveDelay={0.2}
-                  >
-                    <div className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg hover:bg-[var(--bg-hover)]">
-                      <MoreOutlined className="text-[var(--sub-text)] hover:text-[var(--primary)]" />
-                    </div>
-                  </Dropdown>
+                <div
+                  className={styles.actionToolbar}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {directActions.map((action) => (
+                    <Tooltip key={action.key} title={action.label} placement="top">
+                      <button
+                        type="button"
+                        aria-label={action.label}
+                        className={styles.actionButton}
+                        onClick={action.onClick}
+                      >
+                        {action.icon}
+                      </button>
+                    </Tooltip>
+                  ))}
                 </div>
               )}
             </div>

@@ -1,8 +1,12 @@
 .message-container {
-  @apply flex flex-1 overflow-hidden;
+  @apply flex flex-1;
+  min-width: 0;
+  overflow: visible;
 
   .message-wrap {
-    @apply ml-3 flex flex-1 flex-col overflow-hidden;
+    @apply ml-3 flex flex-1 flex-col;
+    min-width: 0;
+    overflow: visible;
 
     .message-profile {
       @apply mb-1.5 flex w-full text-xs;
@@ -28,7 +32,44 @@
   }
 
   .menu-wrap {
-    @apply flex w-fit;
+    @apply relative flex w-fit items-center;
+  }
+
+  .actionToolbar {
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 10px);
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    white-space: nowrap;
+    background: color-mix(in srgb, var(--bg-base) 96%, transparent);
+    border: 1px solid rgba(31, 35, 41, 0.12);
+    border-radius: 9px;
+    box-shadow: 0 6px 18px rgba(31, 35, 41, 0.12), 0 1px 3px rgba(31, 35, 41, 0.08);
+    transform: translateY(-50%);
+    animation: actionToolbarIn 140ms ease-out;
+    backdrop-filter: blur(8px);
+  }
+
+  .actionButton {
+    @apply flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent p-0;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+
+    &:hover {
+      color: var(--primary);
+      background: var(--bg-hover);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
   }
 
   &-sender {
@@ -58,10 +99,90 @@
       @apply flex-row-reverse;
     }
 
+    .actionToolbar {
+      right: calc(100% + 10px);
+      left: auto;
+    }
+
     .readStatus {
       @apply ml-1 flex items-center;
     }
   }
+}
+
+@keyframes actionToolbarIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+
+.quoteMessageBubble {
+  display: flex;
+  min-width: 180px;
+  max-width: min(560px, 68vw);
+  flex-direction: column;
+  padding: 8px 12px;
+  overflow: hidden;
+  color: var(--text-primary);
+  line-height: 1.6;
+  background: var(--bg-base);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  border-top-left-radius: 3px;
+  box-shadow: 0 1px 2px rgba(31, 35, 41, 0.04);
+}
+
+.quoteMessageBubbleSender {
+  background: var(--chat-bubble-sender);
+  border-color: transparent;
+  border-radius: 8px;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 3px;
+}
+
+.quoteMessageReference {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 140ms ease;
+
+  &:hover {
+    color: var(--primary);
+  }
+}
+
+.quoteMessageAuthor {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.quoteMessageContent {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quoteMessageBody {
+  min-height: 20px;
+  margin-top: 1px;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  color: var(--text-primary);
+  line-height: 1.6;
 }
 
 .readStatusButton {

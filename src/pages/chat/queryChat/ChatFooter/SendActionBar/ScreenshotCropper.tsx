@@ -94,19 +94,16 @@ export default function ScreenshotCropper({
   }, [imageSrc]);
 
   // Convert CSS pixel to canvas logical pixel
-  const getCanvasPos = useCallback(
-    (e: React.MouseEvent | MouseEvent): Point => {
-      const canvas = canvasRef.current!;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY,
-      };
-    },
-    [],
-  );
+  const getCanvasPos = useCallback((e: React.MouseEvent | MouseEvent): Point => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }, []);
 
   // Get CSS pixel position for overlay elements (text input)
   const getCssPos = useCallback((logicalPos: Point): Point => {
@@ -172,7 +169,7 @@ export default function ScreenshotCropper({
       const textMetrics = ctx.measureText(label);
       const labelW = textMetrics.width + 10;
       const labelH = 22;
-      let labelX = selectRect.x;
+      const labelX = selectRect.x;
       let labelY = selectRect.y - labelH - 4;
       if (labelY < 0) labelY = selectRect.y + selectRect.h + 4;
       ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
@@ -324,12 +321,7 @@ export default function ScreenshotCropper({
         targetCtx.lineJoin = "round";
 
         if (el.type === "rect") {
-          targetCtx.strokeRect(
-            el.x * sx,
-            el.y * sy,
-            el.w * sx,
-            el.h * sy,
-          );
+          targetCtx.strokeRect(el.x * sx, el.y * sy, el.w * sx, el.h * sy);
         } else if (el.type === "line" && el.points.length > 1) {
           targetCtx.beginPath();
           targetCtx.moveTo(el.points[0].x * sx, el.points[0].y * sy);
@@ -417,7 +409,14 @@ export default function ScreenshotCropper({
           className={toolBtnClass("select")}
           onClick={() => setTool("select")}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <rect x="2" y="2" width="12" height="12" rx="1" />
           </svg>
         </button>
@@ -426,7 +425,14 @@ export default function ScreenshotCropper({
           className={toolBtnClass("rect")}
           onClick={() => setTool("rect")}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <rect x="3" y="3" width="10" height="10" />
           </svg>
         </button>
@@ -435,7 +441,14 @@ export default function ScreenshotCropper({
           className={toolBtnClass("line")}
           onClick={() => setTool("line")}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M2 14L14 2" />
           </svg>
         </button>
@@ -444,7 +457,14 @@ export default function ScreenshotCropper({
           className={toolBtnClass("text")}
           onClick={() => setTool("text")}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M4 3h8M8 3v10M5 13h6" />
           </svg>
         </button>
@@ -544,7 +564,7 @@ export default function ScreenshotCropper({
       </div>
 
       <div className="mt-2 text-xs text-gray-400">
-        {tool === "select" && "拖拽选择区域，确认后发送选区内容"}
+        {tool === "select" && "拖拽选择区域，确认后加入聊天输入区"}
         {tool === "rect" && "拖拽绘制矩形"}
         {tool === "line" && "拖拽绘制线条"}
         {tool === "text" && "点击画布输入文字"}

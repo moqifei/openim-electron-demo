@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  clipboard,
   Menu,
   app,
   desktopCapturer,
@@ -25,7 +26,28 @@ import {
 import { t } from "i18next";
 import { IpcRenderToMain } from "../constants";
 import { getStore } from "./storeManage";
+import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { changeLanguage } from "../i18n";
+
+type NativeScreenshots = import("electron-screenshots").default;
+
+let nativeScreenshots: NativeScreenshots | null = null;
+
+const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
+  if (nativeScreenshots) return nativeScreenshots;
+
+  const { default: Screenshots } = await import("electron-screenshots");
+  nativeScreenshots = new Screenshots({
+    singleWindow: true,
+    lang: {
+      operation_ok_title: "确认",
+      operation_cancel_title: "取消",
+      operation_save_title: "保存",
+    },
+    logger: (...args) => console.info("[ipcMain] native screenshot", ...args),
+  });
+  return nativeScreenshots;
+};
 
 const store = getStore();
 
@@ -229,6 +251,12 @@ export const setIpcMainListener = () => {
       window: BrowserWindow.getFocusedWindow()!,
     });
   });
+
+  ipcMain.handle(IpcRenderToMain.readClipboardImage, () => {
+    const image = clipboard.readImage();
+    if (image.isEmpty()) return null;
+    return `data:image/png;base64,${image.toPNG().toString("base64")}`;
+  });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":
@@ -250,12 +278,14 @@ export const setIpcMainListener = () => {
     return result.canceled ? [] : result.filePaths.map(normalizeDialogFilePath);
   });
 
-  // Screenshot: hide window, capture full screen, show window, return base64
+  // Screenshot: capture the focused display at native resolution, then show the window.
   ipcMain.handle(IpcRenderToMain.startScreenshot, async (_, hideWindow = true) => {
     const win = BrowserWindow.getFocusedWindow();
     if (!win) {
       throw new Error("No active window");
     }
+
+    const display = screen.getDisplayMatching(win.getBounds());
 
     if (hideWindow) {
       win.hide();
@@ -263,8 +293,57 @@ export const setIpcMainListener = () => {
     }
 
     try {
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const { width, height } = primaryDisplay.size;
+      // Use the native overlay first. It captures the real display and lets the
+      // user select the region directly on top of the current screen instead of
+      // selecting from a renderer thumbnail.
+      try {
+        const screenshots = await getNativeScreenshots();
+        const selectedDataUrl = await new Promise<string | null>((resolve, reject) => {
+          let settled = false;
+          const settle = (value: string | null, error?: unknown) => {
+            if (settled) return;
+            settled = true;
+            screenshots.removeListener("ok", onOk);
+            screenshots.removeListener("cancel", onCancel);
+            if (error) reject(error);
+            else resolve(value);
+          };
+          const onOk = async (event: { preventDefault: () => void }, buffer: Uint8Array) => {
+            event.preventDefault();
+            try {
+              await screenshots.endCapture();
+              settle(uint8ArrayToDataUrl(buffer));
+            } catch (error) {
+              settle(null, error);
+            }
+          };
+          const onCancel = async (event: { preventDefault: () => void }) => {
+            event.preventDefault();
+            try {
+              await screenshots.endCapture();
+              settle(null);
+            } catch (error) {
+              settle(null, error);
+            }
+          };
+
+          screenshots.once("ok", onOk);
+          screenshots.once("cancel", onCancel);
+          screenshots.startCapture().catch(async (error) => {
+            try {
+              await screenshots.endCapture();
+            } finally {
+              settle(null, error);
+            }
+          });
+        });
+
+        return selectedDataUrl
+          ? { dataUrl: selectedDataUrl, isSelection: true }
+          : null;
+      } catch (error) {
+        console.warn("[ipcMain] native overlay screenshot failed, using renderer fallback", error);
+      }
 
       // macOS: use native screencapture for reliable full-screen capture
       if (process.platform === "darwin") {
@@ -282,7 +361,7 @@ export const setIpcMainListener = () => {
           if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 0) {
             const buf = fs.readFileSync(tmpFile);
             const dataURL = `data:image/png;base64,${buf.toString("base64")}`;
-            return dataURL;
+            return { dataUrl: dataURL, isSelection: false };
           }
           nativeFailed = true;
         } catch {
@@ -307,18 +386,52 @@ export const setIpcMainListener = () => {
         }
       }
 
-      // Fallback: desktopCapturer (non-macOS or macOS with screencapture unavailable)
+      // Prefer node-screenshots because it captures the monitor directly at native
+      // resolution instead of returning an Electron thumbnail.
+      try {
+        const { Monitor } = await import("node-screenshots");
+        let point = {
+          x: display.bounds.x + display.bounds.width / 2,
+          y: display.bounds.y + display.bounds.height / 2,
+        };
+        if (process.platform === "win32") {
+          point = screen.screenToDipPoint(point);
+        }
+        const monitor = Monitor.fromPoint(point.x, point.y);
+        if (!monitor) {
+          throw new Error("No native monitor found");
+        }
+        const image = await monitor.captureImage();
+        const buffer = await image.toPng(true);
+        return { dataUrl: `data:image/png;base64,${buffer.toString("base64")}`, isSelection: false };
+      } catch (error) {
+        console.warn("[ipcMain] native screenshot failed, using desktopCapturer fallback", error);
+      }
+
+      // Fallback: desktopCapturer at the display's physical pixel size.
+      const scaleFactor = display.scaleFactor || 1;
       const sources = await desktopCapturer.getSources({
         types: ["screen"],
-        thumbnailSize: { width, height },
+        thumbnailSize: {
+          width: Math.round(display.bounds.width * scaleFactor),
+          height: Math.round(display.bounds.height * scaleFactor),
+        },
       });
 
       const screenSources = sources.filter((s) => s.id.startsWith("screen:"));
-      if (!screenSources || screenSources.length === 0) {
+      const source =
+        screenSources.length === 1
+          ? screenSources[0]
+          : screenSources.find(
+              (item) =>
+                item.display_id === String(display.id) ||
+                item.id.startsWith(`screen:${display.id}:`),
+            ) ?? screenSources[0];
+      if (!source) {
         throw new Error("No screen source captured");
       }
 
-      return screenSources[0].thumbnail.toDataURL();
+      return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
     } finally {
       if (hideWindow) {
         win.show();

@@ -141,8 +141,14 @@ const saveFileToDisk = async ({
   return uniqueSavePath;
 };
 
-const startScreenshot = (hideWindow?: boolean): Promise<string> => {
+const startScreenshot = (
+  hideWindow?: boolean,
+): Promise<{ dataUrl: string; isSelection: boolean } | null> => {
   return ipcRenderer.invoke(IpcRenderToMain.startScreenshot, hideWindow);
+};
+
+const readClipboardImage = (): Promise<string | null> => {
+  return ipcRenderer.invoke(IpcRenderToMain.readClipboardImage);
 };
 
 const saveScreenshotFile = (base64: string): Promise<string> => {
@@ -169,6 +175,7 @@ const Api: IElectronAPI = {
   openFileDialog,
   saveFileToDisk,
   startScreenshot,
+  readClipboardImage,
   saveScreenshotFile,
 };
 

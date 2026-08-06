@@ -19,6 +19,19 @@ export default defineConfig(({ command }) => {
 
   return {
     base: "./",
+    // react-draggable reads this optional debug flag at module initialization.
+    // Electron's renderer exposes `process` without a Node-style `process.env`.
+    // Define only this property so main-process environment variables keep working.
+    define: {
+      "process.env.DRAGGABLE_DEBUG": "undefined",
+    },
+    optimizeDeps: {
+      esbuildOptions: {
+        define: {
+          "process.env.DRAGGABLE_DEBUG": "undefined",
+        },
+      },
+    },
     resolve: {
       alias: {
         "@": path.join(__dirname, "src"),

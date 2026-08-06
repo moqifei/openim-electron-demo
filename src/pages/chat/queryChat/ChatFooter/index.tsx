@@ -2,6 +2,7 @@ import { CloseOutlined } from "@ant-design/icons";
 import { MessageItem, MessageType, SessionType } from "@openim/wasm-client-sdk";
 import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
+import { useDebounceFn } from "ahooks";
 import { Button, message } from "antd";
 import { t } from "i18next";
 import {
@@ -14,7 +15,6 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { useDebounceFn } from "ahooks";
 
 import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import CKEditor, { CKEditorRef } from "@/components/CKEditor";
@@ -23,7 +23,8 @@ import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
-import { base64toFile, canSendImageTypeList } from "@/utils/common";
+import { dataUrlToImageFile, hasImageClipboardData } from "@/utils/chatAttachment";
+import { canSendImageTypeList } from "@/utils/common";
 import {
   createFileTransferProgressKey,
   showFileTransferProgress,
@@ -205,7 +206,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   );
 
   const handlePaste = useCallback(
-    (e: React.ClipboardEvent) => {
+    async (e: React.ClipboardEvent) => {
       const files: File[] = [];
       const items = e.clipboardData?.items;
       if (items) {
@@ -226,6 +227,29 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         e.preventDefault();
         e.stopPropagation();
         addPendingFiles(files);
+        return;
+      }
+
+      const clipboardItems: Array<{ kind: string; type: string }> = [];
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          clipboardItems.push({ kind: items[i].kind, type: items[i].type });
+        }
+      }
+      if (!hasImageClipboardData(clipboardItems, files.length)) {
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        const imageDataUrl = await window.electronAPI?.readClipboardImage();
+        if (!imageDataUrl) return;
+        addPendingFiles([
+          dataUrlToImageFile(imageDataUrl, `clipboard-${Date.now()}.png`),
+        ]);
+      } catch (error) {
+        console.warn("[ChatFooter] native clipboard image read failed", error);
       }
     },
     [addPendingFiles],
@@ -255,45 +279,44 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     [addPendingFiles],
   );
 
-  const startScreenshot = useCallback(async (hideWindow: boolean) => {
-    if (!window.electronAPI) {
-      message.warning(t("toast.accessFailed"));
-      return;
-    }
-    setScreenshotLoading(true);
-    try {
-      const base64 = await window.electronAPI.startScreenshot(hideWindow);
-      if (base64) {
-        setScreenshotSrc(base64);
+  const startScreenshot = useCallback(
+    async (hideWindow: boolean) => {
+      if (!window.electronAPI) {
+        message.warning(t("toast.accessFailed"));
+        return;
       }
-    } catch (error: any) {
-      console.error("[ChatFooter] screenshot failed:", error);
-      if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
-        message.error(t("toast.screenshotPermissionDenied"));
-      } else {
-        message.error(t("toast.accessFailed"));
-      }
-    } finally {
-      setScreenshotLoading(false);
-    }
-  }, []);
-
-  const handleScreenshotConfirm = useCallback(
-    async (croppedBase64: string) => {
-      setScreenshotSrc(null);
+      setScreenshotLoading(true);
       try {
-        if (!window.electronAPI) {
-          message.error(t("toast.accessFailed"));
-          return;
+        const result = await window.electronAPI.startScreenshot(hideWindow);
+        if (result?.isSelection) {
+          addPendingFiles([
+            dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
+          ]);
+        } else if (result?.dataUrl) {
+          setScreenshotSrc(result.dataUrl);
         }
-        const imageMessage = await getImageMessage(base64toFile(croppedBase64));
-        await sendMessage({ message: imageMessage });
-      } catch (error) {
-        console.error("[ChatFooter] send screenshot failed:", error);
-        message.error(t("toast.accessFailed"));
+      } catch (error: any) {
+        console.error("[ChatFooter] screenshot failed:", error);
+        if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
+          message.error(t("toast.screenshotPermissionDenied"));
+        } else {
+          message.error(t("toast.accessFailed"));
+        }
+      } finally {
+        setScreenshotLoading(false);
       }
     },
-    [getImageMessage, sendMessage],
+    [addPendingFiles],
+  );
+
+  const handleScreenshotConfirm = useCallback(
+    (croppedBase64: string) => {
+      setScreenshotSrc(null);
+      addPendingFiles([
+        dataUrlToImageFile(croppedBase64, `screenshot-${Date.now()}.png`),
+      ]);
+    },
+    [addPendingFiles],
   );
 
   const handleScreenshotCancel = useCallback(() => {
@@ -519,12 +542,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           className="relative flex flex-1 flex-col overflow-hidden"
         >
           {quoteMessage && (
-            <div className="mx-3 mt-2 flex items-center justify-between rounded-lg border-l-[3px] border-[var(--primary)] bg-[var(--primary-light)] px-3 py-2">
+            <div className="mx-3 mt-2 flex items-center justify-between rounded-md border border-l-[3px] border-[rgba(51,112,255,0.12)] border-l-[var(--primary)] bg-[rgba(51,112,255,0.06)] px-3 py-2 shadow-sm">
               <div className="flex flex-1 flex-col overflow-hidden">
                 <span className="text-xs font-medium text-[var(--primary)]">
                   {t("placeholder.reply")} {quoteMessage.senderNickname}
                 </span>
-                <span className="truncate text-xs text-[var(--text-tertiary)]">
+                <span className="truncate text-xs leading-5 text-[var(--text-secondary)]">
                   {getQuotePreview(quoteMessage)}
                 </span>
               </div>
@@ -618,15 +641,20 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             onPasteFile={addPendingFiles}
             onKeydown={handleEditorKeydown}
           />
-          <div className="flex items-center justify-end px-3 py-2">
-            <Button
-              className="h-8 rounded-lg px-6 font-medium shadow-sm transition-all hover:shadow"
-              type="primary"
-              onClick={enterToSend}
-              loading={screenshotLoading}
-            >
-              {t("placeholder.send")}
-            </Button>
+          <div className="flex justify-end px-3 py-1.5">
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                className="h-8 rounded-lg px-6 font-medium shadow-sm transition-all hover:shadow"
+                type="primary"
+                onClick={enterToSend}
+                loading={screenshotLoading}
+              >
+                {t("placeholder.send")}
+              </Button>
+              <span className="text-[10px] leading-none text-[var(--text-quaternary)]">
+                {t("placeholder.sendHint")}
+              </span>
+            </div>
           </div>
         </div>
       </div>

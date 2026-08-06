@@ -1,5 +1,6 @@
 import { MessageItem, MessageType } from "@openim/wasm-client-sdk";
 import { Image } from "antd";
+import clsx from "clsx";
 import { t } from "i18next";
 import { FC, useCallback, useState } from "react";
 
@@ -7,6 +8,7 @@ import { message as antdMessage } from "@/AntdGlobalComp";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
 
 import { IMessageItemProps } from "./index";
+import styles from "./message-item.module.scss";
 
 const QuoteMessageRender: FC<
   Omit<
@@ -19,9 +21,13 @@ const QuoteMessageRender: FC<
     | "onMultiSelect"
     | "onRevoke"
   >
-> = ({ message }) => {
+> = ({ message, isSender }) => {
   const quoteElem = message.quoteElem;
-  const text = quoteElem?.text;
+  const text =
+    quoteElem?.text ||
+    message.textElem?.content ||
+    message.advancedTextElem?.text ||
+    "";
   const quoteMessage = quoteElem?.quoteMessage;
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
 
@@ -96,7 +102,12 @@ const QuoteMessageRender: FC<
     "";
 
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      className={clsx(
+        styles.quoteMessageBubble,
+        isSender && styles.quoteMessageBubbleSender,
+      )}
+    >
       {quoteMessage && (
         <>
           {quoteMessage.contentType === MessageType.PictureMessage && imageUrl && (
@@ -109,22 +120,17 @@ const QuoteMessageRender: FC<
               }}
             />
           )}
-          <div
-            className="cursor-pointer rounded-md border-l-[3px] border-[var(--primary)] bg-[var(--primary-light)] px-2.5 py-1.5 hover:bg-[rgba(51,112,255,0.12)]"
-            onClick={handleQuoteClick}
-          >
-            <div className="text-xs text-[var(--primary)]">
-              {quoteMessage.senderNickname || ""}
-            </div>
-            <div className="truncate text-xs text-[var(--text-tertiary)]">
+          <div className={styles.quoteMessageReference} onClick={handleQuoteClick}>
+            <span className={styles.quoteMessageAuthor}>
+              {t("placeholder.reply")} {quoteMessage.senderNickname || ""}：
+            </span>
+            <span className={styles.quoteMessageContent}>
               {getQuoteContent(quoteMessage)}
-            </div>
+            </span>
           </div>
         </>
       )}
-      <div className="whitespace-pre-wrap break-all text-[var(--text-primary)]">
-        {text}
-      </div>
+      <div className={styles.quoteMessageBody}>{text}</div>
     </div>
   );
 };

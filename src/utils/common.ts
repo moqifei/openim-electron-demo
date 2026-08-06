@@ -109,22 +109,6 @@ export const downloadFile = async (originUrl: string) => {
   document.body.removeChild(linkNode);
 };
 
-export const base64toFile = (base64Str: string) => {
-  var arr = base64Str.split(","),
-    fileType = arr[0].match(/:(.*?);/)![1],
-    bstr = atob(arr[1]),
-    n = bstr.length,
-    u8arr = new Uint8Array(n);
-
-  while (n--) {
-    u8arr[n] = bstr.charCodeAt(n);
-  }
-
-  return new File([u8arr], `screenshot${Date.now()}.png`, {
-    type: fileType,
-  });
-};
-
 export const fileToBase64 = (file: File): Promise<string> =>
   new Promise((resolve) => {
     const reader = new FileReader();
@@ -161,10 +145,7 @@ export const formatAtText = (
   hasReadUserIDList?: string[],
 ): string => {
   // Escape HTML entities first to prevent XSS
-  let html = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  let html = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   // Collect the known mention nicknames and escape them for use in a regex.
   // Build a lookup map: groupNickname → atUserID so we can embed it as data.
@@ -181,10 +162,10 @@ export const formatAtText = (
   if (names.length > 0) {
     const pattern = new RegExp(`@(${names.join("|")})•?`, "g");
     html = html.replace(pattern, (_match, nickname) => {
-      const rawName = [...nameToID.keys()].find(
-        (k) =>
-          k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") === nickname,
-      ) ?? nickname;
+      const rawName =
+        [...nameToID.keys()].find(
+          (k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") === nickname,
+        ) ?? nickname;
       const uid = nameToID.get(rawName) || "";
       const isRead = hasReadUserIDList?.includes(uid) ?? false;
       const dotClass = isRead ? "atDot--read" : "atDot--unread";

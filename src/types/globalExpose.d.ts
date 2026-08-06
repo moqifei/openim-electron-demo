@@ -7,7 +7,9 @@ export type OpenFileDialogOptions = {
     name: string;
     extensions: string[];
   }>;
-  properties?: Array<"openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles">;
+  properties?: Array<
+    "openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles"
+  >;
 };
 
 export interface IElectronAPI {
@@ -23,7 +25,10 @@ export interface IElectronAPI {
   saveFileToDisk: (params: { file: File; sync?: boolean }) => Promise<string>;
   getFileByPath: (filePath: string) => Promise<File | null>;
   openFileDialog: (options?: OpenFileDialogOptions) => Promise<string[]>;
-  startScreenshot: (hideWindow?: boolean) => Promise<string>;
+  startScreenshot: (
+    hideWindow?: boolean,
+  ) => Promise<{ dataUrl: string; isSelection: boolean } | null>;
+  readClipboardImage: () => Promise<string | null>;
   saveScreenshotFile: (base64: string) => Promise<string>;
 }
 
