@@ -2159,66 +2159,15 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
               <Switch
                 size="small"
                 checked={kbEnabled}
-                disabled={loading || saving || kbChecking}
+                disabled={loading || saving}
                 onChange={(checked) => {
-                  if (!checked) {
-                    // 关闭：直接关闭，无需校验
-                    setKbEnabled(false);
-                    return;
-                  }
-                  // 开启：先探测知识空间是否可用
-                  (async () => {
-                    setKbChecking(true);
-                    try {
-                      const { data } = await listWikiSpaces();
-                      const spaces = data.spaces ?? [];
-                      setWikiSpaces(spaces);
-                      // 无空间不拦截，仅不开启（用户可能尚未配置知识库）
-                      if (spaces.length === 0) return;
-                      setKbEnabled(true);
-                    } catch {
-                      Modal.info({
-                        title: "知识库能力暂未开通",
-                        content: "无法连接到知识库服务，请稍后重试或联系管理员。",
-                        okText: "我知道了",
-                      });
-                    } finally {
-                      setKbChecking(false);
-                    }
-                  })();
+                  setKbEnabled(checked);
                 }}
               />
             </div>
 
             {kbEnabled && (
               <div className="space-y-3">
-                {/* 可用知识空间 */}
-                <div>
-                  <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">
-                    可用知识空间
-                  </div>
-                  {loadingWikiSpaces ? (
-                    <div className="flex items-center gap-2 rounded-lg bg-[var(--bg-body)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
-                      <Spin size="small" /> 正在加载知识空间...
-                    </div>
-                  ) : wikiSpaces.length === 0 ? (
-                    <div className="rounded-lg bg-[var(--bg-body)] px-3 py-2.5 text-xs text-[var(--text-quaternary)]">
-                      暂无可用的知识空间，请联系管理员配置 Arkon 知识库。
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {wikiSpaces.map((sp) => (
-                        <span
-                          key={sp.spaceId}
-                          className="inline-flex items-center rounded-full border border-[#e0e7ff] bg-[#f0f4ff] px-2.5 py-1 text-xs font-medium text-[#4338ca] dark:border-[#3730a3] dark:bg-[#1e1b4b] dark:text-[#a5b4fc]"
-                        >
-                          {sp.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
                 {/* 回答策略 */}
                 <div>
                   <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">回答策略</div>
