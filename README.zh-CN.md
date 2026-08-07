@@ -130,9 +130,27 @@ OpenIM 为开发者提供开源即时通讯 SDK，作为 Twilio、Sendbird 等�
      npm run build:mac
      ```
    - Windows:
+
      ```bash
      npm run build:win
      ```
+
+     #### Windows 静默安装
+
+     生成的 NSIS 安装包支持部署脚本静默安装：
+
+     ```powershell
+     StickyCake_3.8.11.exe /S
+     ```
+
+     如需指定安装目录，可使用 NSIS 参数：
+
+     ```powershell
+     StickyCake_3.8.11.exe /S "/D=C:\Program Files\StickyCake"
+     ```
+
+     当前安装器为全局安装（`perMachine`），静默安装可能触发 UAC。请使用管理员权限运行部署脚本，并根据脚本的进程退出码判断安装是否成功。普通双击安装仍显示安装向导。
+
    - Linux:
 
      ```bash
