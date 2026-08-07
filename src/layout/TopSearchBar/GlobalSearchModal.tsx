@@ -5,26 +5,38 @@ import {
   GroupItem,
   MessageItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
-import { Empty, Input, InputRef, Spin, Tabs } from "antd";
+import { Avatar, Empty, Input, InputRef, Spin, Tabs } from "antd";
 import { t } from "i18next";
 import {
   forwardRef,
   ForwardRefRenderFunction,
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 
+import { AgentInfo, searchAgents } from "@/api/login";
+import { ADDepartmentMemberInfo, searchADMembers } from "@/api/organization";
 import OIMAvatar from "@/components/OIMAvatar";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
 import { useConversationToggle } from "@/hooks/useConversationToggle";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useContactStore, useConversationStore } from "@/store";
+import { isDisplayableAgent } from "@/utils/agentRecommendations";
+import { feedbackToast } from "@/utils/common";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
 
-type SearchTab = "overview" | "contacts" | "groups" | "chatHistory" | "documents";
+type SearchTab =
+  | "overview"
+  | "contacts"
+  | "agents"
+  | "adMembers"
+  | "groups"
+  | "chatHistory"
+  | "documents";
 
 interface ChatHistoryItem {
   conversationID: string;
@@ -37,16 +49,49 @@ interface ChatHistoryItem {
   groupID?: string;
 }
 
+/** 搜索智能体结果项 */
+interface AgentSearchResult {
+  userID: string;
+  nickname: string;
+  faceURL: string;
+}
+
+/** 搜索AD人员结果项 */
+interface ADMemberSearchResult {
+  userID: string;
+  nickname: string;
+  faceURL: string;
+  displayName: string;
+  position: string;
+  email: string;
+  departmentName: string;
+}
+
 interface SearchResults {
   contacts: FriendUserItem[];
+  agents: AgentSearchResult[];
+  adMembers: ADMemberSearchResult[];
   groups: GroupItem[];
   chatHistory: ChatHistoryItem[];
   totalContacts: number;
+  totalAgents: number;
+  totalADMembers: number;
   totalGroups: number;
   totalChatHistory: number;
 }
 
 const MAX_OVERVIEW_ITEMS = 3;
+
+/** 解析 LDAP DN 字符串,提取第一个 ou 值作为部门名 */
+const parseDeptDN = (dn: string): string => {
+  if (!dn) return "";
+  const parts = dn.split(",");
+  for (const part of parts) {
+    const t = part.trim();
+    if (t.toLowerCase().startsWith("ou=")) return t.substring(3);
+  }
+  return "";
+};
 
 const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, ref) => {
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
@@ -55,9 +100,13 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResults>({
     contacts: [],
+    agents: [],
+    adMembers: [],
     groups: [],
     chatHistory: [],
     totalContacts: 0,
+    totalAgents: 0,
+    totalADMembers: 0,
     totalGroups: 0,
     totalChatHistory: 0,
   });
@@ -81,9 +130,13 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
     if (!keyword.trim()) {
       setResults({
         contacts: [],
+        agents: [],
+        adMembers: [],
         groups: [],
         chatHistory: [],
         totalContacts: 0,
+        totalAgents: 0,
+        totalADMembers: 0,
         totalGroups: 0,
         totalChatHistory: 0,
       });
@@ -191,12 +244,92 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
         const sliceLimit =
           activeTab === "overview" ? MAX_OVERVIEW_ITEMS : 50;
 
+        // 4. Agents (智能体)
+        let agentResults: AgentSearchResult[] = [];
+        try {
+          const { data } = await searchAgents(trimmed);
+          agentResults = (data.users || [])
+            .filter(isDisplayableAgent)
+            .map((a: AgentInfo) => ({
+              userID: a.userID,
+              nickname: a.nickname || a.userID,
+              faceURL: a.faceURL || "",
+            }));
+        } catch {
+          // 搜索失败时静默,不阻断其他结果
+        }
+
+        // 5. AD Members (AD组织架构人员)
+        let adMemberResults: ADMemberSearchResult[] = [];
+        try {
+          const { data: adData } = await searchADMembers({
+            keyword: trimmed,
+            pagination: { pageNumber: 1, showNumber: 200 },
+          });
+          adMemberResults = (adData.members || []).map(
+            (m: ADDepartmentMemberInfo) => {
+              const url = (m.faceURL || m.avatar || "").trim();
+              return {
+                userID: m.userID || m.username,
+                nickname: m.nickname || m.displayName || m.username,
+                faceURL:
+                  url && url !== "null" && url !== "undefined" ? url : "",
+                displayName: m.displayName || "",
+                position: (m.position || "").trim(),
+                email: m.email || "",
+                departmentName:
+                  (m.departmentName || "").trim() ||
+                  parseDeptDN(m.departmentID || ""),
+              };
+            },
+          );
+        } catch {
+          // 搜索失败时静默
+        }
+
+        // Pinyin fallback for AD members
+        if (
+          adMemberResults.length === 0 &&
+          /^[a-zA-Z0-9]+$/.test(trimmed)
+        ) {
+          try {
+            const { data: fbData } = await searchADMembers({
+              keyword: "",
+              pagination: { pageNumber: 1, showNumber: 200 },
+            });
+            const allMembers = (fbData.members || []).map(
+              (m: ADDepartmentMemberInfo) => {
+                const url = (m.faceURL || m.avatar || "").trim();
+                return {
+                  userID: m.userID || m.username,
+                  nickname: m.nickname || m.displayName || m.username,
+                  faceURL:
+                    url && url !== "null" && url !== "undefined"
+                      ? url
+                      : "",
+                  displayName: m.displayName || "",
+                  position: (m.position || "").trim(),
+                  email: m.email || "",
+                  departmentName:
+                    (m.departmentName || "").trim() ||
+                    parseDeptDN(m.departmentID || ""),
+                };
+              },
+            );
+            adMemberResults = filterByFuzzyPinyin(allMembers, trimmed);
+          } catch {}
+        }
+
         if (!cancelledRef.current) {
           setResults({
             contacts: contactResults.slice(0, sliceLimit),
+            agents: agentResults.slice(0, sliceLimit),
+            adMembers: adMemberResults.slice(0, sliceLimit),
             groups: groupResults.slice(0, sliceLimit),
             chatHistory: chatHistoryResults.slice(0, sliceLimit),
             totalContacts: contactResults.length,
+            totalAgents: agentResults.length,
+            totalADMembers: adMemberResults.length,
             totalGroups: groupResults.length,
             totalChatHistory: chatHistoryResults.length,
           });
@@ -239,8 +372,26 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
     });
   };
 
+  const handleAgentClick = (item: AgentSearchResult) => {
+    closeOverlay();
+    toSpecifiedConversation({
+      sourceID: item.userID,
+      sessionType: SessionType.Single,
+    });
+  };
+
+  const handleADMemberClick = (item: ADMemberSearchResult) => {
+    closeOverlay();
+    toSpecifiedConversation({
+      sourceID: item.userID,
+      sessionType: SessionType.Single,
+    });
+  };
+
   const hasAnyResults =
     results.contacts.length > 0 ||
+    results.agents.length > 0 ||
+    results.adMembers.length > 0 ||
     results.groups.length > 0 ||
     results.chatHistory.length > 0;
 
@@ -317,6 +468,46 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
     );
   };
 
+  const renderAgentItem = (item: AgentSearchResult) => (
+    <div
+      key={item.userID}
+      className="flex cursor-pointer items-center rounded-md px-2 py-2.5 hover:bg-[var(--primary-active)]"
+      onClick={() => handleAgentClick(item)}
+    >
+      <Avatar size={36} src={item.faceURL || undefined}>
+        {(item.nickname || item.userID).slice(0, 1).toUpperCase()}
+      </Avatar>
+      <div className="ml-3 flex-1 overflow-hidden">
+        <div className="truncate text-sm font-medium">{item.nickname}</div>
+        <div className="truncate text-xs text-[#7c3aed]">智能体</div>
+      </div>
+    </div>
+  );
+
+  const renderADMemberItem = (item: ADMemberSearchResult) => (
+    <div
+      key={item.userID}
+      className="flex cursor-pointer items-center rounded-md px-2 py-2.5 hover:bg-[var(--primary-active)]"
+      onClick={() => handleADMemberClick(item)}
+    >
+      <Avatar size={36} src={item.faceURL || undefined}>
+        {(item.nickname || item.userID).slice(0, 1).toUpperCase()}
+      </Avatar>
+      <div className="ml-3 flex-1 overflow-hidden">
+        <div className="truncate text-sm font-medium">{item.nickname}</div>
+        {[item.departmentName, item.displayName, item.position]
+          .filter(Boolean)
+          .length > 0 && (
+          <div className="truncate text-xs text-[var(--sub-text)]">
+            {[item.departmentName, item.displayName, item.position]
+              .filter(Boolean)
+              .join(" - ")}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const renderSection = (
     title: string,
     items: React.ReactNode[],
@@ -354,11 +545,27 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
     }
 
     const contactItems = results.contacts.map(renderContactItem);
+    const agentItems = results.agents.map(renderAgentItem);
+    const adMemberItems = results.adMembers.map(renderADMemberItem);
     const groupItems = results.groups.map(renderGroupItem);
     const chatItems = results.chatHistory.map(renderChatItem);
 
     return (
       <>
+        {renderSection(
+          "搜索人员",
+          adMemberItems,
+          results.totalADMembers > MAX_OVERVIEW_ITEMS
+            ? () => switchTab("adMembers")
+            : undefined,
+        )}
+        {renderSection(
+          "搜索智能体",
+          agentItems,
+          results.totalAgents > MAX_OVERVIEW_ITEMS
+            ? () => switchTab("agents")
+            : undefined,
+        )}
         {renderSection(
           t("placeholder.contacts"),
           contactItems,
@@ -420,6 +627,30 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
     return <div>{results.chatHistory.map(renderChatItem)}</div>;
   };
 
+  const renderAgents = () => {
+    if (results.agents.length === 0) {
+      return (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("empty.noSearchResults")}
+        />
+      );
+    }
+    return <div>{results.agents.map(renderAgentItem)}</div>;
+  };
+
+  const renderADMembers = () => {
+    if (results.adMembers.length === 0) {
+      return (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t("empty.noSearchResults")}
+        />
+      );
+    }
+    return <div>{results.adMembers.map(renderADMemberItem)}</div>;
+  };
+
   const renderDocuments = () => (
     <Empty
       image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -441,6 +672,10 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
         return renderOverview();
       case "contacts":
         return renderContacts();
+      case "agents":
+        return renderAgents();
+      case "adMembers":
+        return renderADMembers();
       case "groups":
         return renderGroups();
       case "chatHistory":
@@ -471,9 +706,13 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
         setActiveTab("overview");
         setResults({
           contacts: [],
+          agents: [],
+          adMembers: [],
           groups: [],
           chatHistory: [],
           totalContacts: 0,
+          totalAgents: 0,
+          totalADMembers: 0,
           totalGroups: 0,
           totalChatHistory: 0,
         });
@@ -513,6 +752,8 @@ const GlobalSearchModal: ForwardRefRenderFunction<OverlayVisibleHandle> = (_, re
           size="small"
         >
           <Tabs.TabPane tab={t("placeholder.overview")} key="overview" />
+          <Tabs.TabPane tab="搜索人员" key="adMembers" />
+          <Tabs.TabPane tab="搜索智能体" key="agents" />
           <Tabs.TabPane tab={t("placeholder.contacts")} key="contacts" />
           <Tabs.TabPane tab={t("placeholder.myGroup")} key="groups" />
           <Tabs.TabPane

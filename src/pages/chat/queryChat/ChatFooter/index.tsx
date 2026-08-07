@@ -374,6 +374,19 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         "atPopupVisible:",
         atPopupVisible,
       );
+
+      // Backspace 删除文件/图片: 当编辑器内容为空且有待发送文件时,用 Backspace 删除最后一个
+      if (e?.key === "Backspace") {
+        const cleanText = getCleanText(latestHtml.current ?? "");
+        if (!cleanText && pendingFiles.length > 0) {
+          e.preventDefault();
+          // 删除最后一个文件
+          const lastItem = pendingFiles[pendingFiles.length - 1];
+          removePendingFile(lastItem.id);
+          return;
+        }
+      }
+
       if (!isGroupChat) {
         console.log("[ChatFooter] not group chat, skipping @");
         return;

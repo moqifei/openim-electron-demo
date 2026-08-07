@@ -35,6 +35,12 @@ const OU_DISPLAY_NAMES: Record<string, string> = {
   PJUsers: "项目团队",
 };
 
+/**
+ * ZXBXUsers 下需要置顶显示的部门名称列表（按顺序）。
+ * 这些部门会排在其他 ZXBXUsers 部门之前。
+ */
+const ZXBX_PINNED_DEPTS = ["管理层"];
+
 /** Check whether a departmentID (DN) is under an allowed top-level OU. */
 function isAllowedDept(deptID: string): boolean {
   if (!deptID) return false;
@@ -78,8 +84,8 @@ interface TreeNode {
 
 export const Organization = () => {
   const { t } = useTranslation();
-  const [selectedDept, setSelectedDept] = useState<ADDepartmentInfo | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [selectedDept, setSelectedDept] = useState<ADDepartmentInfo | null>(null);
 
   const {
     data: deptResp,
@@ -157,7 +163,7 @@ export const Organization = () => {
       }
     }
 
-    // Build the real department sub-tree under each OU group using parentID.
+    // Build the real department sub-tree using parentID.
     const deptMap = new Map<string, ADDepartmentInfo>();
     allowedDepts.forEach((d: ADDepartmentInfo) => deptMap.set(d.departmentID, d));
 
@@ -175,8 +181,36 @@ export const Organization = () => {
         }));
     };
 
+    /**
+     * Sort helper for ZXBXUsers root departments:
+     * - Pinned departments (ZXBX_PINNED_DEPTS) appear first in order
+     * - Remaining departments sorted by name (zh-CN locale)
+     */
+    const sortZXBXRoots = (
+      depts: ADDepartmentInfo[],
+    ): ADDepartmentInfo[] => {
+      const pinnedSet = new Set(ZXBX_PINNED_DEPTS);
+      const pinned: ADDepartmentInfo[] = [];
+      const rest: ADDepartmentInfo[] = [];
+      for (const d of depts) {
+        if (pinnedSet.has(d.name)) {
+          pinned.push(d);
+        } else {
+          rest.push(d);
+        }
+      }
+      // Pinned 保持 ZXBX_PINNED_DEPTS 原始顺序; rest 按名称排序
+      rest.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+      // 按 pinned 列表顺序排列已匹配的部门
+      pinned.sort(
+        (a, b) =>
+          ZXBX_PINNED_DEPTS.indexOf(a.name) -
+          ZXBX_PINNED_DEPTS.indexOf(b.name),
+      );
+      return [...pinned, ...rest];
+    };
+
     // For each OU group, find root-level departments (those whose parent is not in allowedDepts).
-    // These become direct children of the virtual OU node.
     const buildOUGroupChildren = (ou: string): TreeNode[] => {
       const groupDepts = ouGroups.get(ou) ?? [];
       // Roots within this group: parent not in deptMap or parent is outside allowed OUs
@@ -195,29 +229,104 @@ export const Organization = () => {
         }));
     };
 
-    // Create virtual OU category nodes in fixed order.
-    const ouNodes: TreeNode[] = ALLOWED_TOP_OUS.map((ou) => {
-      const children = buildOUGroupChildren(ou);
-      if (!children.length) return null;
-      return {
-        key: `__ou_${ou}__`,
-        title: displayDeptName(ou),
-        selectable: false,
-        children,
-      } as TreeNode;
-    }).filter(Boolean) as TreeNode[];
+    // ── ZXBXUsers: 拉平（不展示"百信行员"中间层）──
+    const zxbxGroupDepts = ouGroups.get("ZXBXUsers") ?? [];
+    const zxbxDeptMap = new Map<string, ADDepartmentInfo>();
+    zxbxGroupDepts.forEach((d) => zxbxDeptMap.set(d.departmentID, d));
 
-    // Wrap all under the virtual enterprise root.
-    if (ouNodes.length === 0) return [];
+    const buildZXBXSubTree = (parentID: string): TreeNode[] => {
+      return zxbxGroupDepts
+        .filter((d: ADDepartmentInfo) => d.parentID === parentID)
+        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
+          a.name.localeCompare(b.name, "zh-CN"),
+        )
+        .map((d: ADDepartmentInfo) => ({
+          key: d.departmentID,
+          title: d.name,
+          department: d,
+          children: buildZXBXSubTree(d.departmentID),
+        }));
+    };
+    const zxbxRoots = zxbxGroupDepts.filter(
+      (d: ADDepartmentInfo) => !d.parentID || !zxbxDeptMap.has(d.parentID),
+    );
+    const zxbxNodes: TreeNode[] = sortZXBXRoots(zxbxRoots).map(
+      (d: ADDepartmentInfo) => ({
+        key: d.departmentID,
+        title: d.name,
+        department: d,
+        children: buildZXBXSubTree(d.departmentID),
+      }),
+    );
+
+    // ── COUsers + PJUsers 合并为"百信外包"(保留层级) ──
+    // COUsers 和 PJUsers 的数据都归入"百信外包"节点下展示
+    const coMergedDepts = [
+      ...(ouGroups.get("COUsers") ?? []),
+      ...(ouGroups.get("PJUsers") ?? []),
+    ];
+    const coMergedDeptMap = new Map<string, ADDepartmentInfo>();
+    coMergedDepts.forEach((d) => coMergedDeptMap.set(d.departmentID, d));
+
+    const buildCOMergedSubTree = (parentID: string): TreeNode[] => {
+      return coMergedDepts
+        .filter((d: ADDepartmentInfo) => d.parentID === parentID)
+        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
+          a.name.localeCompare(b.name, "zh-CN"),
+        )
+        .map((d: ADDepartmentInfo) => ({
+          key: d.departmentID,
+          title: d.name,
+          department: d,
+          children: buildCOMergedSubTree(d.departmentID),
+        }));
+    };
+    const coRoots = coMergedDepts.filter(
+      (d: ADDepartmentInfo) => !d.parentID || !coMergedDeptMap.has(d.parentID),
+    );
+    const coNode: TreeNode | null =
+      coRoots.length > 0
+        ? {
+            key: "__ou_COUsers__",
+            title: displayDeptName("COUsers"), // "百信外包"
+            selectable: false,
+            children: coRoots
+              .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"))
+              .map((d: ADDepartmentInfo) => ({
+                key: d.departmentID,
+                title: d.name,
+                department: d,
+                children: buildCOMergedSubTree(d.departmentID),
+              })),
+          }
+        : null;
+
+    // Assemble final tree under enterprise root.
+    const children: TreeNode[] = [...zxbxNodes];
+    if (coNode) children.push(coNode);
+
+    if (children.length === 0) return [];
     return [
       {
         key: "__enterprise__",
         title: ENTERPRISE_NAME,
         selectable: false,
-        children: ouNodes,
+        children,
       },
     ];
   }, [allowedDepts]);
+
+  // 默认只展开根节点（中信百信银行），其余层级用户手动展开
+  const defaultExpandedKeys = useMemo(() => ["__enterprise__"], []);
+
+  const [treeWidth, setTreeWidth] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem("org_tree_width")) || 320;
+    } catch {
+      return 320;
+    }
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   const handleSelect = useCallback((_: React.Key[], { node }: { node: TreeNode }) => {
     setSearchKeyword("");
@@ -231,6 +340,37 @@ export const Organization = () => {
       userID: member.userID || member.username,
     });
   };
+
+  // ── 拖拽调整树宽度 ──
+  const MIN_TREE_WIDTH = 220;
+  const MAX_TREE_WIDTH = 600;
+
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsResizing(true);
+      const startX = e.clientX;
+      const startWidth = treeWidth;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const delta = ev.clientX - startX;
+        const newWidth = Math.min(MAX_TREE_WIDTH, Math.max(MIN_TREE_WIDTH, startWidth + delta));
+        setTreeWidth(newWidth);
+        try {
+          localStorage.setItem("org_tree_width", String(newWidth));
+        } catch {}
+      };
+
+      const onMouseUp = () => {
+        setIsResizing(false);
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    },
+    [treeWidth],
+  );
 
   // Filter members to only show those under allowed OUs.
   const rawMembers = searchKeyword
@@ -310,8 +450,11 @@ export const Organization = () => {
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Department Tree */}
-        <div className="w-[min(360px,32vw)] min-w-[280px] flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] p-4">
+        {/* Left: Department Tree (resizable) */}
+        <div
+          className="relative flex-shrink-0 overflow-y-auto border-r border-[var(--border-color)] p-4"
+          style={{ width: treeWidth, minWidth: `${MIN_TREE_WIDTH}px` }}
+        >
           {deptLoading ? (
             <div className="flex h-40 items-center justify-center">
               <Spin tip="加载中..." />
@@ -328,7 +471,7 @@ export const Organization = () => {
               treeData={treeData}
               onSelect={handleSelect}
               selectedKeys={selectedDept ? [selectedDept.departmentID] : []}
-              defaultExpandAll
+              defaultExpandedKeys={defaultExpandedKeys}
               showIcon
               icon={iconRender()}
               blockNode
@@ -351,6 +494,11 @@ export const Organization = () => {
               className={styles.tree}
             />
           )}
+          {/* 拖拽调整宽度手柄 */}
+          <div
+            className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent transition-colors hover:bg-[#7c3aed] active:bg-[#5b21b6]"
+            onMouseDown={handleResizeStart}
+          />
         </div>
 
         {/* Right: Member List */}

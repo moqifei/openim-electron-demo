@@ -11,8 +11,6 @@ import i18n, { t } from "i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getBusinessUserInfo } from "@/api/login";
-import add_friend from "@/assets/images/topSearchBar/add_friend.png";
-import add_group from "@/assets/images/topSearchBar/add_group.png";
 import create_group from "@/assets/images/topSearchBar/create_group.png";
 import show_more from "@/assets/images/topSearchBar/show_more.png";
 import WindowControlBar from "@/components/WindowControlBar";
@@ -28,7 +26,6 @@ import emitter, { OpenUserCardParams } from "@/utils/events";
 
 import { IMSDK } from "../MainContentWrap";
 import GlobalSearchModal from "./GlobalSearchModal";
-import SearchUserOrGroup from "./SearchUserOrGroup";
 
 type UserCardState = OpenUserCardParams & {
   cardInfo?: CardInfo;
@@ -38,7 +35,6 @@ const TopSearchBar = () => {
   const userCardRef = useRef<OverlayVisibleHandle>(null);
   const groupCardRef = useRef<OverlayVisibleHandle>(null);
   const chooseModalRef = useRef<OverlayVisibleHandle>(null);
-  const searchModalRef = useRef<OverlayVisibleHandle>(null);
   const globalSearchModalRef = useRef<OverlayVisibleHandle>(null);
   const rtcRef = useRef<OverlayVisibleHandle>(null);
   const [chooseModalState, setChooseModalState] = useState<ChooseModalState>({
@@ -49,8 +45,6 @@ const TopSearchBar = () => {
     GroupItem & { inGroup?: boolean }
   >();
   const [actionVisible, setActionVisible] = useState(false);
-  const [isSearchGroup, setIsSearchGroup] = useState(false);
-  const [isSearchAgent, setIsSearchAgent] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData>({} as InviteData);
 
   useEffect(() => {
@@ -113,16 +107,6 @@ const TopSearchBar = () => {
 
   const actionClick = (idx: number) => {
     switch (idx) {
-      case 0:
-        setIsSearchGroup(false);
-        setIsSearchAgent(false);
-        searchModalRef.current?.openOverlay();
-        break;
-      case 1:
-        setIsSearchGroup(false);
-        setIsSearchAgent(true);
-        searchModalRef.current?.openOverlay();
-        break;
       case 2:
         setChooseModalState({ type: "CRATE_GROUP" });
         chooseModalRef.current?.openOverlay();
@@ -134,7 +118,6 @@ const TopSearchBar = () => {
   };
 
   const openGroupCardWithData = useCallback((group: GroupItem) => {
-    searchModalRef.current?.closeOverlay();
     const inGroup = useContactStore
       .getState()
       .groupList.some((g) => g.groupID === group.groupID);
@@ -146,11 +129,11 @@ const TopSearchBar = () => {
     <div className="no-mobile app-drag flex h-12 min-h-[48px] items-center border-b border-[var(--border-color)] bg-[var(--bg-base)]">
       <div className="flex w-full items-center justify-center gap-3">
         <div
-          className="app-no-drag flex h-[34px] w-[240px] cursor-pointer items-center gap-2 rounded-lg bg-[var(--bg-input)] px-3 text-sm text-[var(--text-placeholder)] transition-all hover:bg-[var(--bg-hover)]"
+          className="app-no-drag flex h-[36px] w-[280px] cursor-pointer items-center gap-2.5 rounded-lg border border-[var(--border-color)] bg-white px-3 text-sm text-[var(--text-placeholder)] shadow-sm transition-all hover:border-[#7c3aed] hover:shadow-md"
           onClick={() => globalSearchModalRef.current?.openOverlay()}
         >
-          <SearchOutlined className="text-[13px] text-[var(--text-placeholder)]" />
-          <span>{t("placeholder.search")}</span>
+          <SearchOutlined className="text-[14px] text-[#7c3aed]" />
+          <span className="text-[13px]">{t("placeholder.search")}</span>
         </div>
         <Popover
           content={<ActionPopContent actionClick={actionClick} />}
@@ -173,12 +156,6 @@ const TopSearchBar = () => {
       <GroupCardModal ref={groupCardRef} groupData={groupCardData} />
       <ChooseModal ref={chooseModalRef} state={chooseModalState} />
       <GlobalSearchModal ref={globalSearchModalRef} />
-      <SearchUserOrGroup
-        ref={searchModalRef}
-        isSearchGroup={isSearchGroup}
-        isSearchAgent={isSearchAgent}
-        openGroupCardWithData={openGroupCardWithData}
-      />
       <RtcCallModal ref={rtcRef} inviteData={inviteData} />
     </div>
   );
@@ -188,16 +165,6 @@ export default TopSearchBar;
 
 const actionMenuList = [
   {
-    idx: 0,
-    title: t("placeholder.addFriends"),
-    icon: add_friend,
-  },
-  {
-    idx: 1,
-    title: t("placeholder.searchAgents"),
-    icon: add_friend,
-  },
-  {
     idx: 2,
     title: t("placeholder.createGroup"),
     icon: create_group,
@@ -205,9 +172,7 @@ const actionMenuList = [
 ];
 
 i18n.on("languageChanged", () => {
-  actionMenuList[0].title = t("placeholder.addFriends");
-  actionMenuList[1].title = t("placeholder.searchAgents");
-  actionMenuList[2].title = t("placeholder.createGroup");
+  actionMenuList[0].title = t("placeholder.createGroup");
 });
 
 const ActionPopContent = ({ actionClick }: { actionClick: (idx: number) => void }) => {
