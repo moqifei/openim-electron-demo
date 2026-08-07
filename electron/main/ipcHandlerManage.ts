@@ -9,6 +9,7 @@ import {
   screen,
 } from "electron";
 import { execFile } from "child_process";
+import { createRequire } from "node:module";
 import fs from "fs";
 import * as iconv from "iconv-lite";
 import * as net from "net";
@@ -31,6 +32,8 @@ import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { changeLanguage } from "../i18n";
 import { logger } from ".";
 
+const requireModule = createRequire(__filename);
+
 type NativeScreenshots = import("electron-screenshots").default;
 
 let nativeScreenshots: NativeScreenshots | null = null;
@@ -38,7 +41,11 @@ let nativeScreenshots: NativeScreenshots | null = null;
 const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
   if (nativeScreenshots) return nativeScreenshots;
 
-  const { default: Screenshots } = await import("electron-screenshots");
+  const screenshotsModule = requireModule("electron-screenshots");
+  const Screenshots = screenshotsModule.default ?? screenshotsModule;
+  logger.info("[screenshot] loaded electron-screenshots", {
+    resolvedPath: requireModule.resolve("electron-screenshots"),
+  });
   nativeScreenshots = new Screenshots({
     singleWindow: true,
     lang: {
@@ -419,7 +426,10 @@ export const setIpcMainListener = () => {
       // Prefer node-screenshots because it captures the monitor directly at native
       // resolution instead of returning an Electron thumbnail.
       try {
-        const { Monitor } = await import("node-screenshots");
+        const { Monitor } = requireModule("node-screenshots") as typeof import("node-screenshots");
+        logger.info("[screenshot] loaded node-screenshots", {
+          resolvedPath: requireModule.resolve("node-screenshots"),
+        });
         let point = {
           x: display.bounds.x + display.bounds.width / 2,
           y: display.bounds.y + display.bounds.height / 2,
