@@ -9,6 +9,7 @@ import {
   screen,
 } from "electron";
 import { execFile } from "child_process";
+import { createRequire } from "node:module";
 import fs from "fs";
 import * as iconv from "iconv-lite";
 import * as net from "net";
@@ -25,9 +26,13 @@ import {
 } from "./windowManage";
 import { t } from "i18next";
 import { IpcRenderToMain } from "../constants";
+import { getPngDimensions } from "../utils/pngDimensions";
 import { getStore } from "./storeManage";
 import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { changeLanguage } from "../i18n";
+import { logger } from ".";
+
+const requireModule = createRequire(__filename);
 
 type NativeScreenshots = import("electron-screenshots").default;
 
@@ -36,7 +41,11 @@ let nativeScreenshots: NativeScreenshots | null = null;
 const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
   if (nativeScreenshots) return nativeScreenshots;
 
-  const { default: Screenshots } = await import("electron-screenshots");
+  const screenshotsModule = requireModule("electron-screenshots");
+  const Screenshots = screenshotsModule.default ?? screenshotsModule;
+  logger.info("[screenshot] loaded electron-screenshots", {
+    resolvedPath: requireModule.resolve("electron-screenshots"),
+  });
   nativeScreenshots = new Screenshots({
     singleWindow: true,
     lang: {
@@ -44,7 +53,7 @@ const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
       operation_cancel_title: "取消",
       operation_save_title: "保存",
     },
-    logger: (...args) => console.info("[ipcMain] native screenshot", ...args),
+    logger: (...args) => logger.info("[ipcMain] native screenshot", ...args),
   });
   return nativeScreenshots;
 };
@@ -287,6 +296,15 @@ export const setIpcMainListener = () => {
 
     const display = screen.getDisplayMatching(win.getBounds());
 
+    logger.info("[screenshot] capture started", {
+      appIsPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      displayId: display.id,
+      displayBounds: display.bounds,
+      scaleFactor: display.scaleFactor,
+      hideWindow,
+    });
+
     if (hideWindow) {
       win.hide();
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -312,6 +330,10 @@ export const setIpcMainListener = () => {
             event.preventDefault();
             try {
               await screenshots.endCapture();
+              logger.info("[screenshot] native overlay selection success", {
+                pngSize: getPngDimensions(buffer),
+                bytes: buffer.byteLength,
+              });
               settle(uint8ArrayToDataUrl(buffer));
             } catch (error) {
               settle(null, error);
@@ -342,7 +364,12 @@ export const setIpcMainListener = () => {
           ? { dataUrl: selectedDataUrl, isSelection: true }
           : null;
       } catch (error) {
-        console.warn("[ipcMain] native overlay screenshot failed, using renderer fallback", error);
+        logger.warn("[screenshot] native overlay failed; continuing with display capture", {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+        });
       }
 
       // macOS: use native screencapture for reliable full-screen capture
@@ -360,11 +387,21 @@ export const setIpcMainListener = () => {
 
           if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 0) {
             const buf = fs.readFileSync(tmpFile);
+            logger.info("[screenshot] macOS native capture success", {
+              pngSize: getPngDimensions(buf),
+              bytes: buf.byteLength,
+            });
             const dataURL = `data:image/png;base64,${buf.toString("base64")}`;
             return { dataUrl: dataURL, isSelection: false };
           }
           nativeFailed = true;
-        } catch {
+        } catch (error) {
+          logger.warn("[screenshot] macOS native capture failed", {
+            error:
+              error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : String(error),
+          });
           nativeFailed = true;
         } finally {
           if (fs.existsSync(tmpFile)) {
@@ -389,13 +426,16 @@ export const setIpcMainListener = () => {
       // Prefer node-screenshots because it captures the monitor directly at native
       // resolution instead of returning an Electron thumbnail.
       try {
-        const { Monitor } = await import("node-screenshots");
+        const { Monitor } = requireModule("node-screenshots") as typeof import("node-screenshots");
+        logger.info("[screenshot] loaded node-screenshots", {
+          resolvedPath: requireModule.resolve("node-screenshots"),
+        });
         let point = {
           x: display.bounds.x + display.bounds.width / 2,
           y: display.bounds.y + display.bounds.height / 2,
         };
         if (process.platform === "win32") {
-          point = screen.screenToDipPoint(point);
+          point = screen.dipToScreenPoint(point);
         }
         const monitor = Monitor.fromPoint(point.x, point.y);
         if (!monitor) {
@@ -403,9 +443,28 @@ export const setIpcMainListener = () => {
         }
         const image = await monitor.captureImage();
         const buffer = await image.toPng(true);
+        logger.info("[screenshot] native monitor capture success", {
+          displayId: display.id,
+          point,
+          monitorId: monitor.id(),
+          monitorBounds: {
+            x: monitor.x(),
+            y: monitor.y(),
+            width: monitor.width(),
+            height: monitor.height(),
+          },
+          monitorScaleFactor: monitor.scaleFactor(),
+          pngSize: getPngDimensions(buffer),
+          bytes: buffer.byteLength,
+        });
         return { dataUrl: `data:image/png;base64,${buffer.toString("base64")}`, isSelection: false };
       } catch (error) {
-        console.warn("[ipcMain] native screenshot failed, using desktopCapturer fallback", error);
+        logger.warn("[screenshot] native monitor capture failed; using thumbnail fallback", {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+        });
       }
 
       // Fallback: desktopCapturer at the display's physical pixel size.
@@ -430,6 +489,17 @@ export const setIpcMainListener = () => {
       if (!source) {
         throw new Error("No screen source captured");
       }
+
+      logger.warn("[screenshot] thumbnail fallback result", {
+        requestedSize: {
+          width: Math.round(display.bounds.width * scaleFactor),
+          height: Math.round(display.bounds.height * scaleFactor),
+        },
+        sourceId: source.id,
+        sourceDisplayId: source.display_id,
+        isEmpty: source.thumbnail.isEmpty(),
+        actualSize: source.thumbnail.getSize(),
+      });
 
       return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
     } finally {

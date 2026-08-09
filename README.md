@@ -131,10 +131,29 @@ The open-source version supports one-to-one audio and video calls. You need to f
      npm run build:mac
      ```
    - Windows:
+
      ```bash
      npm run build:win
      ```
+
+     #### Windows Silent Installation
+
+     The generated NSIS installer supports unattended installation from deployment scripts:
+
+     ```powershell
+     StickyCake_3.8.11.exe /S
+     ```
+
+     To choose an installation directory, use the NSIS parameter:
+
+     ```powershell
+     StickyCake_3.8.11.exe /S "/D=C:\Program Files\StickyCake"
+     ```
+
+     The current installer is configured for a per-machine installation (`perMachine`), so silent installation may trigger UAC. Run the deployment script with administrator privileges and use the process exit code to determine whether installation succeeded. Double-clicking the installer still opens the normal installation wizard.
+
    - Linux:
+
      ```bash
      npm run build:linux
      ```
