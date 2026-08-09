@@ -386,12 +386,35 @@
   padding: 2px 0;
 }
 
-.digitalTwinCitationDoc {
+.digitalTwinCitationBody {
   flex: 1;
+  min-width: 0;
+}
+
+.digitalTwinCitationDoc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: #2a3a55;
+  text-align: left;
+  cursor: default;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.digitalTwinCitationToggle {
+  margin-left: 4px;
+  color: #1677ff;
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .digitalTwinCitationSpace {
@@ -403,6 +426,35 @@
   color: #9aa7bd;
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.digitalTwinCitationDetail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: rgba(0, 137, 255, 0.05);
+  border: 1px solid rgba(0, 137, 255, 0.15);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #33425c;
+  white-space: normal;
+}
+
+.digitalTwinCitationSummary {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed rgba(0, 137, 255, 0.2);
+  color: #5b6b82;
+}
+
+.digitalTwinCitationContent {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #33425c;
 }
 
 .agentStreamBubble {

@@ -343,6 +343,10 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const [kbEnabled, setKbEnabled] = useState(false);
   const [kbSpaceIds, setKbSpaceIds] = useState<string[]>([]);
   const [kbAnswerStrategy, setKbAnswerStrategy] = useState<"auto_search" | "knowledge_only">("auto_search");
+  // 相似度阈值 / 搜索条数：空字符串表示「不配置，使用服务端兜底配置」。
+  // 用字符串存储以便区分「未填写」与「填写了 0」。
+  const [kbSimilarityThreshold, setKbSimilarityThreshold] = useState<string>("");
+  const [kbSearchLimit, setKbSearchLimit] = useState<string>("");
   const [kbChecking, setKbChecking] = useState(false);
   const [wikiSpaces, setWikiSpaces] = useState<WikiSpace[]>([]);
   const [loadingWikiSpaces, setLoadingWikiSpaces] = useState(false);
@@ -422,6 +426,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
       } else {
         setKbAnswerStrategy(rawStrategy as "auto_search" | "knowledge_only");
       }
+      // 相似度阈值 / 搜索条数：用户未配置（undefined）则留空，交由服务端兜底。
+      setKbSimilarityThreshold(
+        kb?.similarityThreshold != null ? String(kb.similarityThreshold) : "",
+      );
+      setKbSearchLimit(
+        kb?.searchLimit != null ? String(kb.searchLimit) : "",
+      );
       // 开启状态下主动加载知识空间列表
       if (kb?.enabled && wikiSpaces.length === 0) void loadWikiSpaces();
     }
@@ -817,11 +828,25 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   };
 
   /** 构建知识库配置对象 */
-  const buildKnowledgeBaseConfig = (): DigitalTwinKnowledgeBaseConfig => ({
-    enabled: kbEnabled,
-    spaceIds: kbSpaceIds,
-    answerStrategy: kbAnswerStrategy,
-  });
+  const buildKnowledgeBaseConfig = (): DigitalTwinKnowledgeBaseConfig => {
+    const cfg: DigitalTwinKnowledgeBaseConfig = {
+      enabled: kbEnabled,
+      spaceIds: kbSpaceIds,
+      answerStrategy: kbAnswerStrategy,
+    };
+    // 仅当用户填写时才输出，未填写（空字符串）则不传，使用服务端兜底配置。
+    const threshold = kbSimilarityThreshold.trim();
+    if (threshold !== "") {
+      const n = Number(threshold);
+      if (!Number.isNaN(n)) cfg.similarityThreshold = n;
+    }
+    const limit = kbSearchLimit.trim();
+    if (limit !== "") {
+      const n = Number(limit);
+      if (!Number.isNaN(n)) cfg.searchLimit = n;
+    }
+    return cfg;
+  };
 
   const saveConfig = async () => {
     setSaving(true);
@@ -2190,6 +2215,50 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                         <div className="text-[10px] text-[var(--text-quaternary)]">{opt.desc}</div>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* 相似度阈值与搜索条数（可选，留空使用服务端兜底配置） */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">
+                      相似度阈值（可选）
+                    </div>
+                    <InputNumber
+                      className="w-full"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      placeholder="默认 0.8（服务端兜底）"
+                      value={kbSimilarityThreshold === "" ? null : Number(kbSimilarityThreshold)}
+                      disabled={loading || saving}
+                      onChange={(v) =>
+                        setKbSimilarityThreshold(v == null || Number.isNaN(v) ? "" : String(v))
+                      }
+                    />
+                    <div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
+                      搜索结果相似度 ≥ 该值时，自动读取正文并在引用处展开详情。留空则使用服务端配置。
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">
+                      搜索返回条数（可选）
+                    </div>
+                    <InputNumber
+                      className="w-full"
+                      min={1}
+                      max={10}
+                      step={1}
+                      placeholder="默认 5（服务端兜底）"
+                      value={kbSearchLimit === "" ? null : Number(kbSearchLimit)}
+                      disabled={loading || saving}
+                      onChange={(v) =>
+                        setKbSearchLimit(v == null || Number.isNaN(v) ? "" : String(v))
+                      }
+                    />
+                    <div className="mt-1 text-[10px] text-[var(--text-quaternary)]">
+                      单次知识库搜索返回的最大条目数（1~10，避免过多影响性能）。留空则使用服务端配置。
+                    </div>
                   </div>
                 </div>
               </div>

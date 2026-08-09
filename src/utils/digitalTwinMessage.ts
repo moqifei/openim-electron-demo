@@ -140,10 +140,22 @@ export const getDigitalTwinTrace = (
   return isRecord(trace) ? trace : undefined;
 };
 
+export type DigitalTwinCitationDetail = {
+  slug?: string;
+  title?: string;
+  page_type?: string;
+  content_md?: string;
+  summary?: string;
+};
+
 export type DigitalTwinCitation = {
   title?: string;
   spaceName?: string;
   relevanceScore?: number;
+  /** slug 用于后续查询 / 前端定位该知识条目 */
+  slug?: string;
+  /** 命中相似度阈值时由 orange 预拉取的完整知识详情（aiknowledge-read-index） */
+  detail?: DigitalTwinCitationDetail;
 };
 
 export const extractDigitalTwinCitations = (
@@ -155,13 +167,28 @@ export const extractDigitalTwinCitations = (
 
   return raw
     .filter(isRecord)
-    .map((item) => ({
-      title: stringField(item, "title"),
-      spaceName: stringField(item, "spaceName"),
-      relevanceScore: typeof item["relevanceScore"] === "number"
-        ? (item["relevanceScore"] as number)
-        : undefined,
-    }))
+    .map((item) => {
+      const detailRaw = item["detail"];
+      let detail: DigitalTwinCitationDetail | undefined;
+      if (isRecord(detailRaw)) {
+        detail = {
+          slug: stringField(detailRaw, "slug"),
+          title: stringField(detailRaw, "title"),
+          page_type: stringField(detailRaw, "page_type"),
+          content_md: stringField(detailRaw, "content_md"),
+          summary: stringField(detailRaw, "summary"),
+        };
+      }
+      return {
+        title: stringField(item, "title"),
+        spaceName: stringField(item, "spaceName"),
+        relevanceScore: typeof item["relevanceScore"] === "number"
+          ? (item["relevanceScore"] as number)
+          : undefined,
+        slug: stringField(item, "slug"),
+        detail,
+      };
+    })
     .filter((c) => c.title || c.spaceName);
 };
 

@@ -95,6 +95,16 @@ export type DigitalTwinKnowledgeBaseConfig = {
   spaceIds: string[];
   /** 回答策略 */
   answerStrategy: KnowledgeAnswerStrategy;
+  /**
+   * 相似度阈值（0~1）。搜索结果相似度 >= 该值时，触发「读取 Wiki 正文」
+   * （aiknowledge-read-wiki-page）并在引用条目中挂上详情。
+   * 不填则使用服务端兜底配置（orange 静态配置，默认 0.8）。
+   */
+  similarityThreshold?: number;
+  /**
+   * 搜索返回的最大条数。不填则使用服务端兜底配置（默认 5）。
+   */
+  searchLimit?: number;
 };
 
 export type DigitalTwinConfigPatch = {
