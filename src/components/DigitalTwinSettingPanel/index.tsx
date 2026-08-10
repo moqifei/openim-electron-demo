@@ -55,10 +55,11 @@ import { notifyDigitalTwinRepliesChanged } from "@/utils/digitalTwinEvents";
 import { filterByFuzzyPinyin } from "@/utils/pinyin";
 import { publicAsset } from "@/utils/publicAsset";
 import { isPlazaDirectMode } from "@/utils/config";
+import DigitalTwinSelfTestPanel from "./DigitalTwinSelfTestPanel";
 
 const DEFAULT_REPLY_TEXT = "我现在不方便回复，数字分身已收到你的消息。";
 const digitalTwinIcon = publicAsset("icons/shuzifenshen.png");
-export type DigitalTwinPanelSection = "overview" | "settings" | "skills" | "knowledge" | "records";
+export type DigitalTwinPanelSection = "overview" | "settings" | "skills" | "knowledge" | "records" | "selftest";
 
 type DigitalTwinSettingPanelProps = {
   activeSection?: DigitalTwinPanelSection;
@@ -1149,6 +1150,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const showSkills = showAllSections || activeSection === "skills";
   const showKnowledge = showAllSections || activeSection === "knowledge";
   const showRecords = showAllSections || activeSection === "records";
+  const showSelfTest = activeSection === "selftest";
 
   const knownContactUserIDs = useMemo(() => {
     const ids = [
@@ -2478,6 +2480,13 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {showSelfTest && (
+        <DigitalTwinSelfTestPanel
+          ownerUserID={selfUserID}
+          config={config}
+        />
       )}
       <Modal
         title={

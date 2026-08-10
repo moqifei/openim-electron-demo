@@ -6,6 +6,8 @@ import {
 } from "@/utils/digitalTwinStorage";
 import { getChatAxios, getPlazaAxios, getOrangeAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
+import { getOrangeUrl, getOrangeToken } from "@/utils/config";
+import { DigitalTwinCitation } from "@/utils/digitalTwinMessage";
 
 export type DigitalTwinConfig = {
   enabled: boolean;
@@ -528,3 +530,88 @@ export const knowledgeSearch = async (params: {
     params,
     await withChatAuth(),
   );
+
+// ── 分身自测（直连 Orange，绕过 chat / IM 链路）──────────────────
+
+/**
+ * 分身自测请求体。直接对应 orange 的 DigitalTwinReplyRequest，
+ * 但 senderUserID 使用 "self-test:" 前缀以标识自测来源，orange 据此
+ * 不会回落到 IM 推送等生产逻辑。
+ */
+export type DigitalTwinSelfTestParams = {
+  ownerUserID: string;
+  senderUserID: string;
+  messageContent: string;
+  prompt?: string;
+  knowledgeBase?: DigitalTwinKnowledgeBaseConfig;
+};
+
+export type DigitalTwinSelfTestResponse = {
+  replyText: string | null;
+  replySource: string | null;
+  citations: DigitalTwinCitation[];
+  generatorError: string | null;
+  replyPlan?: unknown;
+  trace?: unknown;
+};
+
+/**
+ * 自助测试分身回复效果。
+ *
+ * 重要：本请求直接发送到 Orange 的 /api/v1/digital-twin/reply，
+ * 不经过 chat 后端、不触发 webhook、不会向任何 IM 用户推送消息，
+ * 因此不会对正常分身代回链路产生副作用。
+ */
+export const selfTestDigitalTwinReply = async (
+  params: DigitalTwinSelfTestParams,
+): Promise<DigitalTwinSelfTestResponse> => {
+  const baseURL = getOrangeUrl().replace(/\/+$/, "");
+  const token = getOrangeToken();
+  const url = `${baseURL}/api/v1/digital-twin/reply`;
+
+  const kb = params.knowledgeBase;
+  const knowledgeBody = kb
+    ? {
+        enabled: kb.enabled,
+        base_url: kb.baseURL || undefined,
+        space_ids: kb.spaceIds,
+        answer_strategy: kb.answerStrategy || undefined,
+        citation_style: kb.citationStyle || undefined,
+        permission_strategy: kb.permissionStrategy || undefined,
+        sensitive_no_auto_reply: kb.sensitiveNoAutoReply,
+        gateway_username: kb.gatewayUsername || undefined,
+        search_limit: kb.searchLimit || undefined,
+        similarity_threshold: kb.similarityThreshold || undefined,
+      }
+    : null;
+
+  const body = {
+    ownerUserID: params.ownerUserID,
+    senderUserID: params.senderUserID,
+    messageContent: params.messageContent,
+    fallbackReplyText: "",
+    prompt: params.prompt ?? "",
+    knowledgeBase: knowledgeBody,
+    serverMsgID: "",
+    clientMsgID: "",
+    operationID: `self-test-${Date.now()}`,
+  };
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Orange-Digital-Twin-Token": token,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Orange 返回 ${resp.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = (await resp.json()) as DigitalTwinSelfTestResponse;
+  console.log("[selfTestDigitalTwinReply] orange 响应:", data);
+  return data;
+};

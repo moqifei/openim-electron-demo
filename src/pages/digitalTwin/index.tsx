@@ -45,6 +45,12 @@ const sections: Array<{
     description: "确认分身回复，标记后续跟进",
     icon: "📋",
   },
+  {
+    key: "selftest",
+    title: "分身自测",
+    description: "无需他人发消息，自助验证分身与知识库效果",
+    icon: "🧪",
+  },
 ];
 
 export const DigitalTwin = () => {
