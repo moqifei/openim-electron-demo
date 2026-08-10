@@ -19,7 +19,9 @@ import { useConversationToggle } from "@/hooks/useConversationToggle";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { FileWithPath } from "@/pages/chat/queryChat/ChatFooter/SendActionBar/useFileMessage";
+import { useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
+import { getCreateGroupMemberUserIDs } from "@/utils/createGroupMemberUserIDs";
 import { emit } from "@/utils/events";
 import { uploadFile } from "@/utils/imCommon";
 
@@ -149,12 +151,10 @@ export const ChooseContact: FC<ChooseContactProps> = ({
 
     // Separate directly-selected users from selected groups
     const directUsers = choosedList.filter((item) => Boolean(item.userID));
-    const selectedGroups = choosedList.filter(
-      (item) => !item.userID && item.groupID,
-    );
+    const selectedGroups = choosedList.filter((item) => !item.userID && item.groupID);
 
     // Expand groups into their member user IDs
-    let expandedUserIDs: string[] = [];
+    const expandedUserIDs: string[] = [];
     if (selectedGroups.length > 0) {
       for (const g of selectedGroups) {
         try {
@@ -164,9 +164,7 @@ export const ChooseContact: FC<ChooseContactProps> = ({
             offset: 0,
             count: 1000,
           });
-          expandedUserIDs.push(
-            ...data.map((m) => m.userID).filter(Boolean),
-          );
+          expandedUserIDs.push(...data.map((m) => m.userID).filter(Boolean));
         } catch {
           // skip groups we can't fetch
         }
@@ -174,10 +172,7 @@ export const ChooseContact: FC<ChooseContactProps> = ({
     }
 
     const allUserIDs = [
-      ...new Set([
-        ...directUsers.map((item) => item.userID!),
-        ...expandedUserIDs,
-      ]),
+      ...new Set([...directUsers.map((item) => item.userID!), ...expandedUserIDs]),
     ];
 
     if (!allUserIDs.length && type !== "SELECT_USER")
@@ -190,7 +185,10 @@ export const ChooseContact: FC<ChooseContactProps> = ({
     try {
       switch (type) {
         case "CRATE_GROUP":
-          if (directUsers.length + selectedGroups.length === 1 && directUsers.length === 1) {
+          if (
+            directUsers.length + selectedGroups.length === 1 &&
+            directUsers.length === 1
+          ) {
             toSpecifiedConversation({
               sourceID: directUsers[0].userID!,
               sessionType: SessionType.Single,
@@ -203,7 +201,10 @@ export const ChooseContact: FC<ChooseContactProps> = ({
               groupName: groupBaseInfo.groupName,
               faceURL: groupBaseInfo.groupAvatar,
             },
-            memberUserIDs: allUserIDs,
+            memberUserIDs: getCreateGroupMemberUserIDs(
+              allUserIDs,
+              useUserStore.getState().selfInfo.userID,
+            ),
             adminUserIDs: [],
           });
           break;
