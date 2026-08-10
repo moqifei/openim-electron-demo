@@ -24,27 +24,36 @@ const CitationItem: FC<{ citation: ReturnType<typeof extractDigitalTwinCitations
     <div className={styles.digitalTwinCitationItem}>
       <span>📄</span>
       <div className={styles.digitalTwinCitationBody}>
-        <button
-          type="button"
-          className={styles.digitalTwinCitationDoc}
-          onClick={() => canExpand && setExpanded((v) => !v)}
-          title={citation.slug ? `slug: ${citation.slug}` : undefined}
-        >
-          {citation.title || "未命名文档"}
-          {citation.spaceName ? (
-            <span className={styles.digitalTwinCitationSpace}> · {citation.spaceName}</span>
-          ) : null}
-          {canExpand && (
-            <span className={styles.digitalTwinCitationToggle}>
-              {expanded ? " ▾ 收起详情" : " ▸ 查看详情"}
+        <div className={styles.digitalTwinCitationRow}>
+          <button
+            type="button"
+            className={styles.digitalTwinCitationDoc}
+            onClick={() => canExpand && setExpanded((v) => !v)}
+          >
+            {citation.title || "未命名文档"}
+            {citation.spaceName ? (
+              <span className={styles.digitalTwinCitationSpace}> · {citation.spaceName}</span>
+            ) : null}
+            {canExpand && (
+              <span className={styles.digitalTwinCitationToggle}>
+                {expanded ? " ▾ 收起详情" : " ▸ 查看详情"}
+              </span>
+            )}
+          </button>
+          {typeof citation.relevanceScore === "number" && (
+            <span className={styles.digitalTwinCitationScoreWrap}>
+              <span className={styles.digitalTwinCitationScore}>
+                {citation.relevanceScore.toFixed(2)}
+              </span>
+              <span className={styles.digitalTwinCitationScoreInfo}>
+                ⓘ
+                <span className={styles.digitalTwinCitationScoreTip}>
+                  相似度：知识库返回知识条目和这个问题的相似程度
+                </span>
+              </span>
             </span>
           )}
-        </button>
-        {typeof citation.relevanceScore === "number" && (
-          <span className={styles.digitalTwinCitationScore}>
-            {citation.relevanceScore.toFixed(2)}
-          </span>
-        )}
+        </div>
         {expanded && hasDetail && (
           <div className={styles.digitalTwinCitationDetail}>
             {detail?.summary ? (

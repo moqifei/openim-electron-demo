@@ -383,6 +383,12 @@
   min-width: 0;
 }
 
+.digitalTwinCitationRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .digitalTwinCitationDoc {
   display: flex;
   flex-wrap: wrap;
@@ -414,10 +420,67 @@
   flex-shrink: 0;
 }
 
+.digitalTwinCitationScoreWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
 .digitalTwinCitationScore {
   color: #9aa7bd;
-  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.digitalTwinCitationScoreInfo {
+  position: relative;
+  color: #9aa7bd;
+  font-size: 11px;
+  cursor: help;
+  line-height: 1;
+
+  &:hover {
+    color: #1677ff;
+  }
+}
+
+.digitalTwinCitationScoreTip {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 6px;
+  width: max-content;
+  max-width: 220px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #1f2a44;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+  z-index: 20;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: 10px;
+    border: 5px solid transparent;
+    border-top-color: #1f2a44;
+  }
+}
+
+.digitalTwinCitationScoreInfo:hover .digitalTwinCitationScoreTip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .digitalTwinCitationDetail {
