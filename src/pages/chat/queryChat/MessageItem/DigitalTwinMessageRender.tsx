@@ -17,7 +17,9 @@ const CitationItem: FC<{ citation: ReturnType<typeof extractDigitalTwinCitations
   citation,
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const hasDetail = Boolean(citation.detail?.content_md);
+  const detail = citation.detail;
+  const hasDetail = Boolean(detail?.content_md);
+  const canExpand = hasDetail;
   return (
     <div className={styles.digitalTwinCitationItem}>
       <span>📄</span>
@@ -25,14 +27,14 @@ const CitationItem: FC<{ citation: ReturnType<typeof extractDigitalTwinCitations
         <button
           type="button"
           className={styles.digitalTwinCitationDoc}
-          onClick={() => hasDetail && setExpanded((v) => !v)}
+          onClick={() => canExpand && setExpanded((v) => !v)}
           title={citation.slug ? `slug: ${citation.slug}` : undefined}
         >
           {citation.title || "未命名文档"}
           {citation.spaceName ? (
             <span className={styles.digitalTwinCitationSpace}> · {citation.spaceName}</span>
           ) : null}
-          {hasDetail && (
+          {canExpand && (
             <span className={styles.digitalTwinCitationToggle}>
               {expanded ? " ▾ 收起详情" : " ▸ 查看详情"}
             </span>
@@ -43,16 +45,18 @@ const CitationItem: FC<{ citation: ReturnType<typeof extractDigitalTwinCitations
             {citation.relevanceScore.toFixed(2)}
           </span>
         )}
-        {hasDetail && expanded && (
+        {expanded && hasDetail && (
           <div className={styles.digitalTwinCitationDetail}>
-            {citation.detail?.summary ? (
+            {detail?.summary ? (
               <div className={styles.digitalTwinCitationSummary}>
-                {citation.detail.summary}
+                {detail.summary}
               </div>
             ) : null}
-            <pre className={styles.digitalTwinCitationContent}>
-              {citation.detail?.content_md}
-            </pre>
+            {hasDetail && (
+              <pre className={styles.digitalTwinCitationContent}>
+                {detail?.content_md}
+              </pre>
+            )}
           </div>
         )}
       </div>

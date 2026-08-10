@@ -35,6 +35,16 @@ const stringField = (record: PlainRecord | undefined, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
+const stringArrayField = (
+  record: PlainRecord | undefined,
+  key: string,
+): string[] | undefined => {
+  const value = record?.[key];
+  if (!Array.isArray(value)) return undefined;
+  const items = value.filter((v): v is string => typeof v === "string");
+  return items.length > 0 ? items : undefined;
+};
+
 const getMessageRecordField = (message: MessageItem, field: string) => {
   return (message as unknown as PlainRecord)[field];
 };
@@ -146,6 +156,12 @@ export type DigitalTwinCitationDetail = {
   page_type?: string;
   content_md?: string;
   summary?: string;
+  /** 外向链接：当前页面引用到的其它 wiki slug 列表（aiknowledge-read-wiki-page 返回） */
+  outlinks?: string[];
+  /** 反向链接：引用了当前页面的其它 wiki slug 列表（aiknowledge-read-wiki-page 返回） */
+  backlinks?: string[];
+  /** 来源文档 ID 列表 */
+  source_ids?: string[];
 };
 
 export type DigitalTwinCitation = {
@@ -177,6 +193,9 @@ export const extractDigitalTwinCitations = (
           page_type: stringField(detailRaw, "page_type"),
           content_md: stringField(detailRaw, "content_md"),
           summary: stringField(detailRaw, "summary"),
+          outlinks: stringArrayField(detailRaw, "outlinks"),
+          backlinks: stringArrayField(detailRaw, "backlinks"),
+          source_ids: stringArrayField(detailRaw, "source_ids"),
         };
       }
       return {
