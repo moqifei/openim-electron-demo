@@ -6,7 +6,7 @@ import {
 } from "@/utils/digitalTwinStorage";
 import { getChatAxios, getPlazaAxios, getOrangeAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
-import { getOrangeUrl, getOrangeToken } from "@/utils/config";
+import { getOrangeUrl, getDigitalTwinToken } from "@/utils/config";
 import { DigitalTwinCitation } from "@/utils/digitalTwinMessage";
 
 export type DigitalTwinConfig = {
@@ -566,7 +566,7 @@ export const selfTestDigitalTwinReply = async (
   params: DigitalTwinSelfTestParams,
 ): Promise<DigitalTwinSelfTestResponse> => {
   const baseURL = getOrangeUrl().replace(/\/+$/, "");
-  const token = getOrangeToken();
+  const token = getDigitalTwinToken();
   const url = `${baseURL}/api/v1/digital-twin/reply`;
 
   const kb = params.knowledgeBase;
@@ -601,7 +601,10 @@ export const selfTestDigitalTwinReply = async (
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Orange-Digital-Twin-Token": token,
+      // Orange 校验数字分身接口时读取的是 Authorization: Bearer <token>
+      // （见 orange/src/gateway/digital_twin.rs is_authorized），
+      // 而非 X-Orange-Digital-Twin-Token 头。
+      Authorization: token ? `Bearer ${token}` : "",
     },
     body: JSON.stringify(body),
   });

@@ -13,7 +13,8 @@
       "plazaDirectMode": true,
       "plazaUrl": "http://127.0.0.1:9876",
       "orangeUrl": "http://127.0.0.1:3000",
-      "orangeToken": "optional-token"
+      "orangeToken": "optional-token",
+      "digitalTwinToken": "optional-token"
     },
     {
       "key": "test",
@@ -23,7 +24,8 @@
       "plazaDirectMode": true,
       "plazaUrl": "http://llm-tools.qa.bx",
       "orangeUrl": "http://10.100.8.32:3000",
-      "orangeToken": "optional-token"
+      "orangeToken": "optional-token",
+      "digitalTwinToken": "optional-token"
     },
     {
       "key": "pro",
@@ -33,7 +35,8 @@
       "plazaDirectMode": true,
       "plazaUrl": "http://llm-tools.oa.bx",
       "orangeUrl": "http://10.148.13.20:3000",
-      "orangeToken": "optional-token"
+      "orangeToken": "optional-token",
+      "digitalTwinToken": "optional-token"
     }
   ]
 }

@@ -10,6 +10,7 @@ const PLAZA_DIRECT_MODE_KEY = "openim_plaza_direct_mode";
 const PLAZA_URL_KEY = "openim_plaza_url";
 const ORANGE_URL_KEY = "openim_orange_url";
 const ORANGE_TOKEN_KEY = "openim_orange_token";
+const DIGITAL_TWIN_TOKEN_KEY = "openim_digital_twin_token";
 
 const getDefaultIMHost = () =>
   ((import.meta.env.VITE_IM_HOST ??
@@ -93,6 +94,7 @@ type PlazaDirectConfig = {
   plazaUrl: string;
   orangeUrl: string;
   orangeToken: string;
+  digitalTwinToken: string;
 };
 
 // 单条环境定义：environments 数组中携带该环境专属的 orange/plaza 地址，
@@ -105,6 +107,7 @@ type ServerEnvEntry = {
   plazaUrl?: string;
   orangeUrl?: string;
   orangeToken?: string;
+  digitalTwinToken?: string;
 };
 
 function normalizeHost(h: string): string {
@@ -151,6 +154,10 @@ function getDefaultPlazaConfig(): PlazaDirectConfig {
     orangeUrl: (env?.orangeUrl as string) ?? (root.orangeUrl as string) ?? "",
     orangeToken:
       (env?.orangeToken as string) ?? (root.orangeToken as string) ?? "",
+    digitalTwinToken:
+      (env?.digitalTwinToken as string) ??
+      (root.digitalTwinToken as string) ??
+      "",
   };
 }
 
@@ -203,6 +210,18 @@ export function setOrangeToken(token: string): void {
   localStorage.setItem(ORANGE_TOKEN_KEY, token);
 }
 
+/** Digital twin auth token for Orange digital-twin reply API calls */
+export function getDigitalTwinToken(): string {
+  const stored = localStorage.getItem(DIGITAL_TWIN_TOKEN_KEY);
+  if (stored !== null) return stored;
+  return getDefaultPlazaConfig().digitalTwinToken;
+}
+
+export function setDigitalTwinToken(token: string): void {
+  if (token) localStorage.setItem(DIGITAL_TWIN_TOKEN_KEY, token);
+  else localStorage.removeItem(DIGITAL_TWIN_TOKEN_KEY);
+}
+
 export function clearServerHost(): void {
   localStorage.removeItem(IM_HOST_KEY);
   localStorage.removeItem(CHAT_HOST_KEY);
@@ -229,5 +248,6 @@ export function getServerUrls() {
     plazaUrl: getPlazaUrl(),
     orangeUrl: getOrangeUrl(),
     orangeToken: getOrangeToken(),
+    digitalTwinToken: getDigitalTwinToken(),
   };
 }
