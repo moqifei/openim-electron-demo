@@ -52,7 +52,8 @@ import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { notifyDigitalTwinRepliesChanged } from "@/utils/digitalTwinEvents";
-import { filterByFuzzyPinyin } from "@/utils/pinyin";
+import { filterByFuzzyPinyin, fuzzyPinyinMatch, fuzzyPinyinMatchDesc } from "@/utils/pinyin";
+import { SearchOutlined } from "@ant-design/icons";
 import { publicAsset } from "@/utils/publicAsset";
 import { isPlazaDirectMode } from "@/utils/config";
 import DigitalTwinSelfTestPanel from "./DigitalTwinSelfTestPanel";
@@ -391,6 +392,7 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
   const [plazaPage, setPlazaPage] = useState(1);
   const PLAZA_PAGE_SIZE = 5;
   const [installingSkillName, setInstallingSkillName] = useState("");
+  const [plazaSearchKeyword, setPlazaSearchKeyword] = useState("");
 
   // Skill tab: "mine" | "plaza"
   const [skillTab, setSkillTab] = useState<"mine" | "plaza">("mine");
@@ -746,12 +748,35 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
     }
   }, [installingSkillName, loadSkills, selfUserID]);
 
-  // Client-side pagination for plaza
+  // Client-side search + pagination for plaza
+  const filteredPlazaSkills = useMemo(() => {
+    if (!plazaSearchKeyword.trim()) return plazaSkills;
+    const kw = plazaSearchKeyword.trim().toLowerCase();
+    console.log(`[plazaSearch] keyword="${kw}", totalSkills=${plazaSkills.length}`);
+    const result = plazaSkills.filter(
+      (s) => {
+        const nameMatch = fuzzyPinyinMatch(s.name, kw);
+        // For description, only match on word boundary to avoid false positives
+        // e.g. "code" in "PP code" should not keep the skill
+        const descMatch = !nameMatch ? fuzzyPinyinMatchDesc(s.description || "", kw) : false;
+        if (nameMatch || descMatch) {
+          console.log(`[plazaSearch] KEPT: "${s.name}" nameMatch=${nameMatch} descMatch=${descMatch}`);
+        }
+        return nameMatch || descMatch;
+      },
+    );
+    console.log(`[plazaSearch] filtered count=${result.length}`);
+    return result;
+  }, [plazaSkills, plazaSearchKeyword]);
+
   const paginatedPlazaSkills = useMemo(() => {
     const start = (plazaPage - 1) * PLAZA_PAGE_SIZE;
-    return plazaSkills.slice(start, start + PLAZA_PAGE_SIZE);
-  }, [plazaSkills, plazaPage]);
-  const plazaTotalPages = Math.max(1, Math.ceil(plazaSkills.length / PLAZA_PAGE_SIZE));
+    return filteredPlazaSkills.slice(start, start + PLAZA_PAGE_SIZE);
+  }, [filteredPlazaSkills, plazaPage]);
+  const plazaTotalPages = Math.max(
+    1,
+    Math.ceil(filteredPlazaSkills.length / PLAZA_PAGE_SIZE),
+  );
 
   useEffect(() => {
     if (!selfUserID) return;
@@ -2035,7 +2060,18 @@ const DigitalTwinSettingPanel: FC<DigitalTwinSettingPanelProps> = ({
                 ),
                 children: (
                   <div className="p-5 pt-3">
-                    <div className="mb-3 flex items-center justify-end">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <Input
+                        allowClear
+                        placeholder="搜索技能名称..."
+                        prefix={<SearchOutlined />}
+                        value={plazaSearchKeyword}
+                        onChange={(e) => {
+                          setPlazaSearchKeyword(e.target.value);
+                          setPlazaPage(1);
+                        }}
+                        style={{ maxWidth: 320 }}
+                      />
                       <Button
                         size="small"
                         loading={loadingPlaza}

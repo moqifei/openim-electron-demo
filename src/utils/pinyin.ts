@@ -472,6 +472,11 @@ export function getPinyinInitials(text: string): string {
  * - Pinyin initials match (e.g., "zx" matches "张旭鑫")
  * - Any partial pinyin matches (e.g., "zhang" matches "张旭鑫")
  */
+/**
+ * Check if a name matches a keyword (English skill names only):
+ * - Direct substring match (e.g., "code" matches "code-review-assistant")
+ * - Word-boundary match (e.g., "code" matches "my-code-tool" but NOT "content-call")
+ */
 export function fuzzyPinyinMatch(name: string, keyword: string): boolean {
   if (!name || !keyword) return false;
 
@@ -480,26 +485,40 @@ export function fuzzyPinyinMatch(name: string, keyword: string): boolean {
 
   const lowerName = name.toLowerCase();
 
-  // 1. Direct substring match (Chinese characters)
-  if (lowerName.includes(trimKeyword)) return true;
-
-  // 2. Full pinyin match
-  const fullPinyin = toPinyin(name);
-  if (fullPinyin.includes(trimKeyword)) return true;
-
-  // 3. Pinyin initials match
-  const initials = getPinyinInitials(name);
-  if (initials.includes(trimKeyword)) return true;
-
-  // 4. Split name into characters and check each char's full pinyin
-  // This handles multi-character acronyms better
-  const nameChars = [...name].filter(isChinese);
-  if (nameChars.length === 1) {
-    const py = toPinyin(nameChars[0]);
-    if (py.includes(trimKeyword)) return true;
+  // 1. Direct substring match
+  if (lowerName.includes(trimKeyword)) {
+    console.log(`[fuzzyMatch] MATCH (substring): name="${name}" keyword="${trimKeyword}"`);
+    return true;
   }
 
-  return false;
+  // 2. Word-boundary match (keyword preceded by start/-_./\s)
+  const wordBoundaryRE = new RegExp(`(?:^|[-_./\\s])${escapeRegExp(trimKeyword)}`, 'i');
+  const wbResult = wordBoundaryRE.test(name);
+  console.log(`[fuzzyMatch] NO-MATCH: name="${name}" keyword="${trimKeyword}" wordBoundary=${wbResult}`);
+  return wbResult;
+}
+
+/**
+ * Match keyword in description text with stricter rules:
+ * Only word-boundary match, NO substring match.
+ * Prevents "code" inside "PP code" from matching.
+ */
+export function fuzzyPinyinMatchDesc(desc: string, keyword: string): boolean {
+  if (!desc || !keyword) return false;
+
+  const trimKeyword = keyword.trim().toLowerCase();
+  if (!trimKeyword) return false;
+
+  // Only word-boundary match for descriptions
+  const wordBoundaryRE = new RegExp(`(?:^|[-_./\\s,;:!?"'()\\[\\]{}])${escapeRegExp(trimKeyword)}`, 'i');
+  const result = wordBoundaryRE.test(desc);
+  console.log(`[fuzzyMatchDesc] desc="${desc.substring(0, 60)}..." keyword="${trimKeyword}" matched=${result}`);
+  return result;
+}
+
+/** Escape special regex characters */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
