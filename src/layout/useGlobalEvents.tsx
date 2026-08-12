@@ -234,6 +234,12 @@ export function useGlobalEvent() {
   const connectSuccessHandler = () => {
     updateConnectState("success");
     console.log("connect success...");
+    // 断连恢复后主动重新拉取会话与消息,防止 server 重启/订阅失效导致收不到推送。
+    // 每次触发最多产生 2 个幂等 HTTP 请求(getConversationListByReq + getUnReadCountByReq),
+    // RELOAD_CHAT_MESSAGES 为纯前端事件,不产生网络请求。不会形成请求风暴。
+    getConversationListByReq(false);
+    getUnReadCountByReq();
+    emitter.emit("RELOAD_CHAT_MESSAGES");
   };
   const kickHandler = () => tryOut(t("toast.accountKicked"));
   const expiredHandler = () => tryOut(t("toast.loginExpiration"));

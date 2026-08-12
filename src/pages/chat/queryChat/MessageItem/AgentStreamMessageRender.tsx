@@ -43,9 +43,13 @@ const AgentStreamMessageRender: FC<IMessageItemProps> = ({ message, isSender }) 
       return;
     }
 
+    // 保留已展示的最大前缀,避免模型返回慢或内容修正时整段清空导致闪烁。
     setDisplayAnswer((current) => {
       if (answer.startsWith(current)) return current;
-      return "";
+      // 非前缀变化(如模型修正):保留最长公共前缀,不回退到空。
+      let i = 0;
+      while (i < current.length && i < answer.length && current[i] === answer[i]) i++;
+      return answer.slice(0, Math.max(i, current.length));
     });
     const timer = window.setInterval(() => {
       setDisplayAnswer((current) => {
@@ -73,9 +77,13 @@ const AgentStreamMessageRender: FC<IMessageItemProps> = ({ message, isSender }) 
       return;
     }
 
+    // 保留已展示的最大前缀,避免模型返回慢或内容修正时整段清空导致闪烁。
     setDisplayReasoning((current) => {
       if (reasoning.startsWith(current)) return current;
-      return "";
+      // 非前缀变化(如模型修正):保留最长公共前缀,不回退到空。
+      let i = 0;
+      while (i < current.length && i < reasoning.length && current[i] === reasoning[i]) i++;
+      return reasoning.slice(0, Math.max(i, current.length));
     });
     const timer = window.setInterval(() => {
       setDisplayReasoning((current) => {
