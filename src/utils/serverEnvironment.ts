@@ -145,20 +145,34 @@ const canReachUrl = async (url: string, timeoutMs: number): Promise<boolean> => 
 const probeWithRenderer = async (): Promise<ServerEnvironment | null> => {
   const results = await Promise.all(
     orderedEnvironments().map(async (environment) => {
-      const checks = [
-        ...probePorts.im.map((port) =>
-          probeByFetch(environment.imHost, port, probeTimeoutMs),
-        ),
-        ...probePorts.chat.map((port) =>
-          probeByFetch(environment.chatHost, port, probeTimeoutMs),
-        ),
-        // orange 地址不同的环境靠可达性探测区分（仅当该环境配置了 orangeUrl 时）
-        ...(environment.orangeUrl
-          ? [canReachUrl(environment.orangeUrl, probeTimeoutMs)]
-          : []),
-      ];
-      const available = (await Promise.all(checks)).every(Boolean);
-      return { environment, available };
+      // IM/Chat 端口: 任一候选端口可达即视为服务可用(兼容 20001/10001 新旧端口二选一)
+      const imAvailable = (
+        await Promise.all(
+          probePorts.im.map((port) =>
+            probeByFetch(environment.imHost, port, probeTimeoutMs),
+          ),
+        )
+      ).some(Boolean);
+
+      const chatAvailable = probePorts.chat.length
+        ? (
+            await Promise.all(
+              probePorts.chat.map((port) =>
+                probeByFetch(environment.chatHost, port, probeTimeoutMs),
+              ),
+            )
+          ).some(Boolean)
+        : true;
+
+      // orange 地址不同的环境靠可达性探测区分(仅当该环境配置了 orangeUrl 时)
+      const orangeAvailable = environment.orangeUrl
+        ? await canReachUrl(environment.orangeUrl, probeTimeoutMs)
+        : true;
+
+      return {
+        environment,
+        available: imAvailable && chatAvailable && orangeAvailable,
+      };
     }),
   );
 
@@ -186,3 +200,11 @@ export const ensureServerEnvironmentSelected = async (
 
 export const getSelectedServerEnvironmentKey = () =>
   localStorage.getItem(SELECTED_ENVIRONMENT_KEY);
+
+/**
+ * 重置环境选择缓存（用于"恢复默认"等场景）。
+ * 清除 selectionPromise 缓存后，下次 ensureServerEnvironmentSelected() 会重新执行探测。
+ */
+export const resetEnvironmentSelection = (): void => {
+  selectionPromise = null;
+};

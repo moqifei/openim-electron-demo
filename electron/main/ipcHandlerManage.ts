@@ -148,15 +148,28 @@ const probeEnvironment = async (
 
   const imPorts = Array.isArray(ports.im) ? ports.im.filter(isValidPort) : [];
   const chatPorts = Array.isArray(ports.chat) ? ports.chat.filter(isValidPort) : [];
-  const checks = [
-    ...imPorts.map((port) => probeTcpPort(environment.imHost.trim(), port, timeoutMs)),
-    ...chatPorts.map((port) =>
-      probeTcpPort(environment.chatHost.trim(), port, timeoutMs),
-    ),
-  ];
 
-  if (!checks.length) return false;
-  return (await Promise.all(checks)).every(Boolean);
+  // [修复] IM/Chat 端口: 任一候选端口可达即视为服务可用(兼容 20001/10001 新旧端口二选一)
+  if (!imPorts.length) return false;
+  const imAvailable = (
+    await Promise.all(
+      imPorts.map((port) =>
+        probeTcpPort(environment.imHost.trim(), port, timeoutMs),
+      ),
+    )
+  ).some(Boolean);
+
+  const chatAvailable = chatPorts.length
+    ? (
+        await Promise.all(
+          chatPorts.map((port) =>
+            probeTcpPort(environment.chatHost.trim(), port, timeoutMs),
+          ),
+        )
+      ).some(Boolean)
+    : true;
+
+  return imAvailable && chatAvailable;
 };
 
 export const setIpcMainListener = () => {

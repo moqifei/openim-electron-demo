@@ -12,11 +12,11 @@ const ORANGE_URL_KEY = "openim_orange_url";
 const ORANGE_TOKEN_KEY = "openim_orange_token";
 const DIGITAL_TWIN_TOKEN_KEY = "openim_digital_twin_token";
 
-const getDefaultIMHost = () =>
+export const getDefaultIMHost = () =>
   ((import.meta.env.VITE_IM_HOST ??
     import.meta.env.VITE_BASE_HOST) as string) ?? "";
 
-const getDefaultChatHost = () =>
+export const getDefaultChatHost = () =>
   ((import.meta.env.VITE_CHAT_HOST ??
     import.meta.env.VITE_BASE_HOST) as string) ?? "";
 
@@ -82,16 +82,10 @@ export function setManualServerHosts(hosts: {
 }
 
 export function hasManualServerHosts(): boolean {
-  if (localStorage.getItem(MANUAL_SERVER_HOST_KEY) === "1") return true;
-
-  const hasStoredHosts =
-    Boolean(localStorage.getItem(IM_HOST_KEY)) &&
-    Boolean(localStorage.getItem(CHAT_HOST_KEY));
-  const hasAutoSelectedEnvironment = Boolean(
-    localStorage.getItem(SELECTED_SERVER_ENVIRONMENT_KEY),
-  );
-
-  return hasStoredHosts && !hasAutoSelectedEnvironment;
+  // [修复] 仅当用户通过 ServerConfig 弹窗明确手动保存过地址时才跳过自动探测。
+  // 之前逻辑：只要 localStorage 有 im+chat host 值且无 environment key 就判定为"手动配置"，
+  // 导致探测流程写入的 host 残留也会被误判为手动，后续启动永远跳过探测，地址无法更新。
+  return localStorage.getItem(MANUAL_SERVER_HOST_KEY) === "1";
 }
 
 /** Backward-compatible alias */

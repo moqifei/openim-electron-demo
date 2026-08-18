@@ -5,6 +5,8 @@ import { useState } from "react";
 import {
   clearServerHost,
   getChatHost,
+  getDefaultIMHost,
+  getDefaultChatHost,
   getIMHost,
   getOrangeUrl,
   getPlazaUrl,
@@ -12,6 +14,7 @@ import {
   setOrangeUrl,
   setPlazaUrl,
 } from "@/utils/config";
+import { resetEnvironmentSelection } from "@/utils/serverEnvironment";
 
 interface ServerConfigProps {
   onConfigChanged?: () => void;
@@ -38,12 +41,12 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
 
   const handleReset = () => {
     clearServerHost();
-    const defaultIm = (import.meta.env.VITE_IM_HOST ??
-      import.meta.env.VITE_BASE_HOST) as string;
-    const defaultChat = (import.meta.env.VITE_CHAT_HOST ??
-      import.meta.env.VITE_BASE_HOST) as string;
-    setImHost(defaultIm);
-    setChatHostVal(defaultChat);
+    // [修复] 清除探测缓存，确保下次 ensureServerEnvironmentSelected() 重新执行 TCP 探测
+    resetEnvironmentSelection();
+    // 回填 .env 默认值（clearServerHost 后 localStorage 已清空，需用默认值）
+    setImHost(getDefaultIMHost());
+    setChatHostVal(getDefaultChatHost());
+    // orange/plaza 回填到清除后的默认值（从 serverEnvironments.json 首个环境派生）
     setOrangeUrlVal(getOrangeUrl());
     setPlazaUrlVal(getPlazaUrl());
     setOpen(false);
