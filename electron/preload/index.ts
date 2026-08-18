@@ -49,6 +49,10 @@ const ipcInvoke = (channel: string, ...arg: any) => {
   return ipcRenderer.invoke(channel, ...arg);
 };
 
+const ipcSend = (channel: string, ...arg: any) => {
+  ipcRenderer.send(channel, ...arg);
+};
+
 const ipcSendSync = (channel: string, ...arg: any) => {
   return ipcRenderer.sendSync(channel, ...arg);
 };
@@ -170,6 +174,7 @@ const Api: IElectronAPI = {
   subscribeOnce,
   unsubscribeAll,
   ipcInvoke,
+  ipcSend,
   ipcSendSync,
   getFileByPath,
   openFileDialog,

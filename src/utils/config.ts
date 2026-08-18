@@ -53,6 +53,25 @@ export function setServerHosts({
   setChatHost(chatHost);
 }
 
+const IM_WS_PORT_KEY = "openim_im_ws_port";
+
+/**
+ * 返回 IM WebSocket 长连接端口。
+ * 优先级：localStorage 用户配置 > 构建期环境变量 VITE_WS_PORT > 默认值 20001。
+ * 默认 20001 为行内标准化部署端口（原 10001 因与日志服务冲突已弃用，仅作兜底）。
+ */
+export function getIMWsPort(): string {
+  const stored = localStorage.getItem(IM_WS_PORT_KEY);
+  if (stored) return stored;
+  const fromEnv = import.meta.env.VITE_WS_PORT as string | undefined;
+  if (fromEnv) return fromEnv;
+  return "20001";
+}
+
+export function setIMWsPort(port: string): void {
+  localStorage.setItem(IM_WS_PORT_KEY, port);
+}
+
 export function setManualServerHosts(hosts: {
   imHost: string;
   chatHost: string;
@@ -240,8 +259,9 @@ export function clearServerHost(): void {
 export function getServerUrls() {
   const imHost = getIMHost();
   const chatHost = getChatHost();
+  const wsPort = getIMWsPort();
   return {
-    wsUrl: `ws://${imHost}:10001`,
+    wsUrl: `ws://${imHost}:${wsPort}`,
     apiUrl: `http://${imHost}:10002`,
     chatUrl: `http://${chatHost}:10008`,
     plazaDirectMode: isPlazaDirectMode(),

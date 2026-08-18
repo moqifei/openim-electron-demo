@@ -1,7 +1,7 @@
 {
   "probeTimeoutMs": 1200,
   "probePorts": {
-    "im": [10001],
+    "im": [20001, 10001],
     "chat": []
   },
   "environments": [

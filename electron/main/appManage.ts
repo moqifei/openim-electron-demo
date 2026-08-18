@@ -1,4 +1,4 @@
-import { app, powerMonitor } from "electron";
+import { app, powerMonitor, ipcMain, BrowserWindow } from "electron";
 import { isExistMainWindow, sendEvent, showWindow } from "./windowManage";
 import { join } from "node:path";
 import fs from "fs";
@@ -33,6 +33,42 @@ export const setAppListener = (startApp: () => void) => {
     if (isMac && !getIsForceQuit()) return;
 
     app.quit();
+  });
+
+  // 退出软件前，先触发 OpenIM 退出登录，清理本地登录态，避免下次自动登录（安全风险）
+  let logoutBeforeQuitDone = false;
+  app.on("before-quit", (e) => {
+    if (logoutBeforeQuitDone) {
+      // 登出已完成，正常退出
+      return;
+    }
+    e.preventDefault();
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win || win.isDestroyed()) {
+      logoutBeforeQuitDone = true;
+      app.quit();
+      return;
+    }
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      ipcMain.removeListener(
+        IpcMainToRender.requestLogoutBeforeQuit + ":done",
+        finish,
+      );
+      logoutBeforeQuitDone = true;
+      global.forceQuit = true;
+      logger.info("[quit] logout before quit completed, continue quit");
+      app.quit();
+    };
+    const timeout = setTimeout(finish, 5000);
+    ipcMain.once(IpcMainToRender.requestLogoutBeforeQuit + ":done", () => {
+      clearTimeout(timeout);
+      finish();
+    });
+    logger.info("[quit] request render process to logout before quit");
+    win.webContents.send(IpcMainToRender.requestLogoutBeforeQuit);
   });
 
   powerMonitor.on("suspend", () => {

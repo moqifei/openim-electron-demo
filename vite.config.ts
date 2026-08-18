@@ -24,6 +24,9 @@ export default defineConfig(({ command }) => {
     // Define only this property so main-process environment variables keep working.
     define: {
       "process.env.DRAGGABLE_DEBUG": "undefined",
+      // 从 package.json 注入版本号，开发/打包自动同步
+      "__APP_VERSION__": JSON.stringify("v" + pkg.version),
+      "__SDK_VERSION__": JSON.stringify("SDK(ffi) v" + pkg.version),
     },
     optimizeDeps: {
       esbuildOptions: {

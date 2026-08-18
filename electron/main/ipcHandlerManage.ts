@@ -25,7 +25,7 @@ import {
   updateMaximize,
 } from "./windowManage";
 import { t } from "i18next";
-import { IpcRenderToMain } from "../constants";
+import { IpcRenderToMain, IpcMainToRender } from "../constants";
 import { getPngDimensions } from "../utils/pngDimensions";
 import { getStore } from "./storeManage";
 import { uint8ArrayToDataUrl } from "../utils/screenshotData";
@@ -164,6 +164,11 @@ export const setIpcMainListener = () => {
     clearCache();
   });
 
+  // 渲染进程完成退出登录后，回传信号给主进程
+  ipcMain.on(IpcMainToRender.requestLogoutBeforeQuit + ":done", () => {
+    // 仅作为信号标记，实际退出逻辑在 appManage 的 before-quit 中 await
+  });
+
   // window manage
   ipcMain.handle("changeLanguage", (_, locale) => {
     store.set("language", locale);
@@ -198,7 +203,7 @@ export const setIpcMainListener = () => {
       _,
       {
         environments = [],
-        ports = { im: [10001], chat: [] },
+        ports = { im: [20001, 10001], chat: [] },
         timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
       }: {
         environments?: ServerEnvironment[];
@@ -211,7 +216,7 @@ export const setIpcMainListener = () => {
           ? Math.min(timeoutMs, 5000)
           : DEFAULT_PROBE_TIMEOUT_MS;
       const safePorts = {
-        im: Array.isArray(ports.im) ? ports.im : [10001],
+        im: Array.isArray(ports.im) ? ports.im : [20001, 10001],
         chat: Array.isArray(ports.chat) ? ports.chat : [],
       };
       const results = await Promise.all(
@@ -222,6 +227,35 @@ export const setIpcMainListener = () => {
       );
 
       return results.find((result) => result.available)?.environment ?? null;
+    },
+  );
+
+  // 探测 IM WebSocket 候选端口，返回第一个可达的端口（用于端口迁移平滑过渡）
+  ipcMain.handle(
+    IpcRenderToMain.probeImWsPort,
+    async (
+      _,
+      {
+        host,
+        ports = [20001, 10001],
+        timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+      }: { host?: string; ports?: number[]; timeoutMs?: number },
+    ) => {
+      const safeHost = (host ?? "").trim();
+      const safePorts = Array.isArray(ports)
+        ? ports.filter(isValidPort)
+        : [20001, 10001];
+      const safeTimeoutMs =
+        Number.isFinite(timeoutMs) && timeoutMs > 0
+          ? Math.min(timeoutMs, 5000)
+          : DEFAULT_PROBE_TIMEOUT_MS;
+      if (!isValidHost(safeHost)) return null;
+      for (const port of safePorts) {
+        if (await probeTcpPort(safeHost, port, safeTimeoutMs)) {
+          return port;
+        }
+      }
+      return null;
     },
   );
 

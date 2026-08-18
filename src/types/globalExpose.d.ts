@@ -21,6 +21,7 @@ export interface IElectronAPI {
   subscribeOnce: (channel: string, callback: (...args: any[]) => void) => void;
   unsubscribeAll: (channel: string) => void;
   ipcInvoke: <T = unknown>(channel: string, ...arg: any) => Promise<T>;
+  ipcSend: (channel: string, ...arg: any) => void;
   ipcSendSync: <T = unknown>(channel: string, ...arg: any) => T;
   saveFileToDisk: (params: { file: File; sync?: boolean }) => Promise<string>;
   getFileByPath: (filePath: string) => Promise<File | null>;

@@ -28,7 +28,7 @@ import {
 import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
-import { getIMHost } from "@/utils/config";
+import { getIMHost, getIMWsPort } from "@/utils/config";
 import emitter from "@/utils/events";
 import { initStore } from "@/utils/imCommon";
 import { initReadVisibilityMonitor } from "@/utils/readVisibility";
@@ -36,6 +36,31 @@ import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
 import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
+
+/**
+ * 解析 IM WebSocket 端口，兼容端口迁移：
+ * - 优先使用用户/环境变量配置（默认 20001，行内标准化端口）；
+ * - 在 Electron 环境下，通过主进程 TCP 探测候选端口 [20001, 10001]，
+ *   返回第一个可达端口；若探测失败则回退到配置端口（保证老服务端 10001 仍可用）。
+ */
+const IM_WS_PORT_CANDIDATES = [20001, 10001];
+const PROBE_IM_WS_PORT_CHANNEL = "probeImWsPort";
+
+const resolveImWsPort = async (host: string): Promise<string> => {
+  const configured = getIMWsPort();
+  if (window.electronAPI) {
+    try {
+      const detected = await window.electronAPI.ipcInvoke<number | null>(
+        PROBE_IM_WS_PORT_CHANNEL,
+        { host, ports: IM_WS_PORT_CANDIDATES, timeoutMs: 1500 },
+      );
+      if (detected) return String(detected);
+    } catch (error) {
+      console.warn("[ws] probe im ws port failed, fallback to configured", error);
+    }
+  }
+  return configured;
+};
 
 export function useGlobalEvent() {
   const navigate = useNavigate();
@@ -133,7 +158,9 @@ export function useGlobalEvent() {
       await ensureServerEnvironmentSelected(true);
       const host = getIMHost();
       const apiAddr = `http://${host}:10002`;
-      const wsAddr = `ws://${host}:10001`;
+      // WS 端口迁移兼容：优先探测 20001（行内标准化端口），不可达则回退 10001（遗留端口）
+      const wsPort = await resolveImWsPort(host);
+      const wsAddr = `ws://${host}:${wsPort}`;
       if (window.electronAPI) {
         await IMSDK.initSDK({
           platformID: window.electronAPI?.getPlatform() ?? 5,
@@ -622,6 +649,19 @@ export function useGlobalEvent() {
       setTimeout(() => {
         resume.current = false;
       }, 5000);
+    });
+
+    // 主进程在退出软件前请求执行 OpenIM 退出登录（清理登录态，防止下次自动登录）
+    window.electronAPI?.subscribe("requestLogoutBeforeQuit", async () => {
+      try {
+        // force=true: 直接清理本地登录态（token/locale），不再依赖 SDK 在线登出
+        await userLogout(true);
+      } catch (e) {
+        console.error("[logout] before quit failed:", e);
+      } finally {
+        // 无论成功与否，通知主进程可以继续退出
+        window.electronAPI?.ipcSend("requestLogoutBeforeQuit:done");
+      }
     });
   };
 }

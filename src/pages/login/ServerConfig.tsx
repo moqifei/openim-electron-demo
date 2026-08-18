@@ -76,7 +76,7 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
         <div className="mb-2">
           <div className="mb-1 text-sm font-medium">IM 服务器地址</div>
           <div className="mb-1 text-xs text-gray-400">
-            WebSocket :10001 / API :10002
+            WebSocket :20001 / API :10002（历史版本兼容 :10001）
           </div>
           <Input
             placeholder="例如: 192.168.1.100"
@@ -118,7 +118,7 @@ const ServerConfig = ({ onConfigChanged }: ServerConfigProps) => {
         </div>
         <div className="flex items-center justify-between text-xs text-gray-400">
           <span>
-            当前：IM {imHost}:10001/02 | Chat {chatHost}:10008
+            当前：IM {imHost}:20001/02 | Chat {chatHost}:10008
           </span>
           <Space>
             <Button size="small" type="link" danger onClick={handleReset}>
