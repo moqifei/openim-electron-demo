@@ -26,10 +26,15 @@ export interface IElectronAPI {
   saveFileToDisk: (params: { file: File; sync?: boolean }) => Promise<string>;
   getFileByPath: (filePath: string) => Promise<File | null>;
   openFileDialog: (options?: OpenFileDialogOptions) => Promise<string[]>;
+  saveDownloadedFile: (params: {
+    data: ArrayBuffer;
+    fileName: string;
+  }) => Promise<boolean>;
   startScreenshot: (
     hideWindow?: boolean,
   ) => Promise<{ dataUrl: string; isSelection: boolean } | null>;
   readClipboardImage: () => Promise<string | null>;
+  writeClipboardImage: (base64: string) => Promise<void>;
   saveScreenshotFile: (base64: string) => Promise<string>;
 }
 

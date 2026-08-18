@@ -3,7 +3,7 @@ import { BrowserWindow, dialog, shell } from "electron";
 import { isLinux, isMac, isWin } from "../utils";
 import { destroyTray } from "./trayManage";
 import { getIsForceQuit } from "./appManage";
-import { registerShortcuts, unregisterShortcuts } from "./shortcutManage";
+import { registerShortcuts } from "./shortcutManage";
 import { initIMSDK } from "../utils/imsdk";
 import OpenIMSDKMain from "@openim/electron-client-sdk";
 import { IpcMainToRender } from "../constants";
@@ -62,6 +62,7 @@ export function createMainWindow() {
   });
 
   sdkInstance = initIMSDK(mainWindow.webContents);
+  registerShortcuts();
 
   if (process.env.VITE_DEV_SERVER_URL) {
     // Open devTool if the app is not packaged
@@ -95,12 +96,10 @@ export function createMainWindow() {
 
   mainWindow.on("focus", () => {
     mainWindow?.flashFrame(false);
-    registerShortcuts();
     notifyMainWindowState();
   });
 
   mainWindow.on("blur", () => {
-    unregisterShortcuts();
     notifyMainWindowState();
   });
 
@@ -128,6 +127,14 @@ export function splashEnd() {
   splashWindow?.close();
   mainWindow?.show();
 }
+
+export const triggerScreenshot = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send(IpcMainToRender.triggerScreenshot);
+};
 
 // utils
 export const isExistMainWindow = (): boolean =>

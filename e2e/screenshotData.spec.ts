@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import fs from "node:fs";
 
 import { getPngDimensions } from "../electron/utils/pngDimensions";
 import { uint8ArrayToDataUrl } from "../electron/utils/screenshotData";
@@ -25,4 +26,45 @@ test("rejects data that is not long enough to contain PNG dimensions", () => {
   expect(() => getPngDimensions(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toThrow(
     "Invalid PNG data",
   );
+});
+
+test("registers the global screenshot shortcut without removing it on blur", () => {
+  const shortcutSource = fs.readFileSync("electron/main/shortcutManage.ts", "utf8");
+  const windowSource = fs.readFileSync("electron/main/windowManage.ts", "utf8");
+
+  expect(shortcutSource).toContain("CommandOrControl+Shift+X");
+  expect(windowSource).not.toContain('mainWindow.on("blur", () => {\n    unregisterShortcuts();');
+});
+
+test("exposes the screenshot clipboard IPC", () => {
+  const constantsSource = fs.readFileSync("electron/constants/index.ts", "utf8");
+  const preloadSource = fs.readFileSync("electron/preload/index.ts", "utf8");
+  const ipcSource = fs.readFileSync("electron/main/ipcHandlerManage.ts", "utf8");
+  const typeSource = fs.readFileSync("src/types/globalExpose.d.ts", "utf8");
+
+  expect(constantsSource).toContain("writeClipboardImage");
+  expect(preloadSource).toContain("writeClipboardImage");
+  expect(typeSource).toContain("writeClipboardImage");
+  expect(ipcSource).toContain("clipboard.writeImage");
+  expect(ipcSource).toContain("nativeImage.createFromDataURL");
+});
+
+test("wires the global screenshot event and final image to ChatFooter", () => {
+  const chatFooterSource = fs.readFileSync(
+    "src/pages/chat/queryChat/ChatFooter/index.tsx",
+    "utf8",
+  );
+
+  expect(chatFooterSource).toContain("triggerScreenshot");
+  expect(chatFooterSource).toContain("writeClipboardImage");
+  expect(chatFooterSource).toContain("croppedBase64");
+});
+
+test("shows the global shortcut in the screenshot button hover text", () => {
+  const actionBarSource = fs.readFileSync(
+    "src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx",
+    "utf8",
+  );
+
+  expect(actionBarSource).toContain('title="截图（Ctrl+Shift+X）"');
 });

@@ -279,6 +279,14 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     [addPendingFiles],
   );
 
+  const writeScreenshotToClipboard = useCallback(async (dataUrl: string) => {
+    try {
+      await window.electronAPI?.writeClipboardImage(dataUrl);
+    } catch (error) {
+      console.warn("[ChatFooter] screenshot clipboard write failed", error);
+    }
+  }, []);
+
   const startScreenshot = useCallback(
     async (hideWindow: boolean) => {
       if (!window.electronAPI) {
@@ -288,6 +296,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       setScreenshotLoading(true);
       try {
         const result = await window.electronAPI.startScreenshot(hideWindow);
+        if (result?.dataUrl) {
+          await writeScreenshotToClipboard(result.dataUrl);
+        }
         if (result?.isSelection) {
           addPendingFiles([
             dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
@@ -306,17 +317,26 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         setScreenshotLoading(false);
       }
     },
-    [addPendingFiles],
+    [addPendingFiles, writeScreenshotToClipboard],
   );
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.subscribe("triggerScreenshot", () => {
+      const hideWindow = localStorage.getItem("screenshotHideWindow") !== "false";
+      void startScreenshot(hideWindow);
+    });
+    return () => unsubscribe?.();
+  }, [startScreenshot]);
 
   const handleScreenshotConfirm = useCallback(
     (croppedBase64: string) => {
       setScreenshotSrc(null);
+      void writeScreenshotToClipboard(croppedBase64);
       addPendingFiles([
         dataUrlToImageFile(croppedBase64, `screenshot-${Date.now()}.png`),
       ]);
     },
-    [addPendingFiles],
+    [addPendingFiles, writeScreenshotToClipboard],
   );
 
   const handleScreenshotCancel = useCallback(() => {

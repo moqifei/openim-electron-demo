@@ -25,7 +25,7 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message }) => {
     try {
       await downloadFileWithProgress({
         url: fileElem.sourceUrl,
-        fileName: fileElem.fileName || "download",
+        fileName: fileElem.fileName,
         knownSize: fileElem.fileSize,
         onProgress: setDownloadProgress,
         showProgressToast: true,
@@ -49,7 +49,7 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message }) => {
     <div
       className={`${
         styles.bubble
-      } !rounded-lg !border-[var(--border-color)] !bg-[var(--bg-base)] flex max-w-[260px] cursor-pointer items-center gap-3 px-3 py-2 ${
+      } flex max-w-[260px] cursor-pointer items-center gap-3 !rounded-lg !border-[var(--border-color)] !bg-[var(--bg-base)] px-3 py-2 ${
         isSending || isDownloading ? "" : "hover:opacity-80"
       }`}
       onClick={() => {

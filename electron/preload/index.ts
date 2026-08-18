@@ -155,6 +155,10 @@ const readClipboardImage = (): Promise<string | null> => {
   return ipcRenderer.invoke(IpcRenderToMain.readClipboardImage);
 };
 
+const writeClipboardImage = (base64: string): Promise<void> => {
+  return ipcRenderer.invoke(IpcRenderToMain.writeClipboardImage, base64);
+};
+
 const saveScreenshotFile = (base64: string): Promise<string> => {
   return ipcRenderer.invoke(IpcRenderToMain.saveScreenshotFile, base64);
 };
@@ -163,6 +167,13 @@ const openFileDialog = (
   options?: Parameters<IElectronAPI["openFileDialog"]>[0],
 ): Promise<string[]> => {
   return ipcRenderer.invoke(IpcRenderToMain.openFileDialog, options);
+};
+
+const saveDownloadedFile = ({
+  data,
+  fileName,
+}: Parameters<IElectronAPI["saveDownloadedFile"]>[0]): Promise<boolean> => {
+  return ipcRenderer.invoke(IpcRenderToMain.saveDownloadedFile, { data, fileName });
 };
 
 const Api: IElectronAPI = {
@@ -178,9 +189,11 @@ const Api: IElectronAPI = {
   ipcSendSync,
   getFileByPath,
   openFileDialog,
+  saveDownloadedFile,
   saveFileToDisk,
   startScreenshot,
   readClipboardImage,
+  writeClipboardImage,
   saveScreenshotFile,
 };
 

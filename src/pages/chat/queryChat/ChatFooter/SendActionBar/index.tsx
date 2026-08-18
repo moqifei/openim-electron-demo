@@ -279,6 +279,7 @@ const SendActionBar = ({
                     src={cutIcon}
                     width={20}
                     alt={t("placeholder.screenshot")}
+                    title="截图（Ctrl+Shift+X）"
                     onClick={handleScreenshotClick}
                   />
                 </div>

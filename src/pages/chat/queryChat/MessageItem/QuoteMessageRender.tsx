@@ -76,7 +76,7 @@ const QuoteMessageRender: FC<
           try {
             await downloadFileWithProgress({
               url: fileElem.sourceUrl,
-              fileName: fileElem.fileName || "download",
+              fileName: fileElem.fileName,
               knownSize: fileElem.fileSize,
               showProgressToast: true,
               progressTitle: t("toast.downloading"),

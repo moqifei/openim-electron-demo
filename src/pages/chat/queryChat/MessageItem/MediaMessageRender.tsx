@@ -1,7 +1,9 @@
-import { MessageStatus } from "@openim/wasm-client-sdk";
 import { DownloadOutlined } from "@ant-design/icons";
+import { MessageStatus } from "@openim/wasm-client-sdk";
 import { Image, Spin } from "antd";
 import { FC } from "react";
+
+import { downloadFileWithProgress } from "@/utils/fileDownload";
 
 import { IMessageItemProps } from ".";
 
@@ -23,17 +25,11 @@ const MediaMessageRender: FC<IMessageItemProps> = ({ message }) => {
 
   const handleDownload = async () => {
     try {
-      const response = await fetch(originalUrl);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = blobUrl;
-      const ext = originalUrl.split(".").pop() || "png";
-      link.download = `image_${Date.now()}.${ext}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
+      await downloadFileWithProgress({
+        url: originalUrl,
+        showProgressToast: true,
+        progressTitle: "Downloading...",
+      });
     } catch (error) {
       console.error("Download failed:", error);
     }

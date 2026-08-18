@@ -6,6 +6,7 @@ import {
   desktopCapturer,
   dialog,
   ipcMain,
+  nativeImage,
   screen,
 } from "electron";
 import { execFile } from "child_process";
@@ -20,6 +21,7 @@ import {
   closeWindow,
   minimize,
   showSelectDialog,
+  showSaveDialog,
   showWindow,
   splashEnd,
   updateMaximize,
@@ -29,6 +31,7 @@ import { IpcRenderToMain, IpcMainToRender } from "../constants";
 import { getPngDimensions } from "../utils/pngDimensions";
 import { getStore } from "./storeManage";
 import { uint8ArrayToDataUrl } from "../utils/screenshotData";
+import { getDownloadFileFilters } from "../utils/downloadFileFilters";
 import { changeLanguage } from "../i18n";
 import { logger } from ".";
 
@@ -313,6 +316,11 @@ export const setIpcMainListener = () => {
     if (image.isEmpty()) return null;
     return `data:image/png;base64,${image.toPNG().toString("base64")}`;
   });
+  ipcMain.handle(IpcRenderToMain.writeClipboardImage, (_, base64: string) => {
+    const image = nativeImage.createFromDataURL(base64);
+    if (image.isEmpty()) throw new Error("Invalid clipboard image");
+    clipboard.writeImage(image);
+  });
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":
@@ -333,6 +341,22 @@ export const setIpcMainListener = () => {
     const result = await showSelectDialog(options);
     return result.canceled ? [] : result.filePaths.map(normalizeDialogFilePath);
   });
+  ipcMain.handle(
+    IpcRenderToMain.saveDownloadedFile,
+    async (
+      _,
+      { data, fileName }: { data: ArrayBuffer; fileName: string },
+    ) => {
+      const safeName = path.basename(fileName) || "download";
+      const result = await showSaveDialog({
+        defaultPath: path.join(app.getPath("downloads"), safeName),
+        filters: getDownloadFileFilters(safeName),
+      });
+      if (result.canceled || !result.filePath) return false;
+      await fs.promises.writeFile(result.filePath, Buffer.from(data));
+      return true;
+    },
+  );
 
   // Screenshot: capture the focused display at native resolution, then show the window.
   ipcMain.handle(IpcRenderToMain.startScreenshot, async (_, hideWindow = true) => {

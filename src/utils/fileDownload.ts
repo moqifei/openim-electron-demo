@@ -3,6 +3,7 @@ import {
   createFileTransferProgressKey,
   showFileTransferProgress,
 } from "./fileTransferProgress";
+import { inferDownloadFileName } from "./downloadFileName";
 
 type DownloadFileOptions = {
   url: string;
@@ -41,7 +42,7 @@ export const downloadFileWithProgress = ({
 }: DownloadFileOptions) =>
   new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    const downloadFileName = fileName || "download";
+    let downloadFileName = fileName || "download";
     const progressKey = showProgressToast
       ? createFileTransferProgressKey("file-download")
       : "";
@@ -62,7 +63,8 @@ export const downloadFileWithProgress = ({
       });
     };
 
-    xhr.open("GET", resolveFileDownloadUrl(url), true);
+    const resolvedUrl = resolveFileDownloadUrl(url);
+    xhr.open("GET", resolvedUrl, true);
     xhr.responseType = "blob";
 
     updateProgress(0);
@@ -74,11 +76,31 @@ export const downloadFileWithProgress = ({
       updateProgress(Math.min(99, Math.max(0, progress)));
     };
 
-    xhr.onload = () => {
+    xhr.onload = async () => {
       if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) {
-        updateProgress(100, "success");
-        saveBlob(xhr.response, downloadFileName);
-        resolve();
+        try {
+          downloadFileName = inferDownloadFileName({
+            fileName,
+            contentDisposition: xhr.getResponseHeader("Content-Disposition"),
+            url: resolvedUrl,
+            mimeType: xhr.response?.type,
+          });
+
+          const electronAPI = window.electronAPI;
+          if (electronAPI?.saveDownloadedFile) {
+            await electronAPI.saveDownloadedFile({
+              data: await xhr.response.arrayBuffer(),
+              fileName: downloadFileName,
+            });
+          } else {
+            saveBlob(xhr.response, downloadFileName);
+          }
+          updateProgress(100, "success");
+          resolve();
+        } catch (error) {
+          updateProgress(100, "exception");
+          reject(error);
+        }
         return;
       }
       updateProgress(100, "exception");

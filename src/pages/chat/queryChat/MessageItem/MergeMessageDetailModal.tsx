@@ -30,7 +30,7 @@ const downloadMessageFile = async (
   try {
     await downloadFileWithProgress({
       url: file.sourceUrl,
-      fileName: file.fileName || "download",
+      fileName: file.fileName,
       knownSize: file.fileSize,
       showProgressToast: true,
       progressTitle: t("toast.downloading"),
