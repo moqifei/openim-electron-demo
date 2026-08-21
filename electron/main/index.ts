@@ -8,7 +8,7 @@ import createAppMenu from "./menuManage";
 import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
-import { initAutoUpdater } from "./updateManage";
+import { initAutoUpdater, destroyAutoUpdater } from "./updateManage";
 import { unregisterShortcuts } from "./shortcutManage";
 
 if (isLinux) {
@@ -25,6 +25,7 @@ if (isLinux) {
 export const logger = getLogger(join(app.getPath("userData"), `/OpenIMData/logs`));
 
 app.on("will-quit", unregisterShortcuts);
+app.on("will-quit", destroyAutoUpdater);
 
 const init = () => {
   initI18n();

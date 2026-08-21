@@ -11,6 +11,7 @@ type UpdateConfig = {
   url?: string;
   checkOnStart?: boolean;
   checkDelayMs?: number;
+  checkIntervalMs?: number;
   autoDownload?: boolean;
   autoInstallOnAppQuit?: boolean;
   allowPrerelease?: boolean;
@@ -21,12 +22,14 @@ const DEFAULT_UPDATE_CONFIG: Required<UpdateConfig> = {
   url: "http://xone.qa.bx/im/",
   checkOnStart: true,
   checkDelayMs: 10000,
+  checkIntervalMs: 6 * 60 * 60 * 1000,
   autoDownload: true,
   autoInstallOnAppQuit: true,
   allowPrerelease: false,
 };
 
 let updaterInitialized = false;
+let periodicCheckTimer: NodeJS.Timeout | null = null;
 
 const normalizeBaseUrl = (url: string) => {
   const trimmed = url.trim();
@@ -130,11 +133,28 @@ export const initAutoUpdater = () => {
     logger.error("[updater] update failed", error);
   });
 
+  const runCheck = () => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      logger.error("[updater] checkForUpdates failed", error);
+    });
+  };
+
+  // 启动后延迟首次检查
   if (config.checkOnStart) {
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((error) => {
-        logger.error("[updater] checkForUpdates failed", error);
-      });
-    }, config.checkDelayMs);
+    setTimeout(runCheck, config.checkDelayMs);
+  }
+
+  // 周期性检查: 即使客户端长期不退出/不重启, 也能持续发现新版本
+  const intervalMs = Math.max(60 * 1000, config.checkIntervalMs);
+  periodicCheckTimer = setInterval(runCheck, intervalMs);
+  logger.info("[updater] periodic check scheduled every", `${intervalMs}ms`);
+};
+
+// 应用退出时清理周期性检查定时器, 避免句柄泄漏
+export const destroyAutoUpdater = () => {
+  if (periodicCheckTimer) {
+    clearInterval(periodicCheckTimer);
+    periodicCheckTimer = null;
+    logger.info("[updater] periodic check cleared");
   }
 };

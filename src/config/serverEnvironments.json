@@ -19,8 +19,8 @@
     {
       "key": "test",
       "name": "测试环境",
-      "imHost": "10.90.23.148",
-      "chatHost": "10.90.23.149",
+      "imHost": "openimserver.qa.bx",
+      "chatHost": "openimchat.qa.bx",
       "plazaDirectMode": true,
       "plazaUrl": "http://llm-tools.qa.bx",
       "orangeUrl": "http://10.100.8.32:3000",
