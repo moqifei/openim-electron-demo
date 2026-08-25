@@ -52,6 +52,7 @@ export interface IMessageItemProps {
   onReply?: (message: MessageItemType) => void;
   onMultiSelect?: (message: MessageItemType) => void;
   onRevoke?: (message: MessageItemType) => void;
+  onAvatarClick?: (message: MessageItemType) => void;
 }
 
 const components: Record<number, FC<IMessageItemProps>> = {
@@ -76,6 +77,7 @@ const MessageItem: FC<IMessageItemProps> = ({
   onReply,
   onMultiSelect,
   onRevoke,
+  onAvatarClick,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -135,12 +137,17 @@ const MessageItem: FC<IMessageItemProps> = ({
       icon: <SelectOutlined />,
       onClick: () => onMultiSelect?.(message),
     },
-    {
-      key: "revoke",
-      label: t("placeholder.revoke"),
-      icon: <RollbackOutlined />,
-      onClick: () => onRevoke?.(message),
-    },
+    // 审计要求：仅允许撤销自己发送的消息，群主/管理员/其他人都不能撤销他人的消息。
+    ...(isSender
+      ? [
+          {
+            key: "revoke",
+            label: t("placeholder.revoke"),
+            icon: <RollbackOutlined />,
+            onClick: () => onRevoke?.(message),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -174,7 +181,16 @@ const MessageItem: FC<IMessageItemProps> = ({
             isSender && styles["message-container-sender"],
           )}
         >
-          <OIMAvatar size={36} src={message.senderFaceUrl} text={senderName} />
+          <OIMAvatar
+            size={36}
+            src={message.senderFaceUrl}
+            text={senderName}
+            className="cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAvatarClick?.(message);
+            }}
+          />
 
           <div className={styles["message-wrap"]} ref={messageWrapRef}>
             <div className={styles["message-profile"]}>

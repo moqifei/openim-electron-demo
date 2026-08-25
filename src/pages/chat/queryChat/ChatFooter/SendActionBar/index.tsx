@@ -1,5 +1,5 @@
 import { MessageItem } from "@openim/wasm-client-sdk";
-import { Popover, Upload } from "antd";
+import { Popover, Slider, Upload } from "antd";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, RefObject, useState } from "react";
@@ -16,10 +16,15 @@ import {
   createFileTransferProgressKey,
   showFileTransferProgress,
 } from "@/utils/fileTransferProgress";
+import { useConversationStore } from "@/store/conversation";
 
 import { SendMessageParams } from "../useSendMessage";
 import EmojiPicker from "./EmojiPicker";
 import ShareCardModal from "./ShareCardModal";
+
+const FONT_SIZE_MIN = 12;
+const FONT_SIZE_MAX = 28;
+const FONT_SIZE_STEP = 2;
 
 const sendActionList = [
   {
@@ -91,11 +96,15 @@ const SendActionBar = ({
 }) => {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
+  const [fontPickerOpen, setFontPickerOpen] = useState(false);
   const [hideWindowConfig, setHideWindowConfig] = useState(() => {
     const v = localStorage.getItem("screenshotHideWindow");
     return v === null ? true : v === "true";
   });
   const [configOpen, setConfigOpen] = useState(false);
+
+  const chatFontSize = useConversationStore((state) => state.chatFontSize);
+  const setChatFontSize = useConversationStore((state) => state.setChatFontSize);
 
   const fileHandle = async (options: UploadRequestOption, key: string) => {
     const file = options.file as File;
@@ -263,9 +272,54 @@ const SendActionBar = ({
     </div>
   );
 
+  const fontPickerContent = (
+    <div className="flex flex-col items-center gap-2 px-4 py-3" style={{ width: 200 }}>
+      <div className="text-sm text-gray-500">
+        {i18n.language?.startsWith("zh") ? "字体大小" : "Font Size"}:{" "}
+        <span className="font-medium text-gray-800">{chatFontSize}px</span>
+      </div>
+      <Slider
+        min={FONT_SIZE_MIN}
+        max={FONT_SIZE_MAX}
+        step={FONT_SIZE_STEP}
+        value={chatFontSize}
+        onChange={(v) => setChatFontSize(v)}
+        className="!w-full"
+      />
+      <div className="flex w-full justify-between text-xs text-gray-400">
+        <span>{FONT_SIZE_MIN}px</span>
+        <span>{FONT_SIZE_MAX}px</span>
+      </div>
+      <div
+        className="w-full rounded border border-gray-200 p-2 text-center"
+        style={{ fontSize: chatFontSize, lineHeight: 1.5 }}
+      >
+        Aa 示例 Sample
+      </div>
+    </div>
+  );
+
   return (
     <>
       <div className="flex items-center gap-5 px-4.5 pt-2">
+        {/* Font size picker */}
+        <Popover
+          placement="bottomLeft"
+          content={fontPickerContent}
+          trigger="click"
+          open={fontPickerOpen}
+          onOpenChange={setFontPickerOpen}
+          arrow={false}
+        >
+          <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7"></polyline>
+              <line x1="9" y1="20" x2="15" y2="20"></line>
+              <line x1="12" y1="4" x2="12" y2="20"></line>
+            </svg>
+          </div>
+        </Popover>
+
         {sendActionList.map((action) => {
           const isEmoji = action.key === "emoji";
           const isCard = action.key === "card";

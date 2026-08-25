@@ -9,6 +9,7 @@ interface IMessageMenuProps {
   visible: boolean;
   x: number;
   y: number;
+  isSender?: boolean;
   onClose: () => void;
   onForward: () => void;
   onReply: () => void;
@@ -21,6 +22,7 @@ const MessageMenu: FC<IMessageMenuProps> = ({
   visible,
   x,
   y,
+  isSender,
   onClose,
   onForward,
   onReply,
@@ -60,7 +62,10 @@ const MessageMenu: FC<IMessageMenuProps> = ({
     { label: t("placeholder.reply"), onClick: onReply },
     ...(isTextMessage ? [{ label: t("placeholder.copy"), onClick: handleCopy }] : []),
     { label: t("placeholder.check"), onClick: onMultiSelect },
-    { label: t("placeholder.revoke"), onClick: onRevoke },
+    // 审计要求：仅允许撤销自己发送的消息，群主/管理员/其他人都不能撤销他人的消息。
+    ...(isSender
+      ? [{ label: t("placeholder.revoke"), onClick: onRevoke }]
+      : []),
   ];
 
   // Adjust position to keep menu within viewport

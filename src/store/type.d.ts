@@ -50,11 +50,18 @@ export interface ConversationStore {
   currentMemberInGroup?: GroupItem;
   quoteMessage?: MessageItem;
 
+  /* Message being re-edited after revocation (clientMsgID -> original text) */
+  editingMessage?: { clientMsgID: string; text: string };
+
   /* Per-conversation input draft (unsent text) */
   conversationDrafts: Record<string, string>;
   saveConversationDraft: (conversationID: string, draftText: string) => void;
   getConversationDraft: (conversationID: string) => string;
   clearConversationDraft: (conversationID: string) => void;
+
+  /* Font size for chat input (px), default 14 */
+  chatFontSize: number;
+  setChatFontSize: (size: number) => void;
 
   getConversationListByReq: (
     isOffset?: boolean
@@ -75,6 +82,7 @@ export interface ConversationStore {
   setCurrentMemberInGroup: (memberInfo?: GroupMemberItem) => void;
   tryUpdateCurrentMemberInGroup: (member: GroupMemberItem) => void;
   setQuoteMessage: (message?: MessageItem) => void;
+  setEditingMessage: (msg?: { clientMsgID: string; text: string }) => void;
   clearConversationStore: () => void;
 }
 

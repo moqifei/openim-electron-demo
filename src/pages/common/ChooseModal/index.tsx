@@ -304,7 +304,7 @@ export const ChooseContact: FC<ChooseContactProps> = ({
             <div className="min-w-[60px] font-medium">{t("placeholder.groupName")}</div>
             <Input
               placeholder={t("placeholder.pleaseEnter")}
-              maxLength={16}
+              maxLength={32}
               spellCheck={false}
               value={groupBaseInfo.groupName}
               onChange={(e) =>

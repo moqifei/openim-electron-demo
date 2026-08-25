@@ -93,6 +93,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const { sendMessage } = useSendMessage();
   const quoteMessage = useConversationStore((state) => state.quoteMessage);
   const setQuoteMessage = useConversationStore((state) => state.setQuoteMessage);
+  const editingMessage = useConversationStore((state) => state.editingMessage);
+  const setEditingMessage = useConversationStore((state) => state.setEditingMessage);
+  const chatFontSize = useConversationStore((state) => state.chatFontSize);
   const currentConversation = useConversationStore(
     (state) => state.currentConversation,
   );
@@ -129,6 +132,22 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     debouncedSaveDraft(html);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [html]);
+
+  // When user clicks "重新编辑" on a revoked message, populate the editor
+  // with the original text so they can re-send it.
+  useEffect(() => {
+    console.log("[reEdit] ChatFooter effect", {
+      editingMessage,
+      hasEditor: !!editorRef.current,
+    });
+    if (editingMessage?.text) {
+      console.log("[reEdit] populate editor", editingMessage.text);
+      setHtml(editingMessage.text);
+      editorRef.current?.setText(editingMessage.text);
+      setEditingMessage(undefined); // consume once
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMessage]);
 
   // Cleanup object URLs on unmount
   useEffect(() => {
@@ -529,6 +548,17 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       message = data;
     }
 
+    /* Attach font size to message ex field so receivers can render it */
+    if (message && chatFontSize && chatFontSize !== 14) {
+      try {
+        const existingEx = message.ex ? JSON.parse(message.ex) : {};
+        existingEx.fontSize = chatFontSize;
+        message.ex = JSON.stringify(existingEx);
+      } catch {
+        message.ex = JSON.stringify({ fontSize: chatFontSize });
+      }
+    }
+
     await sendMessage({ message });
     // Clear draft after successful send
     if (convID) clearDraft(convID);
@@ -673,6 +703,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             onChange={onChange}
             onPasteFile={addPendingFiles}
             onKeydown={handleEditorKeydown}
+            fontSize={chatFontSize}
           />
           <div className="flex justify-end px-3 py-1.5">
             <div className="flex flex-col items-end gap-1">

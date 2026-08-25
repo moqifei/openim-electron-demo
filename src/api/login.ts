@@ -183,6 +183,8 @@ export interface BusinessUserInfo {
   allowBeep: BusinessAllowType;
   allowVibration: BusinessAllowType;
   globalRecvMsgOpt: MessageReceiveOptType;
+  /** AD-synchronized department name (from /ad/member/search) */
+  departmentName?: string;
 }
 
 export enum BusinessAllowType {

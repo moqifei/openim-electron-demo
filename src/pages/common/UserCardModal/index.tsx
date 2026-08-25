@@ -7,8 +7,10 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { Button, Divider, Spin } from "antd";
+import { ApartmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { t } from "i18next";
+import i18n from "@/i18n";
 import {
   FC,
   forwardRef,
@@ -23,6 +25,7 @@ import { useQuery } from "react-query";
 import { useCopyToClipboard } from "react-use";
 
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
+import { searchADMembers, getADDepartmentList } from "@/api/organization";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
 import EditableContent from "@/components/EditableContent";
 import OIMAvatar from "@/components/OIMAvatar";
@@ -98,6 +101,86 @@ const UserCardModal: ForwardRefRenderFunction<
     } catch (error) {
       console.error("get business user info failed", userID, error);
     }
+
+    // Fetch AD department info for the user
+    // Use account/username as keyword (same as SearchUserOrGroup component)
+    try {
+      const account = (userInfo as any)?.account || userInfo?.nickname || userID;
+      console.log("[UserCard] fetching AD department, keyword:", account);
+      const { data: adData } = await searchADMembers({
+        keyword: account,
+        pagination: { pageNumber: 1, showNumber: 5 },
+      });
+      const adMember = adData.members?.[0];
+      console.log("[UserCard] AD search result:", JSON.stringify({
+        total: adData.total,
+        membersCount: adData.members?.length ?? 0,
+        member: adMember ? {
+          userID: adMember.userID,
+          username: adMember.username,
+          nickname: adMember.nickname,
+          displayName: adMember.displayName,
+          departmentName: adMember.departmentName,
+          departmentID: adMember.departmentID,
+        } : null,
+      }, null, 2));
+
+      if (adMember) {
+        // Priority 1: AD returned departmentName directly
+        if (adMember.departmentName) {
+          userInfo = { ...userInfo, departmentName: adMember.departmentName };
+          console.log("[UserCard] set departmentName (from AD field):", userInfo.departmentName);
+        } else if (adMember.departmentID) {
+          // Priority 2: Parse from LDAP DN (ou=部门名,...)
+          const dnMatch = adMember.departmentID.match(/ou=([^,]+)/i);
+          if (dnMatch?.[1]) {
+            userInfo = { ...userInfo, departmentName: dnMatch[1] };
+            console.log("[UserCard] set departmentName (from DN parse):", userInfo.departmentName);
+          } else {
+            // Priority 3: Fallback to getADDepartmentList lookup
+            try {
+              console.log("[UserCard] DN parse failed, trying getADDepartmentList");
+              const { data: deptData } = await getADDepartmentList();
+              const dept = deptData.departments?.find(
+                (d) => d.departmentID === adMember.departmentID,
+              );
+              if (dept?.name) {
+                userInfo = { ...userInfo, departmentName: dept.name };
+                console.log("[UserCard] set departmentName (from dept list):", userInfo.departmentName);
+              }
+            } catch (deptErr) {
+              console.warn("[UserCard] getADDepartmentList failed", deptErr);
+            }
+          }
+        }
+      }
+
+      // If still no departmentName and we haven't tried nickname yet
+      if (!userInfo.departmentName && userInfo?.nickname && userInfo.nickname !== account) {
+        const { data: adData2 } = await searchADMembers({
+          keyword: userInfo.nickname,
+          pagination: { pageNumber: 1, showNumber: 5 },
+        });
+        const adMember2 = adData2.members?.[0];
+        if (adMember2?.departmentName) {
+          userInfo = { ...userInfo, departmentName: adMember2.departmentName };
+          console.log("[UserCard] set departmentName (via nickname):", userInfo.departmentName);
+        } else if (adMember2?.departmentID) {
+          const dnMatch2 = adMember2.departmentID.match(/ou=([^,]+)/i);
+          if (dnMatch2?.[1]) {
+            userInfo = { ...userInfo, departmentName: dnMatch2[1] };
+            console.log("[UserCard] set departmentName (via nickname + DN):", userInfo.departmentName);
+          }
+        }
+      }
+
+      if (!userInfo.departmentName) {
+        console.warn("[UserCard] no department found after all attempts. account:", account, "nickname:", userInfo?.nickname);
+      }
+    } catch (error) {
+      console.warn("fetch AD department info failed", userID, error);
+    }
+
     return {
       cardInfo: userInfo,
     };
@@ -155,6 +238,13 @@ const UserCardModal: ForwardRefRenderFunction<
       title: t("placeholder.nickName"),
       value: info.nickname || "",
     });
+    // Department from AD (show if available)
+    if (info.departmentName) {
+      tmpFields.push({
+        title: i18n.language?.startsWith("zh") ? "部门" : "Department",
+        value: info.departmentName,
+      });
+    }
     const isFriend = info?.remark !== undefined;
 
     if (isFriend) {
@@ -232,29 +322,31 @@ const UserCardModal: ForwardRefRenderFunction<
         {isSendRequest ? (
           <SendRequest cardInfo={cardInfo!} backToCard={backToCard} />
         ) : (
-          <div className="flex max-h-[520px] min-h-[484px] flex-col overflow-hidden rounded-2xl bg-[var(--bg-base)] px-5.5 shadow-[0_8px_30px_rgba(31,35,41,0.12)]">
-            <div className="flex h-[120px] min-h-[120px] w-full items-center justify-center bg-gradient-to-br from-[var(--primary)] to-[#6d28d9] pt-4">
+          <div className="flex max-h-[540px] min-h-[500px] flex-col overflow-hidden rounded-2xl bg-[var(--bg-base)] shadow-[0_8px_30px_rgba(31,35,41,0.12)]">
+            {/* Header with avatar */}
+            <div className="relative flex h-[130px] min-h-[130px] w-full items-center justify-center bg-gradient-to-br from-[var(--primary)] via-[#7c3aed] to-[#6d28d9] pt-2">
               <OIMAvatar
-                size={64}
+                size={72}
                 src={cardInfo?.faceURL}
                 text={cardInfo?.nickname}
-                className="ring-4 ring-white/20"
+                className="ring-4 ring-white/25 shadow-lg"
               />
             </div>
-            <div className="flex flex-1 flex-col overflow-hidden px-2 -mt-6">
-              <div className="flex items-center">
-                <div className="ml-3 flex h-[60px] flex-1 flex-col justify-around overflow-hidden">
-                  <div className="flex w-fit max-w-[80%] items-baseline">
+            {/* Name + userID — overlaps header bottom */}
+            <div className="flex flex-1 flex-col overflow-hidden px-5 -mt-7">
+              <div className="flex items-center mb-1">
+                <div className="ml-2 flex h-[56px] flex-1 flex-col justify-center overflow-hidden rounded-xl bg-white/80 backdrop-blur-sm px-4 shadow-sm">
+                  <div className="flex w-fit max-w-[85%] items-baseline gap-2">
                     <div
-                      className="flex-1 select-text truncate text-lg font-semibold text-[var(--text-primary)]"
+                      className="select-text truncate text-lg font-bold text-[var(--text-primary)] leading-tight"
                       title={cardInfo?.nickname}
                     >
                       {cardInfo?.nickname}
                     </div>
                   </div>
-                  <div className="flex items-center">
+                  <div className="flex items-center mt-0.5">
                     <div
-                      className="mr-3 cursor-pointer text-xs text-[var(--text-tertiary)] hover:text-[var(--primary)]"
+                      className="cursor-pointer text-[11px] text-[var(--text-tertiary)] hover:text-[var(--primary)] transition-colors"
                       onClick={() => {
                         copyToClipboard(cardInfo?.userID ?? "");
                         feedbackToast({ msg: t("toast.copySuccess") });
@@ -265,7 +357,8 @@ const UserCardModal: ForwardRefRenderFunction<
                   </div>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto rounded-xl bg-[var(--bg-body)] p-4">
+              {/* Info fields */}
+              <div className="flex-1 overflow-y-auto rounded-xl bg-[var(--bg-body)] p-4 mt-3">
                 <UserCardDataGroup
                   title={t("placeholder.personalInfo")}
                   userID={cardInfo?.userID}
@@ -348,32 +441,56 @@ const UserCardDataGroup: FC<IUserCardDataGroupProps> = ({
   };
   return (
     <div>
-      <div className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--text-placeholder)]">
-        {title}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="h-px flex-1 bg-[var(--border-color)]" />
+        <span className="text-xs font-semibold tracking-wide text-[var(--text-secondary)]">
+          {title}
+        </span>
+        <div className="h-px flex-1 bg-[var(--border-color)]" />
       </div>
-      {fieldRows.map((fieldRow, idx) => (
-        <div
-          className="flex items-center rounded-lg px-3 py-2.5 text-xs transition-colors hover:bg-[var(--bg-hover)]"
-          key={idx}
-        >
-          <div className="w-20 shrink-0 text-[var(--text-tertiary)]">
-            {fieldRow.title}
-          </div>
-          {fieldRow.editable ? (
-            <EditableContent
-              className="!ml-0"
-              textClassName="font-medium text-[var(--text-primary)]"
-              value={fieldRow.value}
-              editable={true}
-              onChange={tryUpdateRemark}
-            />
-          ) : (
-            <div className="flex-1 select-text truncate font-medium text-[var(--text-primary)]">
-              {fieldRow.value}
+      <div className="space-y-1">
+        {fieldRows.map((fieldRow, idx) => {
+          const isDepartment = fieldRow.title === "部门" || fieldRow.title === "Department";
+          return (
+            <div
+              className={`group flex items-center rounded-xl px-3.5 py-2.5 text-[13px] transition-all ${
+                isDepartment
+                  ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 hover:from-blue-100/80 hover:to-indigo-100/60"
+                  : "hover:bg-[var(--bg-hover)]"
+              }`}
+              key={idx}
+            >
+              <div
+                className={`w-[72px] shrink-0 ${
+                  isDepartment
+                    ? "font-medium text-[var(--primary)]"
+                    : "text-[var(--text-tertiary)]"
+                }`}
+              >
+                {fieldRow.title}
+              </div>
+              {fieldRow.editable ? (
+                <EditableContent
+                  className="!ml-0"
+                  textClassName="font-medium text-[var(--text-primary)]"
+                  value={fieldRow.value}
+                  editable={true}
+                  onChange={tryUpdateRemark}
+                />
+              ) : (
+                <div className="flex-1 select-text font-medium text-[var(--text-primary)] break-all leading-relaxed">
+                  {isDepartment && (
+                    <span className="mr-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--primary)] text-white text-[10px]">
+                      <ApartmentOutlined style={{ fontSize: 10 }} />
+                    </span>
+                  )}
+                  {fieldRow.value}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      ))}
+          );
+        })}
+      </div>
 
       {divider && <Divider className="my-2 border-[var(--border-color)]" />}
     </div>

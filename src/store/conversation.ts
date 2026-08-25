@@ -23,6 +23,14 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
   currentGroupInfo: undefined,
   currentMemberInGroup: undefined,
   quoteMessage: undefined,
+  editingMessage: undefined,
+
+  /* Font size for chat input (px), default 14 */
+  chatFontSize: Number(localStorage.getItem("chatFontSize")) || 14,
+  setChatFontSize: (size: number) => {
+    localStorage.setItem("chatFontSize", String(size));
+    set(() => ({ chatFontSize: size }));
+  },
 
   /* Per-conversation input draft (unsent text) */
   conversationDrafts: {},
@@ -171,6 +179,9 @@ export const useConversationStore = create<ConversationStore>()((set, get) => ({
   },
   setQuoteMessage: (message?: MessageItem) => {
     set(() => ({ quoteMessage: message }));
+  },
+  setEditingMessage: (msg) => {
+    set(() => ({ editingMessage: msg }));
   },
   clearConversationStore: () => {
     set(() => ({

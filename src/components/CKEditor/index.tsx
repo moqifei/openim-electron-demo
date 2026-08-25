@@ -28,6 +28,7 @@ interface CKEditorProps {
   onEnter?: () => void;
   onPasteFile?: (files: File[]) => void;
   onKeydown?: (event: KeyboardEvent) => void;
+  fontSize?: number;
 }
 
 export interface EmojiData {
@@ -42,7 +43,7 @@ const keyCodes = {
 };
 
 const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
-  { value, placeholder, onChange, onEnter, onPasteFile, onKeydown },
+  { value, placeholder, onChange, onEnter, onPasteFile, onKeydown, fontSize = 14 },
   ref,
 ) => {
   const ckEditor = useRef<ClassicEditor | null>(null);
@@ -87,11 +88,26 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
   const setText = (text: string) => {
     const editor = ckEditor.current;
     if (!editor) return;
+    /* Strip any leading/trailing newlines that could cause paragraph splits */
+    const cleanText = text.replace(/^\s*\n+|\n+\s*$/g, "");
     editor.model.change((writer) => {
       const root = editor.model.document.getRoot();
       if (!root) return;
       writer.remove(writer.createRangeIn(root));
-      writer.insertText(text, root, 0);
+      /* Ensure there is a <p> element inside root */
+      let p: any;
+      const firstChild = root.getChild(0);
+      if (firstChild && firstChild.is("element", "paragraph")) {
+        p = firstChild;
+      } else {
+        p = writer.createElement("paragraph");
+        writer.append(p, root);
+      }
+      /* Insert text inside the <p> at the end */
+      writer.insertText(cleanText, p, "end");
+      /* Move selection to end of text within the paragraph */
+      const endPos = writer.createPositionAt(p, "end");
+      writer.setSelection(endPos);
     });
     editor.editing.view.focus();
     onChange?.(editor.getData());
@@ -190,6 +206,33 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     };
   }, []);
 
+  /* Apply font size to the CKEditor editable area via dynamic style tag */
+  const styleTagId = "ckeditor-font-size-override";
+  const applyFontSize = (size: number) => {
+    // Remove old style tag if exists
+    const old = document.getElementById(styleTagId);
+    if (old) old.remove();
+
+    // Inject new style tag with !important
+    const style = document.createElement("style");
+    style.id = styleTagId;
+    style.textContent = `
+      .ck-editor__editable[role="textbox"],
+      .ck-editor__editable[role="textbox"] .ck-content,
+      .ck-editor__editable[role="textbox"] .ck-content p,
+      .ck-editor__editable[role="textbox"] .ck-content span {
+        font-size: ${size}px !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    console.log(`[CKEditor] Font size set to ${size}px`);
+  };
+
+  useEffect(() => {
+    applyFontSize(fontSize);
+  }, [fontSize]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -220,6 +263,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
         ckEditor.current = editor;
         listenKeydown(editor);
         pasteCleanupRef.current = listenPaste(editor);
+        applyFontSize(fontSize);
         focus(true);
       }}
       onChange={(event, editor) => {

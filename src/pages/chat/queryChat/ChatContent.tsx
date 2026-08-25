@@ -241,6 +241,11 @@ const ChatContent = () => {
   const handleRevoke = useCallback(
     async (msg: MessageItemType) => {
       if (!conversationID) return;
+      // 审计要求：仅允许撤销自己发送的消息，禁止群主/管理员/其他人撤销他人的消息。
+      if (selfUserID !== msg.sendID) {
+        feedbackToast({ msg: t("toast.revokeNotAllowed") });
+        return;
+      }
       try {
         await IMSDK.revokeMessage({
           conversationID,
@@ -269,6 +274,60 @@ const ChatContent = () => {
     [conversationID, selfUserID],
   );
 
+  // Register global "re-edit after revoke" handler so the <a> link in
+  // the revocation notification can populate the input with original text.
+  useEffect(() => {
+    const setEditingMessage = useConversationStore.getState().setEditingMessage;
+    console.log("[reEdit] register window.editRevoke", {
+      listLen: loadState.messageList.length,
+    });
+    window.editRevoke = (clientMsgID: string) => {
+      console.log("[reEdit] click handler called", { clientMsgID });
+      const msg = loadState.messageList.find(
+        (m: MessageItemType) => m.clientMsgID === clientMsgID,
+      );
+      console.log("[reEdit] found msg in list", {
+        found: !!msg,
+        contentType: msg?.contentType,
+        hasNotificationElem: !!msg?.notificationElem,
+        textElem: msg?.textElem,
+        text: msg?.textElem?.content,
+        keys: msg ? Object.keys(msg) : [],
+      });
+      if (!msg) return;
+      // The original text of a revoked message lives in the revoke notification's
+      // `notificationElem.detail` (parsed as `detail.textElem.content`), NOT in the
+      // top-level msg.textElem (which the server clears on revoke).
+      let text = msg.textElem?.content || "";
+      if (!text && msg.notificationElem?.detail) {
+        try {
+          const detail = JSON.parse(msg.notificationElem.detail);
+          console.log("[reEdit] parsed notification detail", {
+            textElem: detail.textElem,
+            text: detail.textElem?.content,
+          });
+          text = detail.textElem?.content || "";
+        } catch (e) {
+          console.warn("[reEdit] failed to parse notificationElem.detail", e);
+        }
+      }
+      if (text) {
+        console.log("[reEdit] setEditingMessage", { clientMsgID, text });
+        setEditingMessage({ clientMsgID, text });
+      } else {
+        console.warn("[reEdit] no text extracted", {
+          clientMsgID,
+          contentType: msg.contentType,
+          msg,
+        });
+      }
+    };
+    return () => {
+      console.log("[reEdit] cleanup window.editRevoke");
+      delete (window as any).editRevoke;
+    };
+  }, [loadState.messageList]);
+
   const handleForwardOneByOne = useCallback(() => {
     handleForward(selectedMessages, false);
   }, [selectedMessages, handleForward]);
@@ -279,6 +338,10 @@ const ChatContent = () => {
 
   const cancelMultiSelect = useCallback(() => {
     setMultiSelectState({ isActive: false, selectedIds: new Set() });
+  }, []);
+
+  const handleAvatarClick = useCallback((msg: MessageItemType) => {
+    emitter.emit("OPEN_USER_CARD", { userID: msg.sendID });
   }, []);
 
   return (
@@ -350,6 +413,7 @@ const ChatContent = () => {
                   onReply={handleReply}
                   onMultiSelect={handleMultiSelect}
                   onRevoke={handleRevoke}
+                  onAvatarClick={handleAvatarClick}
                 />
               </>
             );

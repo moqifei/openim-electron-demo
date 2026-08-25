@@ -17,6 +17,7 @@ import { useContactStore, useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
 import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
+import emitter from "@/utils/events";
 
 import styles from "./conversation-item.module.scss";
 
@@ -96,6 +97,13 @@ const ConversationItem = ({
 
   const latestMessageTime = formatConversionTime(conversation.latestMsgSendTime);
 
+  const handleAvatarClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSingleConversation && conversation.userID) {
+      emitter.emit("OPEN_USER_CARD", { userID: conversation.userID });
+    }
+  };
+
   return (
     <div
       className={clsx(
@@ -116,7 +124,8 @@ const ConversationItem = ({
               text={displayName}
               size={36}
               color="#7c3aed"
-              className="!bg-white"
+              className="!bg-white cursor-pointer"
+              onClick={handleAvatarClick}
             />
           </div>
         ) : (
@@ -125,6 +134,8 @@ const ConversationItem = ({
             isgroup={Boolean(conversation.groupID)}
             text={displayName}
             size={40}
+            className="cursor-pointer"
+            onClick={handleAvatarClick}
           />
         )}
         {conversation.unreadCount > 0 && (

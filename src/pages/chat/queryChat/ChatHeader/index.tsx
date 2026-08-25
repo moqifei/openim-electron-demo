@@ -228,7 +228,10 @@ const ChatHeader = () => {
       <div className="flex h-full items-center leading-none">
         <div className="flex flex-1 items-center overflow-hidden">
           {isAgent ? (
-            <div className="rounded-full bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] p-[2px]">
+            <div
+              className="rounded-full bg-gradient-to-br from-[#7c3aed] to-[#a78bfa] p-[2px] cursor-pointer"
+              onClick={() => emit("OPEN_USER_CARD", { userID: currentConversation?.userID })}
+            >
               <OIMAvatar
                 src={currentConversation?.faceURL}
                 text={displayName}
@@ -244,6 +247,8 @@ const ChatHeader = () => {
               text={displayName}
               isgroup={Boolean(currentConversation?.groupID)}
               size={40}
+              className={isSingleSession ? "cursor-pointer" : ""}
+              onClick={isSingleSession ? () => emit("OPEN_USER_CARD", { userID: currentConversation?.userID }) : undefined}
             />
           )}
           <div

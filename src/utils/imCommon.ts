@@ -217,6 +217,11 @@ export const notificationMessageFormat = (msg: MessageItem) => {
           revoker: revokerName,
         });
         if (isSelfRevoke) {
+          console.log("[reEdit] render link", {
+            clientMsgID: detail.clientMsgID,
+            hasEditRevoke: typeof (window as any).editRevoke,
+            text: detail.textElem?.content,
+          });
           text += ` <span class="link-el cursor-pointer" onclick="window.editRevoke?.('${detail.clientMsgID}')">${t("placeholder.reEdit")}</span>`;
         }
         return text;
