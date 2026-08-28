@@ -6,6 +6,7 @@ import { FC, useCallback, useState } from "react";
 
 import { message as antdMessage } from "@/AntdGlobalComp";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
+import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 
 import { IMessageItemProps } from "./index";
 import styles from "./message-item.module.scss";
@@ -83,7 +84,7 @@ const QuoteMessageRender: FC<
             });
           } catch (error) {
             console.error("[QuoteMessageRender] download failed:", error);
-            antdMessage.error(t("toast.downloadFailed"));
+            antdMessage.error(getFileTransferErrorMessage(error, "download"));
           }
         }
         return;

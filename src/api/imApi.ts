@@ -2,8 +2,12 @@ import { v4 as uuidv4 } from "uuid";
 
 import { useUserStore } from "@/store";
 import { normalizeMojibakeString } from "@/utils/mojibake";
+import {
+  buildObjectUploadName,
+  shouldUseNativeObjectUpload,
+} from "@/utils/objectUpload";
 import { getApiAxios, getChatAxios } from "@/utils/request";
-import { getChatToken } from "@/utils/storage";
+import { getChatToken, getIMToken } from "@/utils/storage";
 
 const getRequest = () => getChatAxios();
 const uploadRetryDelays = [800, 1600];
@@ -114,7 +118,7 @@ export const uploadObjectFile = async (
 
   const currentUserID = useUserStore.getState()?.selfInfo?.userID;
   // Backend requires non-admin users to prefix file name with their userID
-  const uploadName = currentUserID ? `${currentUserID}/${rawName}` : rawName;
+  const uploadName = buildObjectUploadName(currentUserID, rawName);
 
   const request = getApiAxios();
   const uploadUrl = `${request.defaults.baseURL ?? ""}/object/upload`;
@@ -138,6 +142,24 @@ export const uploadObjectFile = async (
   };
 
   console.info("[uploadObjectFile] start", stringifyLogMeta(uploadMeta));
+
+  if (shouldUseNativeObjectUpload(filePath)) {
+    options?.onProgress?.(0);
+    const nativeResponse = await window.electronAPI!.ipcInvoke<{
+      errCode?: number;
+      errMsg?: string;
+      data?: ObjectUploadResp;
+    }>("uploadObjectFileFromPath", {
+      filePath,
+      uploadName,
+      contentType: (options?.contentType ?? file.type) || "application/octet-stream",
+      cause: options?.cause ?? "chat",
+      baseURL: request.defaults.baseURL ?? "",
+      token: await getIMToken(),
+    });
+    options?.onProgress?.(100);
+    return nativeResponse;
+  }
 
   for (let attempt = 0; attempt <= uploadRetryDelays.length; attempt += 1) {
     try {

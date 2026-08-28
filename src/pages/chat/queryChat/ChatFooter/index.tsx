@@ -3,11 +3,12 @@ import { MessageItem, MessageType, SessionType } from "@openim/wasm-client-sdk";
 import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { useDebounceFn } from "ahooks";
-import { Button, message } from "antd";
+import { Button, Image, message } from "antd";
 import { t } from "i18next";
 import {
   forwardRef,
   ForwardRefRenderFunction,
+  type KeyboardEvent as ReactKeyboardEvent,
   memo,
   useCallback,
   useEffect,
@@ -16,7 +17,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import CKEditor, { CKEditorRef } from "@/components/CKEditor";
 import { getCleanText } from "@/components/CKEditor/utils";
 import i18n from "@/i18n";
@@ -24,7 +24,9 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
 import { dataUrlToImageFile, hasImageClipboardData } from "@/utils/chatAttachment";
+import { shouldDeletePendingAttachmentOnBackspace } from "@/utils/chatInput";
 import { canSendImageTypeList } from "@/utils/common";
+import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 import {
   createFileTransferProgressKey,
   showFileTransferProgress,
@@ -59,15 +61,48 @@ const isImageFile = (file: File) => {
 };
 
 const getFileSendErrorMessage = (error: unknown) =>
-  error instanceof Error && error.message === EMPTY_FILE_UPLOAD_ERROR_MESSAGE
-    ? error.message
-    : t("toast.accessFailed");
+  getFileTransferErrorMessage(error, "upload");
+
+interface FileWithPath extends File {
+  path?: string;
+}
+
+const getFileNameFromPath = (filePath: string) =>
+  filePath.split(/[\\/]/).pop()?.trim() || "";
+
+const normalizePendingFile = (file: File) => {
+  const fileWithPath = file as FileWithPath;
+  const filePath = fileWithPath.path?.trim() || "";
+  const fileName =
+    file.name.trim() ||
+    getFileNameFromPath(file.webkitRelativePath) ||
+    getFileNameFromPath(filePath) ||
+    "未命名文件";
+  const normalizedFile =
+    fileName && fileName !== file.name
+      ? new File([file], fileName, {
+          type: file.type,
+          lastModified: file.lastModified,
+        })
+      : file;
+
+  if (filePath) {
+    Object.defineProperty(normalizedFile, "path", {
+      configurable: true,
+      value: filePath,
+    });
+  }
+
+  return normalizedFile;
+};
 
 interface PendingFileItem {
   id: string;
   file: File;
   previewUrl: string;
 }
+
+type FileSendTarget = Pick<SendMessageParams, "recvID" | "groupID">;
 
 let pendingIdCounter = 0;
 
@@ -76,7 +111,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [pendingFiles, setPendingFiles] = useState<PendingFileItem[]>([]);
+  const [pendingFilesByConversation, setPendingFilesByConversation] = useState<
+    Record<string, PendingFileItem[]>
+  >({});
+  const pendingFilesByConversationRef = useRef<Record<string, PendingFileItem[]>>({});
   const latestHtml = useLatest(html);
   const editorRef = useRef<CKEditorRef>(null);
 
@@ -87,6 +125,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const atMembersRef = useRef<Map<string, { nickname: string; groupNickname: string }>>(
     new Map(),
   );
+  const atTriggerNeedsRemovalRef = useRef(false);
+  const atPopupRequestIdRef = useRef(0);
+  const atPopupLoadingRef = useRef(false);
+  const lastEditorTextRef = useRef("");
   const editorContainerRef = useRef<HTMLDivElement>(null);
 
   const { getImageMessage, getFileMessage, getCardMessage } = useFileMessage();
@@ -106,17 +148,25 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const saveDraft = useConversationStore((state) => state.saveConversationDraft);
   const getDraft = useConversationStore((state) => state.getConversationDraft);
   const clearDraft = useConversationStore((state) => state.clearConversationDraft);
+  const pendingFilesKey = convID || "__no_conversation__";
+  const pendingFiles = pendingFilesByConversation[pendingFilesKey] || [];
+
+  useEffect(() => {
+    pendingFilesByConversationRef.current = pendingFilesByConversation;
+  }, [pendingFilesByConversation]);
 
   // Restore saved draft when switching to a different conversation
   const prevConvIDRef = useRef(convID);
   useEffect(() => {
-    if (convID && convID !== prevConvIDRef.current) {
-      const saved = getDraft(convID);
-      setHtml(saved);
-      prevConvIDRef.current = convID;
+    if (convID === prevConvIDRef.current) return;
+
+    if (convID) {
+      setHtml(getDraft(convID));
+    } else {
+      setHtml("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [convID]);
+    prevConvIDRef.current = convID;
+  }, [convID, getDraft]);
 
   // Debounce-save the current input as a draft
   const { run: debouncedSaveDraft } = useDebounceFn(
@@ -138,7 +188,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   useEffect(() => {
     console.log("[reEdit] ChatFooter effect", {
       editingMessage,
-      hasEditor: !!editorRef.current,
+      hasEditor: Boolean(editorRef.current),
     });
     if (editingMessage?.text) {
       console.log("[reEdit] populate editor", editingMessage.text);
@@ -152,35 +202,50 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   // Cleanup object URLs on unmount
   useEffect(() => {
     return () => {
-      pendingFiles.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      Object.values(pendingFilesByConversationRef.current)
+        .flat()
+        .forEach((item) => URL.revokeObjectURL(item.previewUrl));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const addPendingFiles = useCallback((files: FileList | File[]) => {
-    const newItems: PendingFileItem[] = [];
-    for (const file of Array.from(files)) {
-      newItems.push({
-        id: `pending-${++pendingIdCounter}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-      });
-    }
-    setPendingFiles((prev) => [...prev, ...newItems]);
-  }, []);
-
-  const removePendingFile = useCallback((id: string) => {
-    setPendingFiles((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (item) {
-        URL.revokeObjectURL(item.previewUrl);
+  const addPendingFiles = useCallback(
+    (files: FileList | File[]) => {
+      const newItems: PendingFileItem[] = [];
+      for (const file of Array.from(files)) {
+        const normalizedFile = normalizePendingFile(file);
+        newItems.push({
+          id: `pending-${++pendingIdCounter}`,
+          file: normalizedFile,
+          previewUrl: URL.createObjectURL(normalizedFile),
+        });
       }
-      return prev.filter((i) => i.id !== id);
-    });
-  }, []);
+      setPendingFilesByConversation((prev) => ({
+        ...prev,
+        [pendingFilesKey]: [...(prev[pendingFilesKey] || []), ...newItems],
+      }));
+    },
+    [pendingFilesKey],
+  );
+
+  const removePendingFile = useCallback(
+    (id: string) => {
+      setPendingFilesByConversation((prev) => {
+        const currentFiles = prev[pendingFilesKey] || [];
+        const item = currentFiles.find((file) => file.id === id);
+        if (item) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+        return {
+          ...prev,
+          [pendingFilesKey]: currentFiles.filter((file) => file.id !== id),
+        };
+      });
+    },
+    [pendingFilesKey],
+  );
 
   const handleSendPendingFiles = useCallback(
-    async (files: PendingFileItem[]) => {
+    async (files: PendingFileItem[], sendTarget: FileSendTarget) => {
       for (const item of files) {
         const progressKey = createFileTransferProgressKey("chat-upload");
         const updateProgress = (progress: number) => {
@@ -196,10 +261,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           const file = item.file;
           if (isImageFile(file)) {
             const msg = await getImageMessage(file, { onProgress: updateProgress });
-            await sendMessage({ message: msg });
+            await sendMessage({ message: msg, ...sendTarget });
           } else {
             const msg = await getFileMessage(file, { onProgress: updateProgress });
-            await sendMessage({ message: msg });
+            await sendMessage({ message: msg, ...sendTarget });
           }
           showFileTransferProgress({
             key: progressKey,
@@ -210,14 +275,15 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
           });
         } catch (error) {
           console.error("[ChatFooter] send file failed:", error);
+          const errorMessage = getFileSendErrorMessage(error);
           showFileTransferProgress({
             key: progressKey,
             fileName: item.file.name,
-            title: t("toast.uploadFailed"),
+            title: errorMessage,
             percent: 100,
             status: "exception",
           });
-          message.error(getFileSendErrorMessage(error));
+          message.error(errorMessage);
         }
       }
     },
@@ -362,10 +428,6 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setScreenshotSrc(null);
   }, []);
 
-  const onChange = (value: string) => {
-    setHtml(value);
-  };
-
   const insertAgentTemplate = useCallback((template: string) => {
     if (editorRef.current) {
       editorRef.current.setText(template);
@@ -373,6 +435,27 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     }
     setHtml(template);
   }, []);
+
+  const deleteLastPendingFileIfInputEmpty = useCallback(
+    (key: string | undefined, preventDefault: () => void) => {
+      if (
+        !shouldDeletePendingAttachmentOnBackspace({
+          key,
+          cleanText: getCleanText(latestHtml.current ?? ""),
+          pendingFileCount: pendingFiles.length,
+        })
+      ) {
+        return false;
+      }
+
+      const lastItem = pendingFiles[pendingFiles.length - 1];
+      if (!lastItem) return false;
+      preventDefault();
+      removePendingFile(lastItem.id);
+      return true;
+    },
+    [latestHtml, pendingFiles, removePendingFile],
+  );
 
   // ====== @mention logic ======
   const isGroupChat = currentConversation?.conversationType === SessionType.Group;
@@ -403,6 +486,44 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     }
   }, [currentConversation?.groupID]);
 
+  const requestAtPopup = useCallback(() => {
+    const requestId = ++atPopupRequestIdRef.current;
+    atPopupLoadingRef.current = true;
+    void fetchGroupMembers().then(() => {
+      if (requestId !== atPopupRequestIdRef.current) return;
+      atPopupLoadingRef.current = false;
+      setAtPopupVisible(true);
+    });
+  }, [fetchGroupMembers]);
+
+  const handleAtClose = useCallback(() => {
+    atPopupRequestIdRef.current += 1;
+    atPopupLoadingRef.current = false;
+    atTriggerNeedsRemovalRef.current = false;
+    setAtPopupVisible(false);
+    editorRef.current?.focus(true);
+  }, []);
+
+  const handleEditorChange = useCallback(
+    (value: string) => {
+      setHtml(value);
+
+      const cleanText = getCleanText(value);
+      const addedAtTrigger =
+        /[@＠]$/.test(cleanText) && !/[@＠]$/.test(lastEditorTextRef.current);
+      lastEditorTextRef.current = cleanText;
+
+      if (!addedAtTrigger || !isGroupChat || atPopupVisible) return;
+
+      // Chinese IME may commit @ through the input/change event instead of
+      // exposing it as a normal keydown event. Keep the committed trigger so
+      // the selected member can replace it instead of producing @@.
+      atTriggerNeedsRemovalRef.current = true;
+      requestAtPopup();
+    },
+    [atPopupVisible, isGroupChat, requestAtPopup],
+  );
+
   const handleEditorKeydown = useCallback(
     (e: KeyboardEvent) => {
       console.log(
@@ -415,35 +536,48 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       );
 
       // Backspace 删除文件/图片: 当编辑器内容为空且有待发送文件时,用 Backspace 删除最后一个
-      if (e?.key === "Backspace") {
-        const cleanText = getCleanText(latestHtml.current ?? "");
-        if (!cleanText && pendingFiles.length > 0) {
+      if (
+        deleteLastPendingFileIfInputEmpty(e?.key, () => {
           e.preventDefault();
-          // 删除最后一个文件
-          const lastItem = pendingFiles[pendingFiles.length - 1];
-          removePendingFile(lastItem.id);
-          return;
-        }
+          e.stopPropagation();
+        })
+      ) {
+        return;
       }
 
       if (!isGroupChat) {
         console.log("[ChatFooter] not group chat, skipping @");
         return;
       }
-      if (e?.key === "@") {
+      if (e?.key === "@" || e?.key === "＠") {
         console.log("[ChatFooter] @ detected, fetching members...");
         e.preventDefault(); // 阻止 CKEditor 默认插入 @ 字符，避免 @@ 双 @
         e.stopPropagation();
-        fetchGroupMembers().then(() => {
-          console.log("[ChatFooter] members fetched, setting atPopupVisible=true");
-          setAtPopupVisible(true);
-        });
-      } else if (e?.key === "Escape" && atPopupVisible) {
+        requestAtPopup();
+      } else if (e?.key === "Escape" && (atPopupVisible || atPopupLoadingRef.current)) {
+        e.preventDefault();
+        e.stopPropagation();
         console.log("[ChatFooter] Escape pressed, closing popup");
-        setAtPopupVisible(false);
+        handleAtClose();
       }
     },
-    [isGroupChat, atPopupVisible, fetchGroupMembers],
+    [
+      isGroupChat,
+      atPopupVisible,
+      requestAtPopup,
+      handleAtClose,
+      deleteLastPendingFileIfInputEmpty,
+    ],
+  );
+
+  const handleFooterKeyDownCapture = useCallback(
+    (e: ReactKeyboardEvent<HTMLElement>) => {
+      deleteLastPendingFileIfInputEmpty(e.key, () => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    },
+    [deleteLastPendingFileIfInputEmpty],
   );
 
   const handleAtSelect = useCallback((member: AtMemberInfo) => {
@@ -456,23 +590,32 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       nickname: member.nickname,
       groupNickname: member.groupNickname || member.nickname,
     });
-    editorRef.current?.insertText(`${displayName} `);
-    setAtPopupVisible(false);
-  }, []);
-
-  const handleAtClose = useCallback(() => {
+    const replacement = `${displayName} `;
+    if (atTriggerNeedsRemovalRef.current) {
+      atTriggerNeedsRemovalRef.current = false;
+      editorRef.current?.replaceTextBeforeSelection(1, replacement);
+    } else {
+      editorRef.current?.insertText(replacement);
+    }
     setAtPopupVisible(false);
   }, []);
 
   const enterToSend = useCallback(async () => {
     const cleanText = getCleanText(latestHtml.current ?? "");
+    const sendTarget: FileSendTarget = {
+      recvID: currentConversation?.userID,
+      groupID: currentConversation?.groupID,
+    };
 
     // Send pending files first
     const filesToSend = pendingFiles.length > 0 ? [...pendingFiles] : null;
     if (filesToSend) {
       filesToSend.forEach((item) => URL.revokeObjectURL(item.previewUrl));
-      setPendingFiles([]);
-      await handleSendPendingFiles(filesToSend);
+      setPendingFilesByConversation((prev) => ({
+        ...prev,
+        [pendingFilesKey]: [],
+      }));
+      await handleSendPendingFiles(filesToSend, sendTarget);
     }
 
     if (!cleanText) return;
@@ -562,7 +705,16 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     await sendMessage({ message });
     // Clear draft after successful send
     if (convID) clearDraft(convID);
-  }, [pendingFiles, handleSendPendingFiles, sendMessage, convID, clearDraft]);
+  }, [
+    pendingFiles,
+    handleSendPendingFiles,
+    sendMessage,
+    convID,
+    clearDraft,
+    currentConversation?.groupID,
+    currentConversation?.userID,
+    pendingFilesKey,
+  ]);
 
   const getQuotePreview = (msg: MessageItem) => {
     switch (msg.contentType) {
@@ -587,6 +739,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     <footer
       className="relative h-full bg-[var(--bg-base)] py-px"
       onPaste={handlePaste}
+      onKeyDownCapture={handleFooterKeyDownCapture}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -594,11 +747,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       <div className="flex h-full flex-col border-t border-t-[var(--border-color)]">
         <SendActionBar
           sendMessage={sendMessage}
-          getImageMessage={getImageMessage}
-          getFileMessage={getFileMessage}
           getCardMessage={getCardMessage}
           editorRef={editorRef}
           onScreenshot={startScreenshot}
+          onSelectFiles={addPendingFiles}
         />
         <div
           ref={editorContainerRef}
@@ -632,17 +784,23 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                     key={item.id}
                     className="group relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-[var(--border-color)] bg-white"
                   >
-                    <img
+                    <Image
                       src={item.previewUrl}
                       alt={item.file.name}
                       className="h-full w-full object-cover"
+                      preview
                     />
-                    <div
-                      className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
-                      onClick={() => removePendingFile(item.id)}
+                    <button
+                      type="button"
+                      className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removePendingFile(item.id);
+                      }}
+                      aria-label="删除附件"
                     >
-                      <CloseOutlined className="text-sm text-white" />
-                    </div>
+                      <CloseOutlined className="text-[10px]" />
+                    </button>
                   </div>
                 ) : (
                   <div
@@ -664,12 +822,14 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
                     <span className="truncate text-xs text-[var(--text-secondary)]">
                       {item.file.name}
                     </span>
-                    <div
-                      className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+                    <button
+                      type="button"
+                      className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
                       onClick={() => removePendingFile(item.id)}
+                      aria-label="删除附件"
                     >
-                      <CloseOutlined className="text-sm text-white" />
-                    </div>
+                      <CloseOutlined className="text-[10px]" />
+                    </button>
                   </div>
                 ),
               )}
@@ -700,7 +860,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
             value={html}
             placeholder={isAgentChat ? "给智能体发消息..." : ""}
             onEnter={enterToSend}
-            onChange={onChange}
+            onChange={handleEditorChange}
             onPasteFile={addPendingFiles}
             onKeydown={handleEditorKeydown}
             fontSize={chatFontSize}

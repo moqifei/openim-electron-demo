@@ -21,7 +21,8 @@ import {
   extractDigitalTwinText,
   isDigitalTwinMessage,
 } from "@/utils/digitalTwinMessage";
-import { formatMessageTime } from "@/utils/imCommon";
+import { downloadFileWithProgress, resolveFileDownloadUrl } from "@/utils/fileDownload";
+import { copyImageToClipboard } from "@/utils/imageClipboard";
 
 import AgentStreamMessageRender from "./AgentStreamMessageRender";
 import AtTextMessageRender from "./AtTextMessageRender";
@@ -53,6 +54,8 @@ export interface IMessageItemProps {
   onMultiSelect?: (message: MessageItemType) => void;
   onRevoke?: (message: MessageItemType) => void;
   onAvatarClick?: (message: MessageItemType) => void;
+  imagePreviewIndex?: number;
+  onImagePreview?: (index: number) => void;
 }
 
 const components: Record<number, FC<IMessageItemProps>> = {
@@ -78,6 +81,8 @@ const MessageItem: FC<IMessageItemProps> = ({
   onMultiSelect,
   onRevoke,
   onAvatarClick,
+  imagePreviewIndex,
+  onImagePreview,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -98,18 +103,65 @@ const MessageItem: FC<IMessageItemProps> = ({
   const showActions = !disabled && !isMultiSelectActive && hovered;
   const isTextMessage =
     message.contentType === MessageType.TextMessage || isDigitalTwin || isAgentStream;
+  const isImageMessage = message.contentType === MessageType.PictureMessage;
+  const isFileMessage = message.contentType === MessageType.FileMessage;
 
-  const copyMessage = () => {
-    if (!isTextMessage) return;
-    const text = isDigitalTwin
-      ? extractDigitalTwinText(message)
-      : isAgentStream
-      ? getAgentStreamPayload(message)?.answerText || ""
-      : message.textElem?.content || "";
-    navigator.clipboard.writeText(text).then(
-      () => feedbackToast({ msg: t("toast.copySuccess") }),
-      () => feedbackToast({ msg: t("toast.copyFailed") }),
-    );
+  const copyMessage = async () => {
+    try {
+      if (isImageMessage) {
+        const imageUrl =
+          message.pictureElem?.sourcePicture?.url ||
+          message.pictureElem?.snapshotPicture?.url ||
+          "";
+        await copyImageToClipboard(imageUrl);
+      } else if (isFileMessage) {
+        const fileUrl = message.fileElem?.sourceUrl || "";
+        if (!fileUrl) throw new Error("File URL is empty");
+
+        if (window.electronAPI?.ipcInvoke) {
+          const savedPath = await downloadFileWithProgress({
+            url: fileUrl,
+            fileName: message.fileElem?.fileName,
+            knownSize: message.fileElem?.fileSize,
+            showProgressToast: false,
+          });
+          if (!savedPath) throw new Error("File was not saved");
+
+          const copyError = await window.electronAPI.ipcInvoke<string>(
+            "copyLocalFileToClipboard",
+            savedPath,
+          );
+          if (copyError) throw new Error(copyError);
+        } else {
+          const response = await fetch(resolveFileDownloadUrl(fileUrl));
+          if (!response.ok) {
+            throw new Error(`File download failed with status ${response.status}`);
+          }
+          const blob = await response.blob();
+          if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+            throw new Error("File clipboard is not supported");
+          }
+          const mimeType = blob.type || "application/octet-stream";
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              [mimeType]: blob,
+            }),
+          ]);
+        }
+      } else if (isTextMessage) {
+        const text = isDigitalTwin
+          ? extractDigitalTwinText(message)
+          : isAgentStream
+          ? getAgentStreamPayload(message)?.answerText || ""
+          : message.textElem?.content || "";
+        await navigator.clipboard.writeText(text);
+      } else {
+        return;
+      }
+      feedbackToast({ msg: t("toast.copySuccess") });
+    } catch {
+      feedbackToast({ msg: t("toast.copyFailed") });
+    }
   };
 
   const directActions = [
@@ -203,9 +255,6 @@ const MessageItem: FC<IMessageItemProps> = ({
               >
                 {senderName}
               </div>
-              <div className="text-[var(--sub-text)]">
-                {formatMessageTime(message.sendTime)}
-              </div>
             </div>
 
             <div className={styles["menu-wrap"]}>
@@ -214,6 +263,9 @@ const MessageItem: FC<IMessageItemProps> = ({
                   message={message}
                   isSender={isSender}
                   disabled={disabled}
+                  isMultiSelectActive={isMultiSelectActive}
+                  imagePreviewIndex={imagePreviewIndex}
+                  onImagePreview={onImagePreview}
                 />
               </MessageItemErrorBoundary>
 

@@ -63,9 +63,7 @@ export interface ConversationStore {
   chatFontSize: number;
   setChatFontSize: (size: number) => void;
 
-  getConversationListByReq: (
-    isOffset?: boolean
-  ) => Promise<boolean>;
+  getConversationListByReq: (isOffset?: boolean) => Promise<boolean>;
   updateConversationList: (
     list: ConversationItem[],
     type: ConversationListUpdateType,
@@ -103,16 +101,16 @@ export interface ContactStore {
   getBlackListByReq: () => void;
   updateBlack: (black: BlackUserItem, remove?: boolean) => void;
   pushNewBlack: (black: BlackUserItem) => void;
-  getGroupListByReq: () => void;
+  getGroupListByReq: () => Promise<void>;
   setGroupList: (list: GroupItem[]) => void;
   updateGroup: (group: GroupItem, remove?: boolean) => void;
   pushNewGroup: (group: GroupItem) => void;
   getRecvFriendApplicationListByReq: () => void;
-  updateRecvFriendApplication: (application: FriendApplicationItem) => Promise<void>;
+  updateRecvFriendApplication: (application: FriendApplicationItem) => void;
   getSendFriendApplicationListByReq: () => void;
   updateSendFriendApplication: (application: FriendApplicationItem) => Promise<void>;
   getRecvGroupApplicationListByReq: () => void;
-  updateSendGroupApplication: (application: GroupApplicationItem) => Promise<void>;
+  updateRecvGroupApplication: (application: GroupApplicationItem) => void;
   updateSendGroupApplication: (application: GroupApplicationItem) => void;
   updateUnHandleFriendApplicationCount: (num: number) => void;
   updateUnHandleGroupApplicationCount: (num: number) => void;

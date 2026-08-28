@@ -10,6 +10,20 @@ export const dataUrlToImageFile = (
   return new File([bytes], name, { type: mime });
 };
 
+export const makeUniqueUploadFileName = (fileName: string, suffix: string) => {
+  const cleanSuffix = suffix.trim();
+  if (!cleanSuffix) return fileName;
+
+  const lastDotIndex = fileName.lastIndexOf(".");
+  if (lastDotIndex <= 0) {
+    return `${fileName}-${cleanSuffix}`;
+  }
+
+  const baseName = fileName.slice(0, lastDotIndex);
+  const extension = fileName.slice(lastDotIndex);
+  return `${baseName}-${cleanSuffix}${extension}`;
+};
+
 export const hasImageClipboardData = (
   items: Array<{ kind: string; type: string }>,
   fileCount: number,

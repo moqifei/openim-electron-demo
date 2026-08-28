@@ -2,13 +2,14 @@ import { v4 as uuidV4 } from "uuid";
 
 import { ObjectUploadProgressHandler, uploadObjectFile } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
+import { makeUniqueUploadFileName } from "@/utils/chatAttachment";
 import { normalizeMojibakeString } from "@/utils/mojibake";
 
 export interface FileWithPath extends File {
   path?: string;
 }
 
-const isInvalidSelectedFile = (file: FileWithPath) => !file.name;
+const isInvalidSelectedFile = (file: FileWithPath) => !file.name || file.size === 0;
 
 const normalizeFileMetadata = (file: FileWithPath) => {
   const normalizedName = normalizeMojibakeString(file.name);
@@ -77,8 +78,10 @@ export function useFileMessage() {
     messageConfig?: FileMessageOptions,
   ) => {
     file = await getUsableFile(file);
+    const uploadName = makeUniqueUploadFileName(file.name, uuidV4());
     const { width, height } = await getPicInfo(file);
     const { data: uploaded } = await uploadObjectFile(file, {
+      name: uploadName,
       contentType: file.type || "image/png",
       cause: "chat-image",
       onProgress: messageConfig?.onProgress,
@@ -132,7 +135,9 @@ export function useFileMessage() {
     messageConfig?: FileMessageOptions,
   ) => {
     file = await getUsableFile(file);
+    const uploadName = makeUniqueUploadFileName(file.name, uuidV4());
     const { data: uploaded } = await uploadObjectFile(file, {
+      name: uploadName,
       contentType: file.type || "application/octet-stream",
       cause: "chat-file",
       onProgress: messageConfig?.onProgress,

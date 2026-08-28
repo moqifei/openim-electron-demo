@@ -9,6 +9,7 @@ import { isLinux } from "../utils";
 import { getLogger } from "../utils/log";
 import { initI18n } from "../i18n";
 import { initAutoUpdater, destroyAutoUpdater } from "./updateManage";
+import { initDebAutoUpdater, destroyDebAutoUpdater } from "./debUpdateManage";
 import { unregisterShortcuts } from "./shortcutManage";
 
 if (isLinux) {
@@ -26,13 +27,18 @@ export const logger = getLogger(join(app.getPath("userData"), `/OpenIMData/logs`
 
 app.on("will-quit", unregisterShortcuts);
 app.on("will-quit", destroyAutoUpdater);
+app.on("will-quit", destroyDebAutoUpdater);
 
 const init = () => {
   initI18n();
   createMainWindow();
   createAppMenu();
   createTray();
-  initAutoUpdater();
+  if (isLinux && !process.env.APPIMAGE) {
+    initDebAutoUpdater();
+  } else {
+    initAutoUpdater();
+  }
 };
 
 setAppGlobalData();

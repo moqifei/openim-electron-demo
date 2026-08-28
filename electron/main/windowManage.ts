@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, dialog, shell } from "electron";
 import { isLinux, isMac, isWin } from "../utils";
 import { destroyTray } from "./trayManage";
+import { hideMessageReminder } from "./messageReminderManage";
 import { getIsForceQuit } from "./appManage";
 import { registerShortcuts } from "./shortcutManage";
 import { initIMSDK } from "../utils/imsdk";
@@ -9,9 +10,14 @@ import OpenIMSDKMain from "@openim/electron-client-sdk";
 import { IpcMainToRender } from "../constants";
 
 const url = process.env.VITE_DEV_SERVER_URL;
+const DEFAULT_SHAKE_DURATION_MS = 1000;
+const SHAKE_INTERVAL_MS = 40;
+const SHAKE_OFFSETS = [0, -10, 10, -8, 8, -5, 5, -2, 2, 0];
+
 let mainWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let sdkInstance: OpenIMSDKMain | null = null;
+let shakeTimer: NodeJS.Timeout | null = null;
 
 const notifyMainWindowState = () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -40,7 +46,10 @@ export function createMainWindow() {
   createSplashWindow();
   mainWindow = new BrowserWindow({
     title: "Dev-ER",
-    icon: join(global.pathConfig.publicPath, "favicon.ico"),
+    icon: join(
+      global.pathConfig.publicPath,
+      `icons/${isWin ? "icon-new.ico" : "icon-new.png"}`,
+    ),
     frame: false,
     show: false,
     width: 1024,
@@ -71,9 +80,17 @@ export function createMainWindow() {
     mainWindow.loadFile(global.pathConfig.indexHtml);
   }
 
-  mainWindow.webContents.on("did-fail-load", (_, errorCode, errorDescription, validatedURL) => {
-    console.error("[main-window] did-fail-load", errorCode, errorDescription, validatedURL);
-  });
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        "[main-window] did-fail-load",
+        errorCode,
+        errorDescription,
+        validatedURL,
+      );
+    },
+  );
 
   mainWindow.webContents.on("render-process-gone", (_, details) => {
     console.error("[main-window] render-process-gone", details);
@@ -96,6 +113,7 @@ export function createMainWindow() {
 
   mainWindow.on("focus", () => {
     mainWindow?.flashFrame(false);
+    hideMessageReminder();
     notifyMainWindowState();
   });
 
@@ -218,6 +236,43 @@ export const showWindow = () => {
     mainWindow.show();
   }
 };
+export const shakeMainWindow = (durationMs = DEFAULT_SHAKE_DURATION_MS) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  showWindow();
+  mainWindow.focus();
+  if (mainWindow.isMaximized() || mainWindow.isFullScreen()) {
+    mainWindow.webContents.send(IpcMainToRender.shakeMainWindowEffect, durationMs);
+    return;
+  }
+
+  if (shakeTimer) {
+    clearInterval(shakeTimer);
+    shakeTimer = null;
+  }
+
+  const origin = mainWindow.getBounds();
+  const steps = Math.max(1, Math.ceil(durationMs / SHAKE_INTERVAL_MS));
+  let index = 0;
+  shakeTimer = setInterval(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (shakeTimer) {
+        clearInterval(shakeTimer);
+        shakeTimer = null;
+      }
+      return;
+    }
+    const offset = SHAKE_OFFSETS[index % SHAKE_OFFSETS.length] ?? 0;
+    mainWindow.setBounds({ ...origin, x: origin.x + offset, y: origin.y }, false);
+    index += 1;
+    if (index >= steps) {
+      if (shakeTimer) {
+        clearInterval(shakeTimer);
+        shakeTimer = null;
+      }
+      mainWindow.setBounds(origin, false);
+    }
+  }, SHAKE_INTERVAL_MS);
+};
 export const hideWindow = () => {
   if (!mainWindow) return;
   mainWindow.hide();
@@ -236,12 +291,10 @@ export const setProgressBar = (
   mainWindow.setProgressBar(progress, options);
 };
 export const taskFlicker = () => {
-  if (
-    isMac ||
-    (mainWindow.isVisible() && mainWindow.isFocused() && !isExistMainWindow())
-  )
-    return;
-  mainWindow?.flashFrame(true);
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!isWin || (!mainWindow.isVisible() && !mainWindow.isMinimized())) return;
+  if (mainWindow.isFocused()) return;
+  mainWindow.flashFrame(true);
 };
 export const setIgnoreMouseEvents = (
   ignore: boolean,

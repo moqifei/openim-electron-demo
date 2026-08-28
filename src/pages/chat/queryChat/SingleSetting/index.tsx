@@ -5,7 +5,6 @@ import { forwardRef, ForwardRefRenderFunction, memo } from "react";
 
 import { modal } from "@/AntdGlobalComp";
 import OIMAvatar from "@/components/OIMAvatar";
-import SettingRow from "@/components/SettingRow";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
@@ -23,9 +22,6 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
     (state) => state.currentConversation,
   );
 
-  const isBlack = useContactStore((state) => state.blackList).some(
-    (black) => currentConversation?.userID === black.userID,
-  );
   const isFriend = useContactStore((state) => state.friendList).some(
     (friend) => currentConversation?.userID === friend.userID,
   );
@@ -37,37 +33,6 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
     friend?.remark || friend?.nickname || currentConversation?.showName;
 
   const { isOverlayOpen, closeOverlay } = useOverlayVisible(ref);
-
-  const updateBlack = async () => {
-    if (!currentConversation) return;
-    const execFunc = async () => {
-      try {
-        isBlack
-          ? await IMSDK.removeBlack(currentConversation?.userID)
-          : await IMSDK.addBlack({
-              toUserID: currentConversation?.userID,
-            });
-      } catch (error) {
-        feedbackToast({ error, msg: t("toast.updateBlackStateFailed") });
-      }
-    };
-    if (!isBlack) {
-      modal.confirm({
-        title: t("placeholder.moveBlacklist"),
-        content: (
-          <div className="flex items-baseline">
-            <div>{t("toast.confirmMoveBlacklist")}</div>
-            <span className="text-xs text-[var(--sub-text)]">
-              {t("placeholder.willFilterThisUserMessage")}
-            </span>
-          </div>
-        ),
-        onOk: execFunc,
-      });
-    } else {
-      await execFunc();
-    }
-  };
 
   const tryUnfriend = () => {
     if (!currentConversation) return;
@@ -114,13 +79,6 @@ const SingleSetting: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
         <RightOutlined rev={undefined} />
       </div>
       <Divider className="m-0 border-4 border-[var(--bg-body)]" />
-      <SettingRow
-        title={t("placeholder.moveBlacklist")}
-        value={isBlack}
-        tryChange={updateBlack}
-      />
-      <Divider className="m-0 border-4 border-[var(--bg-body)]" />
-
       <div className="flex-1" />
       {isFriend && (
         <div className="flex w-full justify-center pb-3 pt-24">

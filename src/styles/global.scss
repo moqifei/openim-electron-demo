@@ -30,9 +30,9 @@
   --bg-input: #f7f8fa;
 
   /* 文字 */
-  --text-primary: #1d2129;     /* 主文字 - 标题、名称 */
-  --text-secondary: #4e5969;   /* 次文字 - 消息预览、时间 */
-  --text-tertiary: #86909c;    /* 辅助文字 - 占位提示 */
+  --text-primary: #1d2129; /* 主文字 - 标题、名称 */
+  --text-secondary: #4e5969; /* 次文字 - 消息预览、时间 */
+  --text-tertiary: #86909c; /* 辅助文字 - 占位提示 */
   --text-placeholder: #c9cdd4; /* 占位文字 */
 
   /* 边框 & 分割线 */
@@ -86,6 +86,41 @@ body,
   overflow: hidden;
   user-select: none;
   background: var(--bg-body);
+}
+
+@keyframes desktop-window-shake {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  10% {
+    transform: translate3d(-10px, 0, 0);
+  }
+  20% {
+    transform: translate3d(10px, 0, 0);
+  }
+  30% {
+    transform: translate3d(-8px, 0, 0);
+  }
+  40% {
+    transform: translate3d(8px, 0, 0);
+  }
+  50% {
+    transform: translate3d(-5px, 0, 0);
+  }
+  60% {
+    transform: translate3d(5px, 0, 0);
+  }
+  70% {
+    transform: translate3d(-2px, 0, 0);
+  }
+  80% {
+    transform: translate3d(2px, 0, 0);
+  }
+}
+
+.desktop-window-shake {
+  animation: desktop-window-shake 1s ease-in-out both;
 }
 
 /* === 滚动条：飞书风格纤细滚动条 === */

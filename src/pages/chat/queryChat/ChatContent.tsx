@@ -1,12 +1,13 @@
+import { DownloadOutlined } from "@ant-design/icons";
 import {
   MessageItem as MessageItemType,
   MessageType,
   SessionType,
 } from "@openim/wasm-client-sdk";
-import { Layout, Spin, message as antdMessage } from "antd";
+import { Image, Layout, message as antdMessage, Spin } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
 import { SystemMessageTypes } from "@/constants/im";
@@ -14,6 +15,8 @@ import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import emitter from "@/utils/events";
+import { downloadFileWithProgress } from "@/utils/fileDownload";
+import { isShakeMessageData } from "@/utils/shakeMessage";
 
 import ForwardModal, { ForwardModalHandle } from "./ForwardModal";
 import MessageItem from "./MessageItem";
@@ -23,24 +26,31 @@ import TimeDivider from "./TimeDivider";
 import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList";
 
 // 与上一条消息间隔超过该值（毫秒）则显示时间分割线
-const TIME_DIVIDER_GAP = 5 * 60 * 1000;
+const TIME_DIVIDER_GAP = 10 * 60 * 1000;
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const stickyScrollFrame = useRef<number>();
   const pauseStickyScroll = useRef(false);
+  const isUserViewingHistory = useRef(false);
+  const isAtBottom = useRef(false);
   const touchStartY = useRef<number>();
   const forwardModalRef = useRef<ForwardModalHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
-  const currentConversation = useConversationStore((state) => state.currentConversation);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
   const setQuoteMessage = useConversationStore((state) => state.setQuoteMessage);
 
   const [multiSelectState, setMultiSelectState] = useState<{
     isActive: boolean;
     selectedIds: Set<string>;
   }>({ isActive: false, selectedIds: new Set() });
+  const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
+  const [imagePreviewMessageID, setImagePreviewMessageID] = useState("");
 
   const scrollToBottom = () => {
+    isUserViewingHistory.current = false;
     pauseStickyScroll.current = false;
     setTimeout(() => {
       virtuoso.current?.scrollToIndex({
@@ -76,7 +86,18 @@ const ChatContent = () => {
 
   const handleChatWheel = (event: React.WheelEvent) => {
     if (event.deltaY < 0) {
+      isUserViewingHistory.current = true;
       pauseStickyScroll.current = true;
+    }
+  };
+
+  const handleChatScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const distanceToBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (distanceToBottom <= 4 && isUserViewingHistory.current) {
+      isUserViewingHistory.current = false;
+      pauseStickyScroll.current = false;
     }
   };
 
@@ -89,12 +110,50 @@ const ChatContent = () => {
     const currentY = event.touches[0]?.clientY;
     if (startY === undefined || currentY === undefined) return;
     if (currentY - startY > 8) {
+      isUserViewingHistory.current = true;
       pauseStickyScroll.current = true;
     }
   };
 
   const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
     useHistoryMessageList();
+
+  const imageMessages = useMemo(
+    () =>
+      loadState.messageList.filter(
+        (message) =>
+          message.contentType === MessageType.PictureMessage &&
+          Boolean(
+            message.pictureElem?.sourcePicture?.url ||
+              message.pictureElem?.snapshotPicture?.url,
+          ),
+      ),
+    [loadState.messageList],
+  );
+  const imagePreviewItems = useMemo(
+    () =>
+      imageMessages.map(
+        (message) =>
+          message.pictureElem?.sourcePicture?.url ||
+          message.pictureElem?.snapshotPicture?.url ||
+          "",
+      ),
+    [imageMessages],
+  );
+  const imagePreviewIndex = Math.max(
+    0,
+    imageMessages.findIndex((message) => message.clientMsgID === imagePreviewMessageID),
+  );
+
+  const handleImagePreview = useCallback(
+    (index: number) => {
+      const message = imageMessages[index];
+      if (!message) return;
+      setImagePreviewMessageID(message.clientMsgID);
+      setImagePreviewVisible(true);
+    },
+    [imageMessages],
+  );
 
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
@@ -110,9 +169,24 @@ const ChatContent = () => {
 
   // Clear multi-select when conversation changes
   useEffect(() => {
+    isUserViewingHistory.current = false;
     pauseStickyScroll.current = false;
     setMultiSelectState({ isActive: false, selectedIds: new Set() });
+    setImagePreviewVisible(false);
+    setImagePreviewMessageID("");
   }, [conversationID]);
+
+  useEffect(() => {
+    if (!multiSelectState.isActive || !isAtBottom.current) return;
+
+    requestAnimationFrame(() => {
+      virtuoso.current?.scrollToIndex({
+        index: 9999,
+        align: "end",
+        behavior: "auto",
+      });
+    });
+  }, [multiSelectState.isActive]);
 
   const loadMoreMessage = () => {
     if (!loadState.hasMoreOld || moreOldLoading) return;
@@ -148,12 +222,11 @@ const ChatContent = () => {
           const groupID = target.groupID || "";
           try {
             if (isMerge && messages.length > 1) {
-              const title =
-                currentConversation?.groupID
-                  ? t("placeholder.messageHistory")
-                  : t("placeholder.whosMessageHistory", {
-                      who: currentConversation?.showName || "",
-                    });
+              const title = currentConversation?.groupID
+                ? t("placeholder.messageHistory")
+                : t("placeholder.whosMessageHistory", {
+                    who: currentConversation?.showName || "",
+                  });
               const summaryList = messages.slice(0, 2).map((m) => {
                 const sender = m.senderNickname || "";
                 let content = "";
@@ -165,13 +238,16 @@ const ChatContent = () => {
                     content = t("messageDescription.imageMessage");
                     break;
                   case MessageType.FileMessage:
-                    content = t("messageDescription.fileMessage", { file: m.fileElem?.fileName || "" });
+                    content = t("messageDescription.fileMessage", {
+                      file: m.fileElem?.fileName || "",
+                    });
                     break;
                   case MessageType.CardMessage:
                     content = t("messageDescription.cardMessage");
                     break;
                   case MessageType.MergeMessage:
-                    content = m.mergeElem?.title || t("messageDescription.mergeMessage");
+                    content =
+                      m.mergeElem?.title || t("messageDescription.mergeMessage");
                     break;
                   case MessageType.QuoteMessage: {
                     const quoted = m.quoteElem?.quoteMessage;
@@ -185,13 +261,17 @@ const ChatContent = () => {
                           quotedContent = t("messageDescription.imageMessage");
                           break;
                         case MessageType.FileMessage:
-                          quotedContent = t("messageDescription.fileMessage", { file: quoted.fileElem?.fileName || "" });
+                          quotedContent = t("messageDescription.fileMessage", {
+                            file: quoted.fileElem?.fileName || "",
+                          });
                           break;
                         default:
                           quotedContent = t("messageDescription.catchMessage");
                       }
                     }
-                    content = `${t("messageDescription.quoteMessage")}${quotedContent ? " " + quotedContent : ""}`;
+                    content = `${t("messageDescription.quoteMessage")}${
+                      quotedContent ? ` ${quotedContent}` : ""
+                    }`;
                     break;
                   }
                   default:
@@ -287,9 +367,9 @@ const ChatContent = () => {
         (m: MessageItemType) => m.clientMsgID === clientMsgID,
       );
       console.log("[reEdit] found msg in list", {
-        found: !!msg,
+        found: Boolean(msg),
         contentType: msg?.contentType,
-        hasNotificationElem: !!msg?.notificationElem,
+        hasNotificationElem: Boolean(msg?.notificationElem),
         textElem: msg?.textElem,
         text: msg?.textElem?.content,
         keys: msg ? Object.keys(msg) : [],
@@ -354,71 +434,126 @@ const ChatContent = () => {
           <Spin spinning />
         </div>
       ) : (
-        <Virtuoso
-          id="chat-list"
-          className="w-full overflow-x-hidden"
-          onTouchMove={handleChatTouchMove}
-          onTouchStart={handleChatTouchStart}
-          onWheel={handleChatWheel}
-          atBottomStateChange={(atBottom) => {
-            if (atBottom) {
-              pauseStickyScroll.current = false;
-            }
-          }}
-          followOutput="smooth"
-          firstItemIndex={loadState.firstItemIndex}
-          initialTopMostItemIndex={SPLIT_COUNT - 1}
-          startReached={loadMoreMessage}
-          ref={virtuoso}
-          data={loadState.messageList}
-          components={{
-            Header: () =>
-              loadState.hasMoreOld ? (
-                <div
-                  className={clsx(
-                    "flex justify-center py-2 opacity-0",
-                    moreOldLoading && "opacity-100",
-                  )}
-                >
-                  <Spin />
-                </div>
-              ) : null,
-          }}
-          computeItemKey={(_, item) => item.clientMsgID}
-          itemContent={(index, message) => {
-            if (SystemMessageTypes.includes(message.contentType)) {
+        <Image.PreviewGroup
+          items={imagePreviewItems}
+          preview={{
+            visible: imagePreviewVisible,
+            current: imagePreviewIndex,
+            onVisibleChange: setImagePreviewVisible,
+            onChange: (index) => {
+              const message = imageMessages[index];
+              if (message) setImagePreviewMessageID(message.clientMsgID);
+            },
+            toolbarRender: (originalNode, { current }) => {
+              const message = imageMessages[current];
+              const originalUrl =
+                message?.pictureElem?.sourcePicture?.url ||
+                message?.pictureElem?.snapshotPicture?.url ||
+                "";
               return (
-                <NotificationMessage key={message.clientMsgID} message={message} />
+                <div className="flex items-center gap-3">
+                  {originalNode}
+                  <DownloadOutlined
+                    className="cursor-pointer text-lg text-white"
+                    onClick={() => {
+                      if (!originalUrl) return;
+                      void downloadFileWithProgress({
+                        url: originalUrl,
+                        showProgressToast: true,
+                        progressTitle: "Downloading...",
+                      }).catch((error) => {
+                        console.error("Download failed:", error);
+                      });
+                    }}
+                  />
+                </div>
               );
-            }
-            const prev = loadState.messageList[index - 1];
-            const showDivider =
-              !prev ||
-              SystemMessageTypes.includes(prev.contentType) ||
-              message.sendTime - prev.sendTime > TIME_DIVIDER_GAP;
-            const isSender = selfUserID === message.sendID;
-            return (
-              <>
-                {showDivider && <TimeDivider time={message.sendTime} />}
-                <MessageItem
-                  key={message.clientMsgID}
-                  conversationID={conversationID}
-                  message={message}
-                  messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
-                  isSender={isSender}
-                  isMultiSelectActive={multiSelectState.isActive}
-                  isSelected={multiSelectState.selectedIds.has(message.clientMsgID)}
-                  onToggleSelect={handleToggleSelect}
-                  onForward={(msg) => handleForward([msg], false)}
-                  onReply={handleReply}
-                  onMultiSelect={handleMultiSelect}
-                  onRevoke={handleRevoke}
-                  onAvatarClick={handleAvatarClick}
-                />
-              </>
-            );
+            },
           }}
-        />
+        >
+          <Virtuoso
+            id="chat-list"
+            className="w-full overflow-x-hidden"
+            onTouchMove={handleChatTouchMove}
+            onTouchStart={handleChatTouchStart}
+            onWheel={handleChatWheel}
+            onScroll={handleChatScroll}
+            atBottomStateChange={(atBottom) => {
+              isAtBottom.current = atBottom;
+              if (atBottom && !isUserViewingHistory.current) {
+                pauseStickyScroll.current = false;
+              }
+            }}
+            followOutput={(isAtBottom) =>
+              isAtBottom && !pauseStickyScroll.current ? "smooth" : false
+            }
+            firstItemIndex={loadState.firstItemIndex}
+            initialTopMostItemIndex={SPLIT_COUNT - 1}
+            startReached={loadMoreMessage}
+            ref={virtuoso}
+            data={loadState.messageList}
+            components={{
+              Header: () =>
+                loadState.hasMoreOld ? (
+                  <div
+                    className={clsx(
+                      "flex justify-center py-2 opacity-0",
+                      moreOldLoading && "opacity-100",
+                    )}
+                  >
+                    <Spin />
+                  </div>
+                ) : null,
+              Footer: () =>
+                multiSelectState.isActive ? <div className="h-16" /> : null,
+            }}
+            computeItemKey={(_, item) => item.clientMsgID}
+            itemContent={(index, message) => {
+              const isShakeMessage = isShakeMessageData(message.customElem?.data);
+              if (SystemMessageTypes.includes(message.contentType) || isShakeMessage) {
+                return (
+                  <NotificationMessage key={message.clientMsgID} message={message} />
+                );
+              }
+              const messageIndex = loadState.messageList.findIndex(
+                (item) => item.clientMsgID === message.clientMsgID,
+              );
+              const prev =
+                messageIndex > 0 ? loadState.messageList[messageIndex - 1] : undefined;
+              const showDivider =
+                !prev ||
+                SystemMessageTypes.includes(prev.contentType) ||
+                isShakeMessageData(prev.customElem?.data) ||
+                message.sendTime - prev.sendTime > TIME_DIVIDER_GAP;
+              const isSender = selfUserID === message.sendID;
+              const imageIndex = imageMessages.findIndex(
+                (imageMessage) => imageMessage.clientMsgID === message.clientMsgID,
+              );
+              return (
+                <>
+                  {showDivider && <TimeDivider time={message.sendTime} />}
+                  <MessageItem
+                    key={message.clientMsgID}
+                    conversationID={conversationID}
+                    message={message}
+                    messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
+                    isSender={isSender}
+                    imagePreviewIndex={imageIndex >= 0 ? imageIndex : undefined}
+                    onImagePreview={handleImagePreview}
+                    isMultiSelectActive={multiSelectState.isActive}
+                    isSelected={multiSelectState.selectedIds.has(message.clientMsgID)}
+                    onToggleSelect={handleToggleSelect}
+                    onForward={(msg) => handleForward([msg], false)}
+                    onReply={handleReply}
+                    onMultiSelect={handleMultiSelect}
+                    onRevoke={handleRevoke}
+                    onAvatarClick={handleAvatarClick}
+                  />
+                </>
+              );
+            }}
+          />
+        </Image.PreviewGroup>
       )}
 
       {multiSelectState.isActive && (

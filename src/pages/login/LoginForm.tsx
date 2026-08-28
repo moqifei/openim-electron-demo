@@ -1,17 +1,24 @@
-import { Button, Form, Input, Tabs } from "antd";
+import { Button, Checkbox, Form, Input, Tabs } from "antd";
 import { t } from "i18next";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useADLogin } from "@/api/login";
 import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
-import { getAdUsername, setAdUsername, setIMProfile } from "@/utils/storage";
+import {
+  getAdUsername,
+  getRememberedAdLogin,
+  saveRememberedAdLogin,
+  setAdUsername,
+  setIMProfile,
+} from "@/utils/storage";
 
 import styles from "./index.module.scss";
 
 type AdLoginFormValues = {
   username: string;
   password: string;
+  rememberPassword: boolean;
 };
 
 const LoginForm = () => {
@@ -19,6 +26,8 @@ const LoginForm = () => {
   const [form] = Form.useForm();
   const [selectingServer, setSelectingServer] = useState(false);
   const { mutateAsync: adLogin, isLoading: adLoginLoading } = useADLogin();
+  const initialUsername = getAdUsername();
+  const rememberedLogin = getRememberedAdLogin(initialUsername);
 
   const onFinish = (params: AdLoginFormValues) => {
     // Always use AD login (phone/email removed)
@@ -36,6 +45,7 @@ const LoginForm = () => {
       });
       const { chatToken, imToken, userID } = data.data;
       setIMProfile({ chatToken, imToken, userID });
+      saveRememberedAdLogin(params.username, params.password, params.rememberPassword);
       navigate("/chat");
     } finally {
       setSelectingServer(false);
@@ -56,10 +66,21 @@ const LoginForm = () => {
         form={form}
         layout="vertical"
         onFinish={onFinish}
+        onValuesChange={(changedValues) => {
+          const changedUsername: unknown = changedValues.username;
+          if (typeof changedUsername !== "string") return;
+          const nextLogin = getRememberedAdLogin(changedUsername);
+          form.setFieldsValue({
+            password: nextLogin.password,
+            rememberPassword: nextLogin.rememberPassword,
+          });
+        }}
         autoComplete="off"
         labelCol={{ prefixCls: "custom-form-item" }}
         initialValues={{
-          username: getAdUsername(),
+          username: initialUsername,
+          password: rememberedLogin.password,
+          rememberPassword: rememberedLogin.rememberPassword,
         }}
       >
         <Form.Item
@@ -76,7 +97,14 @@ const LoginForm = () => {
         >
           <Input.Password allowClear placeholder={t("placeholder.inputAdPassword")} />
         </Form.Item>
-        <Form.Item className="mb-4 mt-10">
+        <Form.Item
+          className="mb-0 mt-[-4px]"
+          name="rememberPassword"
+          valuePropName="checked"
+        >
+          <Checkbox>{t("placeholder.rememberPassword")}</Checkbox>
+        </Form.Item>
+        <Form.Item className="mb-4 mt-6">
           <Button
             type="primary"
             htmlType="submit"

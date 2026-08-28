@@ -21,6 +21,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { CustomType } from "@/constants";
+import { SystemMessageTypes } from "@/constants/im";
 import {
   pushNewMessage,
   updateOneMessage,
@@ -30,9 +31,15 @@ import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { getIMHost, getIMWsPort } from "@/utils/config";
 import emitter from "@/utils/events";
-import { initStore } from "@/utils/imCommon";
+import {
+  getConversationContent,
+  getConversationIDByMsg,
+  initStore,
+} from "@/utils/imCommon";
 import { initReadVisibilityMonitor } from "@/utils/readVisibility";
+import { canAutoMarkConversationAsRead } from "@/utils/readVisibility";
 import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
+import { canUseShake, isShakeMessageData } from "@/utils/shakeMessage";
 import { clearIMProfile, getIMToken, getIMUserID } from "@/utils/storage";
 
 import { IMSDK } from "./MainContentWrap";
@@ -45,6 +52,7 @@ import { IMSDK } from "./MainContentWrap";
  */
 const IM_WS_PORT_CANDIDATES = [20001, 10001];
 const PROBE_IM_WS_PORT_CHANNEL = "probeImWsPort";
+const SHAKE_DURATION_MS = 1000;
 
 const resolveImWsPort = async (host: string): Promise<string> => {
   const configured = getIMWsPort();
@@ -77,6 +85,9 @@ export function useGlobalEvent() {
   // conversation
   const updateConversationList = useConversationStore(
     (state) => state.updateConversationList,
+  );
+  const updateCurrentConversation = useConversationStore(
+    (state) => state.updateCurrentConversation,
   );
   const updateUnReadCount = useConversationStore((state) => state.updateUnReadCount);
   const updateCurrentGroupInfo = useConversationStore(
@@ -350,6 +361,7 @@ export function useGlobalEvent() {
         inCurrentConversation(message),
       );
       handleNewMessage(message);
+      notifyIncomingMessage(message);
     });
   };
 
@@ -365,14 +377,70 @@ export function useGlobalEvent() {
 
   const notPushType = [MessageType.TypingMessage, MessageType.RevokeMessage];
 
+  const getConversationFromMessage = async (message: MessageItem) => {
+    const conversationID = getConversationIDByMsg(message);
+    const conversation = useConversationStore
+      .getState()
+      .conversationList.find((item) => item.conversationID === conversationID);
+    if (conversation) return conversation;
+
+    const isGroupMessage =
+      message.sessionType === SessionType.Group ||
+      message.sessionType === SessionType.WorkingGroup;
+    const sourceID = isGroupMessage
+      ? message.groupID
+      : message.sendID === useUserStore.getState().selfInfo.userID
+      ? message.recvID
+      : message.sendID;
+    if (!sourceID) return undefined;
+
+    try {
+      const { data } = await IMSDK.getOneConversation({
+        sourceID,
+        sessionType: message.sessionType,
+      });
+      return data;
+    } catch (error) {
+      console.warn("[shake] get conversation failed", error);
+      return undefined;
+    }
+  };
+
+  const handleShakeMessage = async (message: MessageItem) => {
+    const conversation = await getConversationFromMessage(message);
+    if (!conversation || !canUseShake(conversation, message)) return;
+
+    await window.electronAPI?.ipcInvoke("showMainWindow");
+    await updateCurrentConversation({ ...conversation });
+    navigate(`/chat/${conversation.conversationID}`);
+    window.electronAPI?.ipcSend("trayConversationOpened", {
+      conversationID: conversation.conversationID,
+    });
+    window.electronAPI?.ipcSend("shakeMainWindow", {
+      durationMs: SHAKE_DURATION_MS,
+    });
+  };
+
   const handleNewMessage = (newServerMsg: MessageItem) => {
     if (newServerMsg.contentType === MessageType.CustomMessage) {
-      const customData = JSON.parse(newServerMsg.customElem!.data);
+      let customData: { customType?: number } = {};
+      try {
+        customData = JSON.parse(newServerMsg.customElem?.data || "{}");
+      } catch {
+        customData = {};
+      }
       if (
+        typeof customData.customType === "number" &&
         CustomType.CallingInvite <= customData.customType &&
         customData.customType <= CustomType.CallingHungup
       ) {
         return;
+      }
+      if (
+        isShakeMessageData(newServerMsg.customElem?.data) &&
+        newServerMsg.sendID !== useUserStore.getState().selfInfo.userID
+      ) {
+        void handleShakeMessage(newServerMsg);
       }
     }
 
@@ -381,6 +449,42 @@ export function useGlobalEvent() {
     if (!notPushType.includes(newServerMsg.contentType)) {
       pushNewMessage(newServerMsg);
     }
+  };
+
+  const notifyIncomingMessage = (message: MessageItem) => {
+    if (useUserStore.getState().syncState === "loading" || resume.current) {
+      return;
+    }
+    if (message.sendID === useUserStore.getState().selfInfo.userID) return;
+    if (SystemMessageTypes.includes(message.contentType)) return;
+
+    const messageConversationID = getConversationIDByMsg(message);
+    const currentConversationID =
+      useConversationStore.getState().currentConversation?.conversationID;
+    const shouldNotify =
+      !canAutoMarkConversationAsRead() ||
+      (messageConversationID && messageConversationID !== currentConversationID);
+
+    if (!shouldNotify) return;
+
+    const conversation = useConversationStore
+      .getState()
+      .conversationList.find((item) => item.conversationID === messageConversationID);
+    const title =
+      conversation?.showName ||
+      (message.sessionType === SessionType.Group ||
+      message.sessionType === SessionType.WorkingGroup
+        ? message.groupID
+        : message.senderNickname) ||
+      "消息";
+    const body = getConversationContent(message) || "";
+
+    window.electronAPI?.ipcSend("requestMainWindowAttention");
+    window.electronAPI?.ipcSend("notifyIncomingMessage", {
+      conversationID: messageConversationID,
+      title,
+      body,
+    });
   };
 
   const inCurrentConversation = (newServerMsg: MessageItem) => {
@@ -650,6 +754,20 @@ export function useGlobalEvent() {
         resume.current = false;
       }, 5000);
     });
+
+    window.electronAPI?.subscribe(
+      "openConversationFromTray",
+      async ({ conversationID }: { conversationID?: string }) => {
+        if (!conversationID) return;
+        const conversation = useConversationStore
+          .getState()
+          .conversationList.find((item) => item.conversationID === conversationID);
+        if (!conversation) return;
+        await updateCurrentConversation({ ...conversation });
+        navigate(`/chat/${conversationID}`);
+        window.electronAPI?.ipcSend("trayConversationOpened", { conversationID });
+      },
+    );
 
     // 主进程在退出软件前请求执行 OpenIM 退出登录（清理登录态，防止下次自动登录）
     window.electronAPI?.subscribe("requestLogoutBeforeQuit", async () => {

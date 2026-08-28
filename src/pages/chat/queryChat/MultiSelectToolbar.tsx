@@ -12,6 +12,7 @@ import { FC, useMemo } from "react";
 
 import { feedbackToast } from "@/utils/common";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
+import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 
 import ForwardMessageIcon from "./MessageItem/ForwardMessageIcon";
 
@@ -87,7 +88,7 @@ const MultiSelectToolbar: FC<IMultiSelectToolbarProps> = ({
         }
       } catch (error) {
         console.error("[MultiSelectToolbar] save failed:", error);
-        feedbackToast({ msg: t("toast.downloadFailed"), error });
+        feedbackToast({ msg: getFileTransferErrorMessage(error, "download") });
       }
     }
     onSave();

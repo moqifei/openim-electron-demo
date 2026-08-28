@@ -10,6 +10,7 @@ import { message as antdMessage } from "@/AntdGlobalComp";
 import OIMAvatar from "@/components/OIMAvatar";
 import { formatBr } from "@/utils/common";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
+import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 
 import styles from "./message-item.module.scss";
 
@@ -37,7 +38,7 @@ const downloadMessageFile = async (
     });
   } catch (error) {
     console.error(`[${logSource}] download failed:`, error);
-    antdMessage.error(t("toast.downloadFailed"));
+    antdMessage.error(getFileTransferErrorMessage(error, "download"));
   }
 };
 

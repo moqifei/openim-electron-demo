@@ -100,18 +100,8 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
   },
   getGroupListByReq: async () => {
     try {
-      let offset = 0;
-      let tmpList = [] as GroupItem[];
-      // eslint-disable-next-line
-      while (true) {
-        const { data } = await IMSDK.getJoinedGroupListPage({ offset, count: 1000 });
-        tmpList = [...tmpList, ...data];
-        offset += 1000;
-        if (data.length < 1000) break;
-      }
-
-      // const { data } = await IMSDK.getJoinedGroupList();
-      set(() => ({ groupList: tmpList }));
+      const { data } = await IMSDK.getJoinedGroupList();
+      set(() => ({ groupList: data || [] }));
     } catch (error) {
       feedbackToast({ error, msg: t("toast.getGroupListFailed") });
     }
@@ -143,7 +133,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       console.error(error);
     }
   },
-  updateRecvFriendApplication: async (application: FriendApplicationItem) => {
+  updateRecvFriendApplication: (application: FriendApplicationItem) => {
     let tmpList = [...get().recvFriendApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.fromUserID === application.fromUserID);
@@ -155,8 +145,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     }
     if (idx < 0 || isHandleResultUpdate) {
       const unHandleFriendApplicationCount = tmpList.filter(
-        (application) =>
-          application.handleResult === 0,
+        (application) => application.handleResult === 0,
       ).length;
       set(() => ({
         recvFriendApplicationList: tmpList,
@@ -192,7 +181,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
       console.error(error);
     }
   },
-  updateRecvGroupApplication: async (application: GroupApplicationItem) => {
+  updateRecvGroupApplication: (application: GroupApplicationItem) => {
     let tmpList = [...get().recvGroupApplicationList];
     let isHandleResultUpdate = false;
     const idx = tmpList.findIndex((a) => a.userID === application.userID);
@@ -204,8 +193,7 @@ export const useContactStore = create<ContactStore>()((set, get) => ({
     }
     if (idx < 0 || application.handleResult === ApplicationHandleResult.Unprocessed) {
       const unHandleGroupApplicationCount = tmpList.filter(
-        (application) =>
-          application.handleResult === 0
+        (application) => application.handleResult === 0,
       ).length;
       set(() => ({ recvGroupApplicationList: tmpList, unHandleGroupApplicationCount }));
       return;

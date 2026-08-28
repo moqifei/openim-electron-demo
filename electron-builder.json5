@@ -10,7 +10,7 @@
   beforePack: "./scripts/beforePackBundledGlibc.cjs",
   afterPack: "./scripts/afterPackBundledGlibc.cjs",
   directories: {
-    output: "release/StickyCake/${version}",
+    output: "release/StickyCake",
   },
   files: [
     "dist",
@@ -40,7 +40,7 @@
     },
   ],
   mac: {
-    artifactName: "StickyCake_${version}_${arch}.${ext}",
+    artifactName: "StickyCake_${arch}.${ext}",
     target: ["dmg"],
     icon: "./dist/icons/icon-new.png",
     extraResources: [
@@ -60,7 +60,7 @@
         target: "nsis",
       },
     ],
-    artifactName: "StickyCake_${version}.${ext}",
+    artifactName: "StickyCake.${ext}",
     icon: "./dist/icons/icon-new.ico",
     extraResources: [
       {
@@ -86,7 +86,7 @@
       }
     ],
     maintainer: "opencorp-base",
-    artifactName: "StickyCake_${version}_${arch}.${ext}",
+    artifactName: "StickyCake_${arch}.${ext}",
     category: "Utility",
     extraResources: [
       {
@@ -112,5 +112,6 @@
     createStartMenuShortcut: true,
     deleteAppDataOnUninstall: true,
     shortcutName: "年糕",
+    uninstallDisplayName: "年糕",
   }
 }

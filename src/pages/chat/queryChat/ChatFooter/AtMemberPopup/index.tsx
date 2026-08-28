@@ -1,11 +1,13 @@
 import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
-import { Input } from "antd";
 import type { InputRef } from "antd";
+import { Input } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
 import { FC, memo, useEffect, useMemo, useRef, useState } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
+import { getPinyinInitials, toPinyin } from "@/utils/pinyin";
+
 import styles from "./index.module.scss";
 
 export interface AtMemberInfo {
@@ -32,17 +34,26 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<InputRef>(null);
 
-  console.log("[AtMemberPopup] render visible:", visible, "members count:", members?.length);
+  console.log(
+    "[AtMemberPopup] render visible:",
+    visible,
+    "members count:",
+    members?.length,
+  );
 
-  // Filter members by nickname or userID
+  // Filter members by nickname, Chinese pinyin, initials, or userID.
   const filtered = useMemo(() => {
     if (!search.trim()) return members;
-    const kw = search.toLowerCase();
-    return members.filter(
-      (m) =>
-        m.nickname?.toLowerCase().includes(kw) ||
-        m.userID?.toLowerCase().includes(kw),
-    );
+    const kw = search.trim().toLowerCase().replace(/\s+/g, "");
+    return members.filter((m) => {
+      const nickname = m.nickname || "";
+      return (
+        nickname.toLowerCase().includes(kw) ||
+        toPinyin(nickname).includes(kw) ||
+        getPinyinInitials(nickname).includes(kw) ||
+        m.userID?.toLowerCase().includes(kw)
+      );
+    });
   }, [members, search]);
 
   useEffect(() => {
@@ -56,9 +67,7 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
 
   // Clamp active index
   useEffect(() => {
-    setActiveIndex((prev) =>
-      Math.max(0, Math.min(prev, filtered.length)),
-    );
+    setActiveIndex((prev) => Math.max(0, Math.min(prev, filtered.length)));
   }, [filtered.length]);
 
   const buildAtInfo = (member: GroupMemberItem): AtMemberInfo => ({
@@ -101,6 +110,8 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
         }
         break;
       case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
         onClose();
         break;
       default:
@@ -116,9 +127,10 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
         <Input
           ref={inputRef}
           size="small"
-          placeholder={t("placeholder.search") as string}
+          placeholder={t("placeholder.search")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={handleKeyDown}
           allowClear
         />
       </div>
@@ -142,16 +154,12 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
               onClick={() => handleSelect(member)}
               onMouseEnter={() => setActiveIndex(itemIdx)}
             >
-              <OIMAvatar
-                size={28}
-                src={member.faceURL}
-                text={member.nickname}
-              />
+              <OIMAvatar size={28} src={member.faceURL} text={member.nickname} />
               <span className={styles.name}>{member.nickname}</span>
             </div>
           );
         })}
-        {filtered.length === 0 && !search && (
+        {filtered.length === 0 && (
           <div className={styles.empty}>{t("empty.noSearchResults")}</div>
         )}
       </div>

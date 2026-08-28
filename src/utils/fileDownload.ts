@@ -1,13 +1,17 @@
+import { t } from "i18next";
+
 import { getServerUrls } from "./config";
 import {
   createFileTransferProgressKey,
   showFileTransferProgress,
 } from "./fileTransferProgress";
 import { inferDownloadFileName } from "./downloadFileName";
+import { getFileTransferErrorReason } from "./fileTransferError";
 
 type DownloadFileOptions = {
   url: string;
   fileName?: string;
+  filePath?: string;
   knownSize?: number;
   onProgress?: (progress: number) => void;
   showProgressToast?: boolean;
@@ -32,15 +36,16 @@ const saveBlob = (blob: Blob, fileName?: string) => {
   window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
 };
 
-export const downloadFileWithProgress = ({
+export const downloadFileWithProgress = async ({
   url,
   fileName,
+  filePath,
   knownSize,
   onProgress,
   showProgressToast = false,
   progressTitle = "Downloading...",
-}: DownloadFileOptions) =>
-  new Promise<void>((resolve, reject) => {
+}: DownloadFileOptions): Promise<string | undefined> => {
+  return new Promise<string | undefined>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let downloadFileName = fileName || "download";
     const progressKey = showProgressToast
@@ -50,6 +55,7 @@ export const downloadFileWithProgress = ({
     const updateProgress = (
       progress: number,
       status?: "active" | "success" | "exception",
+      title = progressTitle,
     ) => {
       const safeProgress = Math.min(100, Math.max(0, progress));
       onProgress?.(safeProgress);
@@ -57,10 +63,32 @@ export const downloadFileWithProgress = ({
       showFileTransferProgress({
         key: progressKey,
         fileName: downloadFileName,
-        title: progressTitle,
+        title,
         percent: safeProgress,
         status,
       });
+    };
+
+    const failDownload = (error: unknown) => {
+      const reason = getFileTransferErrorReason(error);
+      const title = reason
+        ? t("toast.downloadFailedWithReason", { reason })
+        : t("toast.downloadFailed");
+      updateProgress(100, "exception", title);
+      reject(new Error(reason || t("toast.downloadFailed")));
+    };
+
+    const readResponseError = async () => {
+      if (!(xhr.response instanceof Blob)) return xhr.response;
+
+      const text = (await xhr.response.text()).trim();
+      if (!text) return undefined;
+
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
     };
 
     const resolvedUrl = resolveFileDownloadUrl(url);
@@ -88,32 +116,38 @@ export const downloadFileWithProgress = ({
 
           const electronAPI = window.electronAPI;
           if (electronAPI?.saveDownloadedFile) {
-            await electronAPI.saveDownloadedFile({
+            const savedPath = await electronAPI.saveDownloadedFile({
               data: await xhr.response.arrayBuffer(),
               fileName: downloadFileName,
+              filePath,
             });
+            if (!savedPath) {
+              failDownload(new Error("Target file path is invalid"));
+              return;
+            }
+            updateProgress(100, "success");
+            resolve(savedPath);
+            return;
           } else {
             saveBlob(xhr.response, downloadFileName);
           }
           updateProgress(100, "success");
-          resolve();
+          resolve(undefined);
         } catch (error) {
-          updateProgress(100, "exception");
-          reject(error);
+          failDownload(error);
         }
         return;
       }
-      updateProgress(100, "exception");
-      reject(new Error(`Download failed with status ${xhr.status}`));
+      const responseError = await readResponseError();
+      failDownload(responseError || new Error(`HTTP ${xhr.status}`));
     };
 
     xhr.onerror = () => {
-      updateProgress(100, "exception");
-      reject(new Error("Download failed"));
+      failDownload(new Error("Network error"));
     };
     xhr.onabort = () => {
-      updateProgress(100, "exception");
-      reject(new Error("Download aborted"));
+      failDownload(new Error("Download aborted"));
     };
     xhr.send();
   });
+};

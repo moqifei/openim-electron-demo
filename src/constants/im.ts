@@ -31,4 +31,5 @@ export enum CustomType {
   CallingReject = 202,
   CallingCancel = 203,
   CallingHungup = 204,
+  ChatShake = 901,
 }

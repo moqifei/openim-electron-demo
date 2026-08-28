@@ -8,14 +8,17 @@ import {
   ipcMain,
   nativeImage,
   screen,
+  shell,
 } from "electron";
 import { execFile } from "child_process";
+import { randomUUID } from "crypto";
 import { createRequire } from "node:module";
 import fs from "fs";
 import * as iconv from "iconv-lite";
 import * as net from "net";
 import os from "os";
 import path from "path";
+import { pathToFileURL } from "node:url";
 import {
   clearCache,
   closeWindow,
@@ -23,6 +26,8 @@ import {
   showSelectDialog,
   showSaveDialog,
   showWindow,
+  shakeMainWindow,
+  taskFlicker,
   splashEnd,
   updateMaximize,
 } from "./windowManage";
@@ -34,6 +39,11 @@ import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { getDownloadFileFilters } from "../utils/downloadFileFilters";
 import { changeLanguage } from "../i18n";
 import { logger } from ".";
+import { updateScreenshotShortcut } from "./shortcutManage";
+import {
+  clearMessageReminderConversation,
+  showMessageReminder,
+} from "./messageReminderManage";
 
 const requireModule = createRequire(__filename);
 
@@ -63,6 +73,24 @@ const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
 
 const store = getStore();
 
+const getDownloadDirectory = () => {
+  const configuredPath = store.get("downloadPath");
+  if (
+    typeof configuredPath === "string" &&
+    path.isAbsolute(configuredPath) &&
+    fs.existsSync(configuredPath)
+  ) {
+    return configuredPath;
+  }
+
+  const defaultDirectory = app.getPath("downloads");
+  store.set("downloadPath", defaultDirectory);
+  return defaultDirectory;
+};
+
+const getKeyStoreValue = (key: string) =>
+  key === "downloadPath" ? getDownloadDirectory() : store.get(key);
+
 type ServerEnvironment = {
   key: string;
   name: string;
@@ -81,9 +109,7 @@ const recoverMojibakePath = (filePath: string) => {
   if (process.platform !== "win32") return "";
 
   try {
-    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString(
-      "utf8",
-    );
+    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString("utf8");
     if (recovered === filePath || recovered.includes("\uFFFD")) {
       return "";
     }
@@ -156,9 +182,7 @@ const probeEnvironment = async (
   if (!imPorts.length) return false;
   const imAvailable = (
     await Promise.all(
-      imPorts.map((port) =>
-        probeTcpPort(environment.imHost.trim(), port, timeoutMs),
-      ),
+      imPorts.map((port) => probeTcpPort(environment.imHost.trim(), port, timeoutMs)),
     )
   ).some(Boolean);
 
@@ -280,11 +304,15 @@ export const setIpcMainListener = () => {
     store.set(key, data);
   });
   ipcMain.handle(IpcRenderToMain.getKeyStore, (_, { key }) => {
-    return store.get(key);
+    return getKeyStoreValue(key);
   });
   ipcMain.on(IpcRenderToMain.getKeyStoreSync, (e, { key }) => {
-    e.returnValue = store.get(key);
+    e.returnValue = getKeyStoreValue(key);
   });
+  ipcMain.handle(
+    IpcRenderToMain.updateScreenshotShortcut,
+    (_, shortcut: unknown) => updateScreenshotShortcut(shortcut),
+  );
   ipcMain.handle(IpcRenderToMain.showInputContextMenu, () => {
     const menu = Menu.buildFromTemplate([
       {
@@ -321,6 +349,53 @@ export const setIpcMainListener = () => {
     if (image.isEmpty()) throw new Error("Invalid clipboard image");
     clipboard.writeImage(image);
   });
+  ipcMain.handle(
+    IpcRenderToMain.writeClipboardImageFile,
+    (_, data: ArrayBuffer) => {
+      const image = nativeImage.createFromBuffer(Buffer.from(data));
+      if (image.isEmpty()) throw new Error("Invalid clipboard image file");
+      clipboard.writeImage(image);
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.copyLocalFileToClipboard,
+    async (_, filePath: string) => {
+      if (!filePath || !path.isAbsolute(filePath)) return "Invalid file path";
+      if (!fs.existsSync(filePath)) return "File does not exist";
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile()) return "Path is not a file";
+
+      if (process.platform === "win32") {
+        const escapedPath = filePath.replace(/'/g, "''");
+        const command = `$ErrorActionPreference = 'Stop'; Set-Clipboard -LiteralPath '${escapedPath}'`;
+        return await new Promise<string>((resolve) => {
+          execFile(
+            "powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-Command", command],
+            { windowsHide: true },
+            (error, _stdout, stderr) => {
+              if (error) {
+                logger.warn("[clipboard] copy file failed", {
+                  filePath,
+                  error: error.message,
+                  stderr: stderr.trim(),
+                });
+                resolve(error.message);
+                return;
+              }
+              resolve("");
+            },
+          );
+        });
+      }
+
+      clipboard.writeBuffer(
+        "text/uri-list",
+        Buffer.from(`${pathToFileURL(filePath).href}\r\n`, "utf8"),
+      );
+      return "";
+    },
+  );
   ipcMain.on(IpcRenderToMain.getDataPath, (e, key: string) => {
     switch (key) {
       case "public":
@@ -337,24 +412,175 @@ export const setIpcMainListener = () => {
         break;
     }
   });
-  ipcMain.handle(IpcRenderToMain.openFileDialog, async (_, options: Electron.OpenDialogOptions) => {
-    const result = await showSelectDialog(options);
-    return result.canceled ? [] : result.filePaths.map(normalizeDialogFilePath);
-  });
+  ipcMain.handle(
+    IpcRenderToMain.openFileDialog,
+    async (_, options: Electron.OpenDialogOptions) => {
+      const result = await showSelectDialog(options);
+      return result.canceled ? [] : result.filePaths.map(normalizeDialogFilePath);
+    },
+  );
+  ipcMain.handle(
+    IpcRenderToMain.chooseDownloadPath,
+    async (_, { fileName }: { fileName?: string }) => {
+      const safeName = path.basename(fileName || "download") || "download";
+      const result = await showSaveDialog({
+        defaultPath: path.join(getDownloadDirectory(), safeName),
+        filters: getDownloadFileFilters(safeName),
+      });
+      return result.canceled || !result.filePath ? false : result.filePath;
+    },
+  );
   ipcMain.handle(
     IpcRenderToMain.saveDownloadedFile,
     async (
       _,
-      { data, fileName }: { data: ArrayBuffer; fileName: string },
+      {
+        data,
+        fileName,
+        filePath,
+      }: { data: ArrayBuffer; fileName: string; filePath?: string },
     ) => {
       const safeName = path.basename(fileName) || "download";
-      const result = await showSaveDialog({
-        defaultPath: path.join(app.getPath("downloads"), safeName),
-        filters: getDownloadFileFilters(safeName),
+      const targetPath = filePath || path.join(getDownloadDirectory(), safeName);
+      if (!path.isAbsolute(targetPath)) return false;
+      await fs.promises.writeFile(targetPath, Buffer.from(data));
+      return targetPath;
+    },
+  );
+
+  ipcMain.handle(IpcRenderToMain.openLocalPath, async (_, filePath: string) => {
+    if (!filePath || !path.isAbsolute(filePath)) return "Invalid file path";
+    if (!fs.existsSync(filePath)) return "File does not exist";
+    return shell.openPath(filePath);
+  });
+
+  ipcMain.handle(IpcRenderToMain.openLocalFolder, async (_, filePath: string) => {
+    if (!filePath || !path.isAbsolute(filePath)) return "Invalid file path";
+    if (!fs.existsSync(filePath)) return "File does not exist";
+    shell.showItemInFolder(filePath);
+    return "";
+  });
+
+  ipcMain.handle(
+    IpcRenderToMain.uploadObjectFileFromPath,
+    async (
+      _,
+      {
+        filePath,
+        uploadName,
+        contentType,
+        cause,
+        baseURL,
+        token,
+      }: {
+        filePath: string;
+        uploadName: string;
+        contentType: string;
+        cause: string;
+        baseURL: string;
+        token?: string;
+      },
+    ) => {
+      if (!filePath || !path.isAbsolute(filePath) || !fs.existsSync(filePath)) {
+        throw new Error(`Selected file is unreadable: ${filePath}`);
+      }
+      const stat = await fs.promises.stat(filePath);
+      if (!stat.isFile() || stat.size === 0) {
+        throw new Error(
+          !stat.isFile() ? "Selected path is not a file" : "不能上传空文件",
+        );
+      }
+
+      const axiosModule = requireModule("axios") as any;
+      const axios = axiosModule.default ?? axiosModule;
+      const FormData = requireModule("form-data") as any;
+      const form = new FormData();
+      form.append("file", fs.createReadStream(filePath), {
+        filename: uploadName,
+        contentType,
       });
-      if (result.canceled || !result.filePath) return false;
-      await fs.promises.writeFile(result.filePath, Buffer.from(data));
-      return true;
+      form.append("name", uploadName);
+      form.append("contentType", contentType);
+      form.append("cause", cause);
+
+      const uploadUrl = new URL("/object/upload", `${baseURL}/`).toString();
+      logger.info("[uploadObjectFileFromPath] start", {
+        uploadUrl,
+        filePath,
+        uploadName,
+        contentType,
+        cause,
+        fileSize: stat.size,
+      });
+
+      const response = await axios.post(uploadUrl, form, {
+        headers: {
+          ...form.getHeaders(),
+          ...(token ? { token } : {}),
+          operationID: randomUUID(),
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 10 * 60 * 1000,
+      });
+
+      if (response.data?.errCode && response.data.errCode !== 0) {
+        throw response.data;
+      }
+
+      logger.info("[uploadObjectFileFromPath] success", {
+        uploadUrl,
+        filePath,
+        uploadName,
+        fileSize: stat.size,
+      });
+      return response.data;
+    },
+  );
+
+  ipcMain.on(
+    IpcRenderToMain.notifyIncomingMessage,
+    (
+      _,
+      payload: {
+        conversationID?: string;
+        title?: string;
+        body?: string;
+      },
+    ) => {
+      if (!payload?.conversationID || !payload?.title || !payload?.body) return;
+      showMessageReminder({
+        conversationID: payload.conversationID,
+        title: payload.title,
+        body: payload.body,
+      });
+      logger.info("[reminder] incoming message", {
+        conversationID: payload.conversationID,
+        title: payload.title,
+        body: payload.body,
+      });
+    },
+  );
+
+  ipcMain.on(
+    IpcRenderToMain.trayConversationOpened,
+    (_, payload: { conversationID?: string }) => {
+      if (!payload?.conversationID) return;
+      clearMessageReminderConversation(payload.conversationID);
+    },
+  );
+
+  ipcMain.on(
+    IpcRenderToMain.requestMainWindowAttention,
+    () => {
+      taskFlicker();
+    },
+  );
+
+  ipcMain.on(
+    IpcRenderToMain.shakeMainWindow,
+    (_, payload?: { durationMs?: number }) => {
+      shakeMainWindow(payload?.durationMs);
     },
   );
 
@@ -397,7 +623,10 @@ export const setIpcMainListener = () => {
             if (error) reject(error);
             else resolve(value);
           };
-          const onOk = async (event: { preventDefault: () => void }, buffer: Uint8Array) => {
+          const onOk = async (
+            event: { preventDefault: () => void },
+            buffer: Uint8Array,
+          ) => {
             event.preventDefault();
             try {
               await screenshots.endCapture();
@@ -431,16 +660,17 @@ export const setIpcMainListener = () => {
           });
         });
 
-        return selectedDataUrl
-          ? { dataUrl: selectedDataUrl, isSelection: true }
-          : null;
+        return selectedDataUrl ? { dataUrl: selectedDataUrl, isSelection: true } : null;
       } catch (error) {
-        logger.warn("[screenshot] native overlay failed; continuing with display capture", {
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
-        });
+        logger.warn(
+          "[screenshot] native overlay failed; continuing with display capture",
+          {
+            error:
+              error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : String(error),
+          },
+        );
       }
 
       // macOS: use native screencapture for reliable full-screen capture
@@ -450,10 +680,14 @@ export const setIpcMainListener = () => {
 
         try {
           await new Promise<void>((resolve, reject) => {
-            execFile("/usr/sbin/screencapture", ["-x", "-m", "-T0", tmpFile], (error) => {
-              if (error) reject(error);
-              else resolve();
-            });
+            execFile(
+              "/usr/sbin/screencapture",
+              ["-x", "-m", "-T0", tmpFile],
+              (error) => {
+                if (error) reject(error);
+                else resolve();
+              },
+            );
           });
 
           if (fs.existsSync(tmpFile) && fs.statSync(tmpFile).size > 0) {
@@ -476,7 +710,9 @@ export const setIpcMainListener = () => {
           nativeFailed = true;
         } finally {
           if (fs.existsSync(tmpFile)) {
-            try { fs.unlinkSync(tmpFile); } catch (_) {}
+            try {
+              fs.unlinkSync(tmpFile);
+            } catch (_) {}
           }
         }
 
@@ -486,7 +722,7 @@ export const setIpcMainListener = () => {
             types: ["window"],
             thumbnailSize: { width: 10, height: 10 },
           });
-          const nonEmptyWindows = checkSources.filter(s => !s.thumbnail.isEmpty());
+          const nonEmptyWindows = checkSources.filter((s) => !s.thumbnail.isEmpty());
 
           if (checkSources.length > 0 && nonEmptyWindows.length === 0) {
             throw new Error("SCREEN_RECORDING_PERMISSION_DENIED");
@@ -497,7 +733,9 @@ export const setIpcMainListener = () => {
       // Prefer node-screenshots because it captures the monitor directly at native
       // resolution instead of returning an Electron thumbnail.
       try {
-        const { Monitor } = requireModule("node-screenshots") as typeof import("node-screenshots");
+        const { Monitor } = requireModule(
+          "node-screenshots",
+        ) as typeof import("node-screenshots");
         logger.info("[screenshot] loaded node-screenshots", {
           resolvedPath: requireModule.resolve("node-screenshots"),
         });
@@ -528,14 +766,20 @@ export const setIpcMainListener = () => {
           pngSize: getPngDimensions(buffer),
           bytes: buffer.byteLength,
         });
-        return { dataUrl: `data:image/png;base64,${buffer.toString("base64")}`, isSelection: false };
+        return {
+          dataUrl: `data:image/png;base64,${buffer.toString("base64")}`,
+          isSelection: false,
+        };
       } catch (error) {
-        logger.warn("[screenshot] native monitor capture failed; using thumbnail fallback", {
-          error:
-            error instanceof Error
-              ? { name: error.name, message: error.message, stack: error.stack }
-              : String(error),
-        });
+        logger.warn(
+          "[screenshot] native monitor capture failed; using thumbnail fallback",
+          {
+            error:
+              error instanceof Error
+                ? { name: error.name, message: error.message, stack: error.stack }
+                : String(error),
+          },
+        );
       }
 
       // Fallback: desktopCapturer at the display's physical pixel size.

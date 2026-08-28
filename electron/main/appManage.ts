@@ -100,7 +100,7 @@ export const setAppGlobalData = () => {
           "/app.asar.unpacked/node_modules/@openim/electron-client-sdk/assets",
         )
       : join(__dirname, "../../node_modules/@openim/electron-client-sdk/assets"),
-    trayIcon: join(publicPath, `/icons/${isWin ? "icon.ico" : "tray.png"}`),
+    trayIcon: join(publicPath, `/icons/${isWin ? "icon-new.ico" : "icon-new.png"}`),
     emptyTrayIcon: join(publicPath, `/icons/${"empty_tray.png"}`),
     indexHtml: isProd ? join(distPath, "index.html") : join(publicPath, "index.html"),
     splashHtml: join(publicPath, "splash.html"),

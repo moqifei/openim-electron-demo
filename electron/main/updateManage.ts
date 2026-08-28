@@ -5,8 +5,12 @@ import { join } from "node:path";
 
 import { isProd } from "../utils";
 import { logger } from ".";
+import {
+  isSandboxEnvironment,
+  SANDBOX_UPDATE_MESSAGE,
+} from "./updateEnvironment";
 
-type UpdateConfig = {
+export type UpdateConfig = {
   enabled?: boolean;
   url?: string;
   checkOnStart?: boolean;
@@ -31,6 +35,14 @@ const DEFAULT_UPDATE_CONFIG: Required<UpdateConfig> = {
 let updaterInitialized = false;
 let periodicCheckTimer: NodeJS.Timeout | null = null;
 
+const showSandboxUpdateNotice = () =>
+  dialog.showMessageBox({
+    type: "info",
+    buttons: ["确定"],
+    title: "检测到新版本",
+    message: SANDBOX_UPDATE_MESSAGE,
+  });
+
 const normalizeBaseUrl = (url: string) => {
   const trimmed = url.trim();
   return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
@@ -42,7 +54,7 @@ const getUpdateConfigPathCandidates = () => [
   join(__dirname, "../../build/update-config.json"),
 ];
 
-const readUpdateConfig = (): Required<UpdateConfig> => {
+export const readUpdateConfig = (): Required<UpdateConfig> => {
   for (const configPath of getUpdateConfigPathCandidates()) {
     try {
       if (!fs.existsSync(configPath)) continue;
@@ -81,8 +93,11 @@ export const initAutoUpdater = () => {
   }
 
   autoUpdater.logger = logger;
-  autoUpdater.autoDownload = config.autoDownload;
-  autoUpdater.autoInstallOnAppQuit = config.autoInstallOnAppQuit;
+  const isSandbox = isSandboxEnvironment();
+  autoUpdater.autoDownload = isSandbox ? false : config.autoDownload;
+  autoUpdater.autoInstallOnAppQuit = isSandbox
+    ? false
+    : config.autoInstallOnAppQuit;
   autoUpdater.allowPrerelease = config.allowPrerelease;
   autoUpdater.setFeedURL({
     provider: "generic",
@@ -95,6 +110,9 @@ export const initAutoUpdater = () => {
 
   autoUpdater.on("update-available", (info) => {
     logger.info("[updater] update available", info.version);
+    if (isSandbox) {
+      void showSandboxUpdateNotice();
+    }
   });
 
   autoUpdater.on("update-not-available", (info) => {
@@ -112,6 +130,10 @@ export const initAutoUpdater = () => {
 
   autoUpdater.on("update-downloaded", async (info) => {
     logger.info("[updater] update downloaded", info.version);
+    if (isSandbox) {
+      await showSandboxUpdateNotice();
+      return;
+    }
     const result = await dialog.showMessageBox({
       type: "info",
       buttons: ["立即重启更新", "稍后"],

@@ -2,6 +2,11 @@ import "./index.scss";
 import "ckeditor5/ckeditor5.css";
 
 import { ClassicEditor } from "@ckeditor/ckeditor5-editor-classic";
+import {
+  DataTransfer as CKEditorDataTransfer,
+  Element as ModelElement,
+  ViewDocumentFragment,
+} from "@ckeditor/ckeditor5-engine";
 import { Essentials } from "@ckeditor/ckeditor5-essentials";
 import { Paragraph } from "@ckeditor/ckeditor5-paragraph";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
@@ -14,9 +19,12 @@ import {
   useRef,
 } from "react";
 
+import { getPreferredChatPasteText, getPreferredChatPasteUrl } from "@/utils/chatInput";
+
 export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
   insertText: (text: string) => void;
+  replaceTextBeforeSelection: (length: number, text: string) => void;
   setText: (text: string) => void;
   getEditor: () => ClassicEditor | null;
 };
@@ -42,6 +50,24 @@ const keyCodes = {
   composing: 229,
 };
 
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+
 const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
   { value, placeholder, onChange, onEnter, onPasteFile, onKeydown, fontSize = 14 },
   ref,
@@ -50,7 +76,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
   const onEnterRef = useRef(onEnter);
   const onPasteFileRef = useRef(onPasteFile);
   const onKeydownRef = useRef(onKeydown);
-  const pasteCleanupRef = useRef<(() => void) | null>(null);
+  const clipboardCleanupRef = useRef<(() => void) | null>(null);
 
   onEnterRef.current = onEnter;
   onPasteFileRef.current = onPasteFile;
@@ -85,6 +111,27 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     onChange?.(editor.getData());
   };
 
+  const replaceTextBeforeSelection = (length: number, text: string) => {
+    const editor = ckEditor.current;
+    if (!editor || length <= 0) return;
+
+    editor.model.change((writer) => {
+      const selection = editor.model.document.selection;
+      const endPosition = selection.getFirstPosition();
+      const startPosition = endPosition.getShiftedBy(-length);
+      writer.remove(editor.model.createRange(startPosition, endPosition));
+      writer.insertText(text, startPosition);
+      writer.setSelection(
+        writer.createPositionAt(
+          startPosition.parent,
+          startPosition.offset + text.length,
+        ),
+      );
+    });
+    editor.editing.view.focus();
+    onChange?.(editor.getData());
+  };
+
   const setText = (text: string) => {
     const editor = ckEditor.current;
     if (!editor) return;
@@ -95,9 +142,9 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
       if (!root) return;
       writer.remove(writer.createRangeIn(root));
       /* Ensure there is a <p> element inside root */
-      let p: any;
+      let p: ModelElement;
       const firstChild = root.getChild(0);
-      if (firstChild && firstChild.is("element", "paragraph")) {
+      if (firstChild instanceof ModelElement && firstChild.name === "paragraph") {
         p = firstChild;
       } else {
         p = writer.createElement("paragraph");
@@ -117,10 +164,12 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     editor.editing.view.document.on(
       "keydown",
       (evt, data) => {
+        const domEvent = data.domEvent as KeyboardEvent | undefined;
         const isComposing =
           editor.editing.view.document.isComposing ||
           data.keyCode === keyCodes.composing ||
-          Boolean((data.domEvent as KeyboardEvent | undefined)?.isComposing);
+          Boolean(domEvent?.isComposing);
+        const isAtInput = domEvent?.key === "@" || domEvent?.key === "＠";
 
         // debug: log all key events
         console.log(
@@ -128,23 +177,23 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
           "keyCode:",
           data.keyCode,
           "key:",
-          data.domEvent?.key,
+          domEvent?.key,
           "shift:",
-          data.domEvent?.shiftKey,
+          domEvent?.shiftKey,
           "isComposing:",
           isComposing,
         );
-        if (isComposing) {
-          return;
-        }
 
         // Forward event to parent first (for @mention detection)
-        if (onKeydownRef.current) {
+        if (onKeydownRef.current && (!isComposing || isAtInput)) {
           try {
-            onKeydownRef.current(data.domEvent as unknown as KeyboardEvent);
+            onKeydownRef.current(domEvent as KeyboardEvent);
           } catch (e) {
             console.error("[CKEditor] onKeydown callback error:", e);
           }
+        }
+        if (isComposing) {
+          return;
         }
         if (data.keyCode === 13 && !data.shiftKey) {
           data.preventDefault();
@@ -172,6 +221,21 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     const editableElement = editor.ui.view.editable.element;
     if (!editableElement) return null;
 
+    const insertPlainText = (text: string) => {
+      editor.model.change((writer) => {
+        const selection = editor.model.document.selection;
+        const selectedContent = editor.model.getSelectedContent(selection);
+        if (!selectedContent.isEmpty) {
+          editor.model.deleteContent(selection);
+        }
+        const insertPosition = editor.model.document.selection.getFirstPosition();
+        if (!insertPosition) return;
+        writer.insertText(text, insertPosition);
+      });
+      editor.editing.view.focus();
+      onChange?.(editor.getData());
+    };
+
     const handler = (e: ClipboardEvent) => {
       const files: File[] = [];
       const items = e.clipboardData?.items;
@@ -193,6 +257,18 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
         e.preventDefault();
         e.stopPropagation();
         onPasteFileRef.current?.(files);
+        return;
+      }
+
+      const pastedUrl = getPreferredChatPasteUrl({
+        plainText: e.clipboardData?.getData("text/plain") ?? "",
+        htmlText: e.clipboardData?.getData("text/html") ?? "",
+        uriList: e.clipboardData?.getData("text/uri-list") ?? "",
+      });
+      if (pastedUrl) {
+        e.preventDefault();
+        e.stopPropagation();
+        insertPlainText(pastedUrl);
       }
     };
 
@@ -200,9 +276,41 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     return () => editableElement.removeEventListener("paste", handler);
   };
 
+  const listenClipboardInput = (editor: ClassicEditor) => {
+    const editableDocument = editor.editing.view.document;
+
+    const handler = (
+      _evt: unknown,
+      data: {
+        dataTransfer: CKEditorDataTransfer;
+        content?: ViewDocumentFragment;
+      },
+    ) => {
+      const hasClipboardFiles = data.dataTransfer.files.length > 0;
+
+      if (hasClipboardFiles) {
+        return;
+      }
+
+      const pastedText = getPreferredChatPasteText({
+        plainText: data.dataTransfer.getData("text/plain"),
+        htmlText: data.dataTransfer.getData("text/html"),
+        uriList: data.dataTransfer.getData("text/uri-list"),
+      });
+      if (!pastedText) return;
+
+      data.content = editor.data.htmlProcessor.toView(
+        `<p>${escapeHtml(pastedText)}</p>`,
+      );
+    };
+
+    editableDocument.on("clipboardInput", handler, { priority: "high" });
+    return () => editableDocument.off("clipboardInput", handler);
+  };
+
   useEffect(() => {
     return () => {
-      pasteCleanupRef.current?.();
+      clipboardCleanupRef.current?.();
     };
   }, []);
 
@@ -238,6 +346,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     () => ({
       focus,
       insertText,
+      replaceTextBeforeSelection,
       setText,
       getEditor: () => ckEditor.current,
     }),
@@ -262,7 +371,12 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
       onReady={(editor) => {
         ckEditor.current = editor;
         listenKeydown(editor);
-        pasteCleanupRef.current = listenPaste(editor);
+        const cleanupFns = [listenClipboardInput(editor), listenPaste(editor)].filter(
+          (cleanup): cleanup is () => void => Boolean(cleanup),
+        );
+        clipboardCleanupRef.current = () => {
+          cleanupFns.forEach((cleanup) => cleanup());
+        };
         applyFontSize(fontSize);
         focus(true);
       }}

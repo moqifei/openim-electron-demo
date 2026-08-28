@@ -1,22 +1,24 @@
-import { MessageItem } from "@openim/wasm-client-sdk";
+import { ThunderboltOutlined } from "@ant-design/icons";
+import type { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Popover, Slider, Upload } from "antd";
 import i18n, { t } from "i18next";
 import { UploadRequestOption } from "rc-upload/lib/interface";
 import { memo, ReactNode, RefObject, useState } from "react";
 
 import { message as antdMessage } from "@/AntdGlobalComp";
-import { EMPTY_FILE_UPLOAD_ERROR_MESSAGE } from "@/api/imApi";
 import cardIcon from "@/assets/images/chatFooter/card.png";
 import cutIcon from "@/assets/images/chatFooter/cut.png";
 import emojiIcon from "@/assets/images/chatFooter/emoji.png";
 import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import { CKEditorRef } from "@/components/CKEditor";
-import {
-  createFileTransferProgressKey,
-  showFileTransferProgress,
-} from "@/utils/fileTransferProgress";
+import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store/conversation";
+import {
+  buildShakeMessageData,
+  canUseShake,
+  CHAT_SHAKE_TEXT,
+} from "@/utils/shakeMessage";
 
 import { SendMessageParams } from "../useSendMessage";
 import EmojiPicker from "./EmojiPicker";
@@ -64,28 +66,14 @@ i18n.on("languageChanged", () => {
   sendActionList[4].title = t("placeholder.card");
 });
 
-const getFileSendErrorMessage = (error: unknown) =>
-  error instanceof Error && error.message === EMPTY_FILE_UPLOAD_ERROR_MESSAGE
-    ? error.message
-    : t("toast.accessFailed");
-
 const SendActionBar = ({
   sendMessage,
-  getImageMessage,
-  getFileMessage,
   getCardMessage,
   editorRef,
   onScreenshot,
+  onSelectFiles,
 }: {
   sendMessage: (params: SendMessageParams) => Promise<void>;
-  getImageMessage: (
-    file: File,
-    options?: { onProgress?: (progress: number) => void },
-  ) => Promise<MessageItem>;
-  getFileMessage: (
-    file: File,
-    options?: { onProgress?: (progress: number) => void },
-  ) => Promise<MessageItem>;
   getCardMessage: (user: {
     userID: string;
     nickname: string;
@@ -93,6 +81,7 @@ const SendActionBar = ({
   }) => Promise<MessageItem>;
   editorRef: RefObject<CKEditorRef>;
   onScreenshot: (hideWindow: boolean) => void;
+  onSelectFiles: (files: File[]) => void;
 }) => {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
@@ -105,48 +94,15 @@ const SendActionBar = ({
 
   const chatFontSize = useConversationStore((state) => state.chatFontSize);
   const setChatFontSize = useConversationStore((state) => state.setChatFontSize);
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
+  const canSendShake = canUseShake(currentConversation);
 
-  const fileHandle = async (options: UploadRequestOption, key: string) => {
+  const fileHandle = (options: UploadRequestOption, _key: string) => {
     const file = options.file as File;
-    const progressKey = createFileTransferProgressKey("chat-upload");
-    const updateProgress = (progress: number) => {
-      showFileTransferProgress({
-        key: progressKey,
-        fileName: file.name,
-        title: t("toast.uploading"),
-        percent: progress,
-      });
-    };
-
-    try {
-      updateProgress(0);
-      let message: MessageItem;
-      if (key === "image") {
-        message = await getImageMessage(file, { onProgress: updateProgress });
-      } else if (key === "file") {
-        message = await getFileMessage(file, { onProgress: updateProgress });
-      } else {
-        return;
-      }
-      await sendMessage({ message });
-      showFileTransferProgress({
-        key: progressKey,
-        fileName: file.name,
-        title: t("placeholder.uploadSuccess"),
-        percent: 100,
-        status: "success",
-      });
-    } catch (error) {
-      console.error("[SendActionBar] send file failed:", error);
-      showFileTransferProgress({
-        key: progressKey,
-        fileName: file.name,
-        title: t("toast.uploadFailed"),
-        percent: 100,
-        status: "exception",
-      });
-      antdMessage.error(getFileSendErrorMessage(error));
-    }
+    onSelectFiles([file]);
+    options.onSuccess?.("ok" as any);
   };
 
   const nativeFileHandle = async (key: string) => {
@@ -169,8 +125,8 @@ const SendActionBar = ({
 
     console.info("[SendActionBar] native selected files", { key, filePaths });
 
+    const files: File[] = [];
     for (const filePath of filePaths) {
-      const progressKey = createFileTransferProgressKey("chat-upload");
       try {
         const file = await window.electronAPI.getFileByPath(filePath);
         if (!file) {
@@ -187,43 +143,13 @@ const SendActionBar = ({
           fileSize: file.size,
           fileType: file.type,
         });
-        const updateProgress = (progress: number) => {
-          showFileTransferProgress({
-            key: progressKey,
-            fileName: file.name,
-            title: t("toast.uploading"),
-            percent: progress,
-          });
-        };
-
-        let message: MessageItem;
-        if (key === "image") {
-          message = await getImageMessage(file, { onProgress: updateProgress });
-        } else if (key === "file") {
-          message = await getFileMessage(file, { onProgress: updateProgress });
-        } else {
-          return;
-        }
-        await sendMessage({ message });
-        showFileTransferProgress({
-          key: progressKey,
-          fileName: file.name,
-          title: t("placeholder.uploadSuccess"),
-          percent: 100,
-          status: "success",
-        });
+        files.push(file);
       } catch (error) {
-        console.error("[SendActionBar] send native file failed:", error);
-        showFileTransferProgress({
-          key: progressKey,
-          fileName: filePath,
-          title: t("toast.uploadFailed"),
-          percent: 100,
-          status: "exception",
-        });
-        antdMessage.error(getFileSendErrorMessage(error));
+        console.error("[SendActionBar] read native file failed:", error);
+        antdMessage.error(t("toast.accessFailed"));
       }
     }
+    if (files.length > 0) onSelectFiles(files);
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -239,6 +165,21 @@ const SendActionBar = ({
     const message = await getCardMessage(user);
     sendMessage({ message });
     setCardModalOpen(false);
+  };
+
+  const handleShake = async () => {
+    if (!canSendShake) return;
+    try {
+      const { data: message } = await IMSDK.createCustomMessage({
+        data: buildShakeMessageData(),
+        extension: "",
+        description: CHAT_SHAKE_TEXT,
+      });
+      await sendMessage({ message });
+    } catch (error) {
+      console.error("[SendActionBar] send shake failed:", error);
+      antdMessage.error(t("toast.accessFailed"));
+    }
   };
 
   const handleScreenshotClick = () => {
@@ -312,13 +253,34 @@ const SendActionBar = ({
           arrow={false}
         >
           <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="4 7 4 4 20 4 20 7"></polyline>
               <line x1="9" y1="20" x2="15" y2="20"></line>
               <line x1="12" y1="4" x2="12" y2="20"></line>
             </svg>
           </div>
         </Popover>
+
+        {canSendShake && (
+          <div
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+            title="抖一抖"
+            onClick={() => {
+              void handleShake();
+            }}
+          >
+            <ThunderboltOutlined />
+          </div>
+        )}
 
         {sendActionList.map((action) => {
           const isEmoji = action.key === "emoji";
@@ -333,7 +295,7 @@ const SendActionBar = ({
                     src={cutIcon}
                     width={20}
                     alt={t("placeholder.screenshot")}
-                    title="截图（Ctrl+Shift+X）"
+                    title={t("placeholder.screenshot")}
                     onClick={handleScreenshotClick}
                   />
                 </div>

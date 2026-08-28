@@ -1,6 +1,7 @@
 import { useMount } from "ahooks";
 import { Layout, Spin } from "antd";
 import { t } from "i18next";
+import { useEffect, useRef, useState } from "react";
 import { Outlet, useMatches, useNavigate } from "react-router-dom";
 
 import { useUserStore } from "@/store";
@@ -13,6 +14,34 @@ export const MainContentLayout = () => {
   useGlobalEvent();
   const matches = useMatches();
   const navigate = useNavigate();
+  const [isWindowShaking, setIsWindowShaking] = useState(false);
+  const shakeResetTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI?.subscribe(
+      "shakeMainWindowEffect",
+      (durationMs?: number) => {
+        const duration =
+          typeof durationMs === "number" && durationMs > 0 ? durationMs : 1000;
+        if (shakeResetTimer.current !== null) {
+          window.clearTimeout(shakeResetTimer.current);
+        }
+        setIsWindowShaking(false);
+        window.requestAnimationFrame(() => setIsWindowShaking(true));
+        shakeResetTimer.current = window.setTimeout(() => {
+          setIsWindowShaking(false);
+          shakeResetTimer.current = null;
+        }, duration);
+      },
+    );
+
+    return () => {
+      unsubscribe?.();
+      if (shakeResetTimer.current !== null) {
+        window.clearTimeout(shakeResetTimer.current);
+      }
+    };
+  }, []);
 
   const progress = useUserStore((state) => state.progress);
   const syncState = useUserStore((state) => state.syncState);
@@ -34,7 +63,7 @@ export const MainContentLayout = () => {
 
   return (
     <Spin className="!max-h-none" spinning={showLockLoading} tip={loadingTip}>
-      <Layout className="h-full">
+      <Layout className={`h-full${isWindowShaking ? " desktop-window-shake" : ""}`}>
         <TopSearchBar />
         <Layout>
           <LeftNavBar />

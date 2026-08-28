@@ -78,9 +78,7 @@ const recoverMojibakePath = (filePath: string) => {
   if (process.platform !== "win32") return "";
 
   try {
-    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString(
-      "utf8",
-    );
+    const recovered = Buffer.from(iconv.encode(filePath, "gb18030")).toString("utf8");
     if (recovered === filePath || recovered.includes("\uFFFD")) {
       return "";
     }
@@ -159,6 +157,10 @@ const writeClipboardImage = (base64: string): Promise<void> => {
   return ipcRenderer.invoke(IpcRenderToMain.writeClipboardImage, base64);
 };
 
+const writeClipboardImageFile = (data: ArrayBuffer): Promise<void> => {
+  return ipcRenderer.invoke(IpcRenderToMain.writeClipboardImageFile, data);
+};
+
 const saveScreenshotFile = (base64: string): Promise<string> => {
   return ipcRenderer.invoke(IpcRenderToMain.saveScreenshotFile, base64);
 };
@@ -172,8 +174,17 @@ const openFileDialog = (
 const saveDownloadedFile = ({
   data,
   fileName,
-}: Parameters<IElectronAPI["saveDownloadedFile"]>[0]): Promise<boolean> => {
-  return ipcRenderer.invoke(IpcRenderToMain.saveDownloadedFile, { data, fileName });
+  filePath,
+}: Parameters<IElectronAPI["saveDownloadedFile"]>[0]): Promise<string | false> => {
+  return ipcRenderer.invoke(IpcRenderToMain.saveDownloadedFile, {
+    data,
+    fileName,
+    filePath,
+  });
+};
+
+const openLocalPath = (filePath: string): Promise<string> => {
+  return ipcRenderer.invoke(IpcRenderToMain.openLocalPath, filePath);
 };
 
 const Api: IElectronAPI = {
@@ -190,10 +201,12 @@ const Api: IElectronAPI = {
   getFileByPath,
   openFileDialog,
   saveDownloadedFile,
+  openLocalPath,
   saveFileToDisk,
   startScreenshot,
   readClipboardImage,
   writeClipboardImage,
+  writeClipboardImageFile,
   saveScreenshotFile,
 };
 

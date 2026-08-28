@@ -1,23 +1,23 @@
+import { EditOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
 import type {
   ConversationItem,
   ConversationItem as ConversationItemType,
   MessageItem,
 } from "@openim/wasm-client-sdk/lib/types/entity";
-import { EditOutlined } from "@ant-design/icons";
 import clsx from "clsx";
 import { t } from "i18next";
 import { memo, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { DigitalTwinReplySummary } from "@/api/digitalTwin";
-import OIMAvatar from "@/components/OIMAvatar";
 import { getCleanText } from "@/components/CKEditor/utils";
+import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
-import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
 import emitter from "@/utils/events";
+import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
 
 import styles from "./conversation-item.module.scss";
 
@@ -51,10 +51,16 @@ const ConversationItem = ({
 
   const toSpecifiedConversation = async () => {
     if (isActive) {
+      window.electronAPI?.ipcSend("trayConversationOpened", {
+        conversationID: conversation.conversationID,
+      });
       return;
     }
     await updateCurrentConversation({ ...conversation });
     navigate(`/chat/${conversation.conversationID}`);
+    window.electronAPI?.ipcSend("trayConversationOpened", {
+      conversationID: conversation.conversationID,
+    });
   };
 
   const latestMessage = useMemo(() => {
@@ -124,7 +130,7 @@ const ConversationItem = ({
               text={displayName}
               size={36}
               color="#7c3aed"
-              className="!bg-white cursor-pointer"
+              className="cursor-pointer !bg-white"
               onClick={handleAvatarClick}
             />
           </div>
@@ -154,31 +160,33 @@ const ConversationItem = ({
       </div>
 
       <div className="ml-3 flex h-11 flex-1 flex-col justify-between overflow-hidden">
-        <div className="flex items-center justify-between">
-          <div className="flex min-w-0 flex-1 items-center">
-            <div className="truncate font-medium">{displayName}</div>
+        <div className="flex min-w-0 items-center justify-between">
+          <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+            <div className="min-w-[36px] truncate font-medium">{displayName}</div>
             {isAgent && (
-              <span className="ml-2 shrink-0 rounded-full bg-[#ede9fe] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7c3aed]">
+              <span className="ml-2 min-w-0 truncate rounded-full bg-[#ede9fe] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7c3aed]">
                 AI
               </span>
             )}
             {latestMessageIsDigitalTwin && (
-              <span className="ml-2 shrink-0 rounded bg-[#e6f4ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#0089ff]">
+              <span className="ml-2 min-w-0 truncate rounded bg-[#e6f4ff] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#0089ff]">
                 分身已回
               </span>
             )}
             {unreviewedCount > 0 && (
-              <span className="ml-1.5 shrink-0 rounded bg-[#fff3e6] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#d46b08]">
+              <span className="ml-1.5 min-w-0 truncate rounded bg-[#fff3e6] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#d46b08]">
                 待确认 {unreviewedCount}
               </span>
             )}
             {needsFollowUpCount > 0 && (
-              <span className="ml-1.5 shrink-0 rounded bg-[#fff1f0] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#cf1322]">
+              <span className="ml-1.5 min-w-0 truncate rounded bg-[#fff1f0] px-1.5 py-0.5 text-[10px] font-medium leading-4 text-[#cf1322]">
                 需跟进 {needsFollowUpCount}
               </span>
             )}
           </div>
-          <div className="ml-2 shrink-0 text-xs text-[var(--text-placeholder)]">{latestMessageTime}</div>
+          <div className="ml-2 shrink-0 text-xs text-[var(--text-placeholder)]">
+            {latestMessageTime}
+          </div>
         </div>
 
         <div className="flex items-center">
