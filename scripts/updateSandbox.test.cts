@@ -19,6 +19,18 @@ const debUpdateManage = require("fs").readFileSync(
 );
 assert.ok(updateManage.includes("autoUpdater.autoDownload = isSandbox ? false : config.autoDownload"));
 assert.ok(updateManage.includes("showSandboxUpdateNotice"));
+const availableHandler = updateManage
+  .split('autoUpdater.on("update-available"')[1]
+  .split('autoUpdater.on("update-not-available"')[0];
+assert.match(availableHandler, /isSandboxEnvironment\(\)/);
+assert.match(availableHandler, /autoUpdater\.autoDownload = false/);
+const downloadedHandler = updateManage
+  .split('autoUpdater.on("update-downloaded"')[1]
+  .split('autoUpdater.on("error"')[0];
+assert.match(
+  downloadedHandler,
+  /if \(isSandboxEnvironment\(\)\)[\s\S]*showSandboxUpdateNotice\(\)/,
+);
 assert.ok(debUpdateManage.includes("if (isSandboxEnvironment())"));
 assert.ok(debUpdateManage.includes("await showSandboxUpdateNotice();"));
 

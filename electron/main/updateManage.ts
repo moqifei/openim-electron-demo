@@ -110,7 +110,10 @@ export const initAutoUpdater = () => {
 
   autoUpdater.on("update-available", (info) => {
     logger.info("[updater] update available", info.version);
-    if (isSandbox) {
+    const isSandboxNow = isSandboxEnvironment();
+    if (isSandboxNow) {
+      autoUpdater.autoDownload = false;
+      autoUpdater.autoInstallOnAppQuit = false;
       void showSandboxUpdateNotice();
     }
   });
@@ -147,6 +150,10 @@ export const initAutoUpdater = () => {
     });
 
     if (result.response === 0) {
+      if (isSandboxEnvironment()) {
+        await showSandboxUpdateNotice();
+        return;
+      }
       autoUpdater.quitAndInstall(false, true);
     }
   });
