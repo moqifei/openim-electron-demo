@@ -10,7 +10,7 @@
   beforePack: "./scripts/beforePackBundledGlibc.cjs",
   afterPack: "./scripts/afterPackBundledGlibc.cjs",
   directories: {
-    output: "release/StickyCake",
+    output: "release/StickyCake/${version}",
   },
   files: [
     "dist",
