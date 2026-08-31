@@ -1,4 +1,3 @@
-import { ThunderboltOutlined } from "@ant-design/icons";
 import type { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Popover, Slider, Upload } from "antd";
 import i18n, { t } from "i18next";
@@ -12,13 +11,7 @@ import emojiIcon from "@/assets/images/chatFooter/emoji.png";
 import fileIcon from "@/assets/images/chatFooter/file.png";
 import image from "@/assets/images/chatFooter/image.png";
 import { CKEditorRef } from "@/components/CKEditor";
-import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store/conversation";
-import {
-  buildShakeMessageData,
-  canUseShake,
-  CHAT_SHAKE_TEXT,
-} from "@/utils/shakeMessage";
 
 import { SendMessageParams } from "../useSendMessage";
 import EmojiPicker from "./EmojiPicker";
@@ -94,10 +87,6 @@ const SendActionBar = ({
 
   const chatFontSize = useConversationStore((state) => state.chatFontSize);
   const setChatFontSize = useConversationStore((state) => state.setChatFontSize);
-  const currentConversation = useConversationStore(
-    (state) => state.currentConversation,
-  );
-  const canSendShake = canUseShake(currentConversation);
 
   const fileHandle = (options: UploadRequestOption, _key: string) => {
     const file = options.file as File;
@@ -165,21 +154,6 @@ const SendActionBar = ({
     const message = await getCardMessage(user);
     sendMessage({ message });
     setCardModalOpen(false);
-  };
-
-  const handleShake = async () => {
-    if (!canSendShake) return;
-    try {
-      const { data: message } = await IMSDK.createCustomMessage({
-        data: buildShakeMessageData(),
-        extension: "",
-        description: CHAT_SHAKE_TEXT,
-      });
-      await sendMessage({ message });
-    } catch (error) {
-      console.error("[SendActionBar] send shake failed:", error);
-      antdMessage.error(t("toast.accessFailed"));
-    }
   };
 
   const handleScreenshotClick = () => {
@@ -269,18 +243,6 @@ const SendActionBar = ({
             </svg>
           </div>
         </Popover>
-
-        {canSendShake && (
-          <div
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
-            title="抖一抖"
-            onClick={() => {
-              void handleShake();
-            }}
-          >
-            <ThunderboltOutlined />
-          </div>
-        )}
 
         {sendActionList.map((action) => {
           const isEmoji = action.key === "emoji";

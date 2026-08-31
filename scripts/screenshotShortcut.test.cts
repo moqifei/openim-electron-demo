@@ -22,6 +22,10 @@ const settings = fs.readFileSync(
 assert.ok(shortcutManage.includes('DEFAULT_SCREENSHOT_SHORTCUT = "CommandOrControl+Shift+X"'));
 assert.ok(shortcutManage.includes('getStore().get(SCREENSHOT_SHORTCUT_KEY)'));
 assert.ok(shortcutManage.includes("globalShortcut.unregister(screenshotShortcut)"));
+assert.ok(
+  /if\s*\(!app\.isReady\(\)\)\s*return/.test(shortcutManage),
+  "shortcut cleanup must wait until Electron is ready",
+);
 assert.ok(shortcutManage.includes("updateScreenshotShortcut"));
 assert.ok(constants.includes('updateScreenshotShortcut: "updateScreenshotShortcut"'));
 assert.ok(ipc.includes("IpcRenderToMain.updateScreenshotShortcut"));

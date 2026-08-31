@@ -40,7 +40,7 @@
     },
   ],
   mac: {
-    artifactName: "StickyCake_${arch}.${ext}",
+    artifactName: "StickyCake_${version}_${arch}.${ext}",
     target: ["dmg"],
     icon: "./dist/icons/icon-new.png",
     extraResources: [
@@ -60,7 +60,7 @@
         target: "nsis",
       },
     ],
-    artifactName: "StickyCake.${ext}",
+    artifactName: "StickyCake_${version}.${ext}",
     icon: "./dist/icons/icon-new.ico",
     extraResources: [
       {
@@ -86,7 +86,7 @@
       }
     ],
     maintainer: "opencorp-base",
-    artifactName: "StickyCake_${arch}.${ext}",
+    artifactName: "StickyCake_${version}_${arch}.${ext}",
     category: "Utility",
     extraResources: [
       {

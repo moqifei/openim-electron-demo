@@ -1,4 +1,4 @@
-import { globalShortcut } from "electron";
+import { app, globalShortcut } from "electron";
 import { toggleDevTools, triggerScreenshot } from "./windowManage";
 import { getStore } from "./storeManage";
 
@@ -75,5 +75,6 @@ export const updateScreenshotShortcut = (value: unknown) => {
 };
 
 export const unregisterShortcuts = () => {
+  if (!app.isReady()) return;
   globalShortcut.unregisterAll();
 };

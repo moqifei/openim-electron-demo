@@ -589,6 +589,7 @@ export function useGlobalEvent() {
     updateGroup(data, true);
   };
   const joinedGroupDismissHandler = ({ data }: WSEvent<GroupItem>) => {
+    updateGroup(data);
     if (data.groupID === useConversationStore.getState().currentConversation?.groupID) {
       getCurrentMemberInGroupByReq(data.groupID);
     }

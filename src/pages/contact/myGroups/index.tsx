@@ -1,4 +1,4 @@
-import { SessionType } from "@openim/wasm-client-sdk";
+import { GroupStatus, SessionType } from "@openim/wasm-client-sdk";
 import { GroupItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Empty, Select } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -84,6 +84,9 @@ export const MyGroups = () => {
   };
 
   const filterGroup = joinedGroupList.filter((group) => {
+    if (group.status === GroupStatus.Dismissed) {
+      return false;
+    }
     if (selectGroup === GroupTypeEnum.JoinedGroup) {
       return true;
     } else if (selectGroup === GroupTypeEnum.CreatedGroup) {
