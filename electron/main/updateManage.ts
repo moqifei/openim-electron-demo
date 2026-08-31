@@ -111,9 +111,11 @@ export const initAutoUpdater = () => {
   autoUpdater.on("update-available", (info) => {
     logger.info("[updater] update available", info.version);
     const isSandboxNow = isSandboxEnvironment();
+    autoUpdater.autoDownload = isSandboxNow ? false : config.autoDownload;
+    autoUpdater.autoInstallOnAppQuit = isSandboxNow
+      ? false
+      : config.autoInstallOnAppQuit;
     if (isSandboxNow) {
-      autoUpdater.autoDownload = false;
-      autoUpdater.autoInstallOnAppQuit = false;
       void showSandboxUpdateNotice();
     }
   });
@@ -133,7 +135,7 @@ export const initAutoUpdater = () => {
 
   autoUpdater.on("update-downloaded", async (info) => {
     logger.info("[updater] update downloaded", info.version);
-    if (isSandbox) {
+    if (isSandboxEnvironment()) {
       await showSandboxUpdateNotice();
       return;
     }

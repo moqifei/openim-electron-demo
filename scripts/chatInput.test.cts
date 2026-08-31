@@ -1,4 +1,6 @@
 import assert = require("assert");
+import fs = require("fs");
+import path = require("path");
 
 const {
   getPreferredChatPasteUrl,
@@ -44,6 +46,23 @@ assert.equal(
     key: "Backspace",
   }),
   false,
+);
+
+const ckEditorSource = fs.readFileSync(
+  path.join(process.cwd(), "src/components/CKEditor/index.tsx"),
+  "utf8",
+);
+const nativePasteHandler = ckEditorSource
+  .split("const listenPaste")[1]
+  .split("const listenClipboardInput")[0];
+assert.ok(
+  !nativePasteHandler.includes("getPreferredChatPaste"),
+  "text paste must not be handled by both the native paste and CKEditor clipboard handlers",
+);
+assert.equal(
+  (ckEditorSource.match(/getPreferredChatPasteText/g) ?? []).length,
+  2,
+  "a pasted URL should have exactly one text insertion path",
 );
 
 console.log("chatInput tests passed");

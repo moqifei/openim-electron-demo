@@ -19,7 +19,7 @@ import {
   useRef,
 } from "react";
 
-import { getPreferredChatPasteText, getPreferredChatPasteUrl } from "@/utils/chatInput";
+import { getPreferredChatPasteText } from "@/utils/chatInput";
 
 export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
@@ -221,21 +221,6 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     const editableElement = editor.ui.view.editable.element;
     if (!editableElement) return null;
 
-    const insertPlainText = (text: string) => {
-      editor.model.change((writer) => {
-        const selection = editor.model.document.selection;
-        const selectedContent = editor.model.getSelectedContent(selection);
-        if (!selectedContent.isEmpty) {
-          editor.model.deleteContent(selection);
-        }
-        const insertPosition = editor.model.document.selection.getFirstPosition();
-        if (!insertPosition) return;
-        writer.insertText(text, insertPosition);
-      });
-      editor.editing.view.focus();
-      onChange?.(editor.getData());
-    };
-
     const handler = (e: ClipboardEvent) => {
       const files: File[] = [];
       const items = e.clipboardData?.items;
@@ -258,17 +243,6 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
         e.stopPropagation();
         onPasteFileRef.current?.(files);
         return;
-      }
-
-      const pastedUrl = getPreferredChatPasteUrl({
-        plainText: e.clipboardData?.getData("text/plain") ?? "",
-        htmlText: e.clipboardData?.getData("text/html") ?? "",
-        uriList: e.clipboardData?.getData("text/uri-list") ?? "",
-      });
-      if (pastedUrl) {
-        e.preventDefault();
-        e.stopPropagation();
-        insertPlainText(pastedUrl);
       }
     };
 
