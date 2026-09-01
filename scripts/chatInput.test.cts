@@ -3,31 +3,27 @@ import fs = require("fs");
 import path = require("path");
 
 const {
-  getPreferredChatPasteUrl,
+  escapeChatPasteText,
   getPreferredChatPasteText,
   shouldDeletePendingAttachmentOnBackspace,
 } = require("../src/utils/chatInput");
 
 assert.equal(
-  getPreferredChatPasteUrl({
-    plainText: "项目 (qa.bx) https://xone.qa.bx/project/createProject",
+  getPreferredChatPasteText({
+    plainText:
+      "providers:\n  custom:\n    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1\n    api_key: sk-example",
   }),
-  "https://xone.qa.bx/project/createProject",
+  "providers:\n  custom:\n    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1\n    api_key: sk-example",
 );
 
 assert.equal(
-  getPreferredChatPasteText({
-    plainText: "项目 (qa.bx) https://xone.qa.bx/project/createProject",
-  }),
-  "https://xone.qa.bx/project/createProject",
+  escapeChatPasteText("第一行\n第二行\r\n第三行"),
+  "第一行<br>第二行<br>第三行",
 );
-
 assert.equal(
-  getPreferredChatPasteText({
-    plainText: "页签标题\nhttps://example.com/article",
-    htmlText: '<a href="https://example.com/article">页签标题</a>',
-  }),
-  "https://example.com/article",
+  escapeChatPasteText("  第一行\n\t第二行"),
+  "&nbsp;&nbsp;第一行<br>&nbsp;&nbsp;&nbsp;&nbsp;第二行",
+  "pasted indentation should survive HTML conversion",
 );
 
 assert.equal(
@@ -63,6 +59,10 @@ assert.equal(
   (ckEditorSource.match(/getPreferredChatPasteText/g) ?? []).length,
   2,
   "a pasted URL should have exactly one text insertion path",
+);
+assert.ok(
+  ckEditorSource.includes("escapeChatPasteText(pastedText)"),
+  "CKEditor paste conversion must preserve line breaks",
 );
 
 console.log("chatInput tests passed");

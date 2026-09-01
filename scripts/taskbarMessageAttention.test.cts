@@ -14,6 +14,10 @@ const windowManage = fs.readFileSync(
   path.join(process.cwd(), "electron/main/windowManage.ts"),
   "utf8",
 );
+const reminderManage = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/messageReminderManage.ts"),
+  "utf8",
+);
 const globalEvents = fs.readFileSync(
   path.join(process.cwd(), "src/layout/useGlobalEvents.tsx"),
   "utf8",
@@ -39,5 +43,10 @@ assert.ok(windowManage.includes("mainWindow.isMinimized()"));
 assert.ok(windowManage.includes("mainWindow.isFocused()"));
 assert.ok(windowManage.includes("mainWindow.flashFrame(true)"));
 assert.ok(windowManage.includes("mainWindow?.flashFrame(false)"));
+assert.ok(
+  windowManage.includes("clearAllMessageReminders()") &&
+    reminderManage.includes("export const clearAllMessageReminders"),
+  "focusing the main window should clear tray reminders and stop flashing",
+);
 
 console.log("taskbarMessageAttention tests passed");

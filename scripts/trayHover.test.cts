@@ -36,6 +36,12 @@ assert.ok(
   "leaving the tray should schedule the reminder panel to hide",
 );
 assert.ok(
+  /appTray\.on\("click",[\s\S]*?clearTrayAttention\(\);[\s\S]*?showWindow\(\);/.test(
+    source,
+  ),
+  "clicking the tray icon should clear the tray reminder and stop flashing",
+);
+assert.ok(
   source.includes("clearTrayPanelHideTimer();\n      return;"),
   "tray panel mouse monitor should keep the panel open while hovered",
 );

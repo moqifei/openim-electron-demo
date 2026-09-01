@@ -35,6 +35,7 @@ export const IpcRenderToMain = {
   saveScreenshotFile: "saveScreenshotFile",
   probeServerEnvironment: "probeServerEnvironment",
   probeImWsPort: "probeImWsPort",
+  checkForUpdates: "checkForUpdates",
   notifyIncomingMessage: "notifyIncomingMessage",
   requestMainWindowAttention: "requestMainWindowAttention",
   trayConversationOpened: "trayConversationOpened",

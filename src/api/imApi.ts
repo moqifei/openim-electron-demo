@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 
 import { useUserStore } from "@/store";
+import { resolveFileContentType } from "@/utils/fileMimeType";
 import { normalizeMojibakeString } from "@/utils/mojibake";
 import {
   buildObjectUploadName,
@@ -119,6 +120,10 @@ export const uploadObjectFile = async (
   const currentUserID = useUserStore.getState()?.selfInfo?.userID;
   // Backend requires non-admin users to prefix file name with their userID
   const uploadName = buildObjectUploadName(currentUserID, rawName);
+  const fileContentType = resolveFileContentType(
+    rawName,
+    options?.contentType || file.type,
+  );
 
   const request = getApiAxios();
   const uploadUrl = `${request.defaults.baseURL ?? ""}/object/upload`;
@@ -128,7 +133,7 @@ export const uploadObjectFile = async (
     fileName: rawName,
     uploadName,
     fileSize: file.size,
-    fileType: options?.contentType ?? file.type,
+    fileType: fileContentType,
     filePath,
   };
 
@@ -136,7 +141,7 @@ export const uploadObjectFile = async (
     const formData = new FormData();
     formData.append("file", file, uploadName);
     formData.append("name", uploadName);
-    formData.append("contentType", options?.contentType ?? file.type);
+    formData.append("contentType", fileContentType);
     formData.append("cause", options?.cause ?? "chat");
     return formData;
   };
@@ -152,7 +157,7 @@ export const uploadObjectFile = async (
     }>("uploadObjectFileFromPath", {
       filePath,
       uploadName,
-      contentType: (options?.contentType ?? file.type) || "application/octet-stream",
+      contentType: fileContentType,
       cause: options?.cause ?? "chat",
       baseURL: request.defaults.baseURL ?? "",
       token: await getIMToken(),

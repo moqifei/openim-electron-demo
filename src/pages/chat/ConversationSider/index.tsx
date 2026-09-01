@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { t } from "i18next";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
@@ -8,6 +8,7 @@ import sync from "@/assets/images/common/sync.png";
 import sync_error from "@/assets/images/common/sync_error.png";
 import FlexibleSider from "@/components/FlexibleSider";
 import { useConversationStore, useUserStore } from "@/store";
+import { conversationSort } from "@/utils/imCommon";
 
 import ConversationItemComp from "./ConversationItem";
 import styles from "./index.module.scss";
@@ -57,10 +58,15 @@ const ConnectBar = () => {
 const ConversationSider = () => {
   const { conversationID } = useParams();
   const conversationList = useConversationStore((state) => state.conversationList);
+  const sortedConversationList = useMemo(
+    () => conversationSort(conversationList),
+    [conversationList],
+  );
   const getConversationListByReq = useConversationStore(
     (state) => state.getConversationListByReq,
   );
-  const digitalTwinSummaries = useDigitalTwinConversationSummaries(conversationList);
+  const digitalTwinSummaries =
+    useDigitalTwinConversationSummaries(sortedConversationList);
   const virtuoso = useRef<VirtuosoHandle>(null);
   const hasmore = useRef(true);
   const loading = useRef(false);
@@ -81,7 +87,7 @@ const ConversationSider = () => {
       >
         <Virtuoso
           className="min-h-0 flex-1"
-          data={conversationList}
+          data={sortedConversationList}
           ref={virtuoso}
           endReached={() => {
             void endReached();

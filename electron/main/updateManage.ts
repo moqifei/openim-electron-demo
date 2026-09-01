@@ -71,7 +71,7 @@ export const readUpdateConfig = (): Required<UpdateConfig> => {
   return DEFAULT_UPDATE_CONFIG;
 };
 
-export const initAutoUpdater = () => {
+export const initAutoUpdater = async () => {
   if (updaterInitialized) return;
   updaterInitialized = true;
 
@@ -93,7 +93,7 @@ export const initAutoUpdater = () => {
   }
 
   autoUpdater.logger = logger;
-  const isSandbox = isSandboxEnvironment();
+  const isSandbox = await isSandboxEnvironment();
   autoUpdater.autoDownload = isSandbox ? false : config.autoDownload;
   autoUpdater.autoInstallOnAppQuit = isSandbox
     ? false
@@ -108,9 +108,9 @@ export const initAutoUpdater = () => {
     logger.info("[updater] checking for update", config.url);
   });
 
-  autoUpdater.on("update-available", (info) => {
+  autoUpdater.on("update-available", async (info) => {
     logger.info("[updater] update available", info.version);
-    const isSandboxNow = isSandboxEnvironment();
+    const isSandboxNow = await isSandboxEnvironment();
     autoUpdater.autoDownload = isSandboxNow ? false : config.autoDownload;
     autoUpdater.autoInstallOnAppQuit = isSandboxNow
       ? false
@@ -135,7 +135,7 @@ export const initAutoUpdater = () => {
 
   autoUpdater.on("update-downloaded", async (info) => {
     logger.info("[updater] update downloaded", info.version);
-    if (isSandboxEnvironment()) {
+    if (await isSandboxEnvironment()) {
       await showSandboxUpdateNotice();
       return;
     }
@@ -152,7 +152,7 @@ export const initAutoUpdater = () => {
     });
 
     if (result.response === 0) {
-      if (isSandboxEnvironment()) {
+      if (await isSandboxEnvironment()) {
         await showSandboxUpdateNotice();
         return;
       }
@@ -179,6 +179,19 @@ export const initAutoUpdater = () => {
   const intervalMs = Math.max(60 * 1000, config.checkIntervalMs);
   periodicCheckTimer = setInterval(runCheck, intervalMs);
   logger.info("[updater] periodic check scheduled every", `${intervalMs}ms`);
+};
+
+export const checkForUpdates = async () => {
+  if (!updaterInitialized) {
+    await initAutoUpdater();
+  }
+
+  if (!isProd || !app.isPackaged) return;
+
+  const config = readUpdateConfig();
+  if (!config.enabled || !config.url) return;
+
+  await autoUpdater.checkForUpdates();
 };
 
 // 应用退出时清理周期性检查定时器, 避免句柄泄漏

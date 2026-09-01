@@ -10,12 +10,14 @@ import {
   clearTrayAttention,
   openConversationFromTray,
   setTrayAttention,
+  stopTrayAttentionFlash,
 } from "./trayManage";
 
 const REMINDER_WIDTH = 320;
 const REMINDER_HEIGHT = 110;
 const REMINDER_MARGIN = 16;
 const REMINDER_TIMEOUT_MS = 5000;
+const isLinuxReminder = process.platform === "linux";
 
 type ReminderPayload = {
   conversationID?: string;
@@ -39,6 +41,10 @@ const normalizeReminderText = (text: string) => text.replace(/\s+/g, " ").trim()
 const buildReminderHtml = ({ conversationID, title, body }: ReminderPayload) => {
   const safeTitle = escapeHtml(normalizeReminderText(title));
   const safeBody = escapeHtml(normalizeReminderText(body));
+  const pageBackground = isLinuxReminder ? "#181c24" : "transparent";
+  const toastBackground = isLinuxReminder
+    ? "#181c24"
+    : "rgba(24, 28, 36, 0.96)";
   const conversationHref = conversationID
     ? `openim-tray://conversation/${encodeURIComponent(conversationID)}`
     : "";
@@ -61,7 +67,7 @@ const buildReminderHtml = ({ conversationID, title, body }: ReminderPayload) => 
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: transparent;
+        background: ${pageBackground};
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       .toast {
@@ -71,7 +77,7 @@ const buildReminderHtml = ({ conversationID, title, body }: ReminderPayload) => 
         height: 100%;
         padding: 14px 16px;
         border-radius: 12px;
-        background: rgba(24, 28, 36, 0.96);
+        background: ${toastBackground};
         color: #f4f7fb;
         box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
         text-decoration: none;
@@ -166,9 +172,9 @@ const ensureReminderWindow = () => {
     skipTaskbar: true,
     show: false,
     alwaysOnTop: true,
-    focusable: false,
-    transparent: true,
-    backgroundColor: "#00000000",
+    focusable: !isLinuxReminder,
+    transparent: !isLinuxReminder,
+    backgroundColor: isLinuxReminder ? "#181c24" : "#00000000",
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -214,7 +220,10 @@ export const showMessageReminder = (payload: ReminderPayload) => {
     syncTrayAttention();
   }
 
-  window.setAlwaysOnTop(true, "screen-saver");
+  window.setAlwaysOnTop(
+    true,
+    isLinuxReminder ? "pop-up-menu" : "screen-saver",
+  );
   window.setBounds(getReminderBounds(), false);
   window.webContents.once("did-finish-load", () => {
     if (!window.isDestroyed()) {
@@ -238,12 +247,17 @@ export const hideMessageReminder = () => {
 export const clearMessageReminderConversation = (conversationID: string) => {
   clearReminderConversation(conversationID);
   syncTrayAttention();
+  stopTrayAttentionFlash();
+};
+
+export const clearAllMessageReminders = () => {
+  hideMessageReminder();
+  clearReminderConversations();
+  clearTrayAttention();
 };
 
 export const destroyMessageReminder = () => {
-  clearReminderTimeout();
-  clearReminderConversations();
-  clearTrayAttention();
+  clearAllMessageReminders();
   if (reminderWindow && !reminderWindow.isDestroyed()) {
     reminderWindow.destroy();
     reminderWindow = null;

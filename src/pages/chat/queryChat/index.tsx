@@ -1,6 +1,8 @@
 import { useUnmount } from "ahooks";
 import { Layout } from "antd";
+import { useEffect } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useParams } from "react-router-dom";
 
 import { useConversationStore } from "@/store";
 
@@ -11,11 +13,17 @@ import DigitalTwinConversationBanner from "./DigitalTwinConversationBanner";
 import useConversationState from "./useConversationState";
 
 export const QueryChat = () => {
+  const { conversationID } = useParams();
   const updateCurrentConversation = useConversationStore(
     (state) => state.updateCurrentConversation,
   );
 
   useConversationState();
+
+  useEffect(() => {
+    if (!conversationID) return;
+    window.electronAPI?.ipcSend("trayConversationOpened", { conversationID });
+  }, [conversationID]);
 
   useUnmount(() => {
     updateCurrentConversation();

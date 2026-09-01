@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { BrowserWindow, dialog, shell } from "electron";
 import { isLinux, isMac, isWin } from "../utils";
 import { destroyTray } from "./trayManage";
-import { hideMessageReminder } from "./messageReminderManage";
+import { clearAllMessageReminders } from "./messageReminderManage";
 import { getIsForceQuit } from "./appManage";
 import { registerShortcuts } from "./shortcutManage";
 import { initIMSDK } from "../utils/imsdk";
@@ -113,7 +113,7 @@ export function createMainWindow() {
 
   mainWindow.on("focus", () => {
     mainWindow?.flashFrame(false);
-    hideMessageReminder();
+    clearAllMessageReminders();
     notifyMainWindowState();
   });
 

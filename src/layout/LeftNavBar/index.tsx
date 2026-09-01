@@ -67,7 +67,8 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: MainNavItem
 
   const getBadge = () => {
     if (path === "/chat") return unReadCount;
-    if (path === "/contact") return unHandleFriendApplicationCount + unHandleGroupApplicationCount;
+    if (path === "/contact")
+      return unHandleFriendApplicationCount + unHandleGroupApplicationCount;
     return 0;
   };
 
@@ -82,11 +83,18 @@ const NavItem = ({ nav: { icon, icon_active, title, path } }: { nav: MainNavItem
         )}
         onClick={tryNavigate}
       >
-        <img width={22} src={isActive ? icon_active : icon} alt="" className="opacity-90" />
-        <div className={clsx(
-          "mt-1 text-[11px] font-medium leading-none transition-colors",
-          isActive ? "text-[var(--primary)]" : "text-[var(--text-tertiary)]",
-        )}>
+        <img
+          width={22}
+          src={isActive ? icon_active : icon}
+          alt=""
+          className="opacity-90"
+        />
+        <div
+          className={clsx(
+            "mt-1 text-[11px] font-medium leading-none transition-colors",
+            isActive ? "text-[var(--primary)]" : "text-[var(--text-tertiary)]",
+          )}
+        >
           {title}
         </div>
       </div>
@@ -111,9 +119,14 @@ const profileMenuList = [
     idx: 2,
   },
   {
-    title: t("placeholder.logOut"),
+    title: t("placeholder.checkNewVersion"),
     gap: false,
     idx: 3,
+  },
+  {
+    title: t("placeholder.logOut"),
+    gap: false,
+    idx: 4,
   },
 ];
 
@@ -121,7 +134,8 @@ i18n.on("languageChanged", () => {
   profileMenuList[0].title = t("placeholder.myInfo");
   profileMenuList[1].title = t("placeholder.accountSetting");
   profileMenuList[2].title = t("placeholder.about");
-  profileMenuList[3].title = t("placeholder.logOut");
+  profileMenuList[3].title = t("placeholder.checkNewVersion");
+  profileMenuList[4].title = t("placeholder.logOut");
 });
 
 const LeftNavBar = memo(() => {
@@ -151,6 +165,13 @@ const LeftNavBar = memo(() => {
         aboutRef.current?.openOverlay();
         break;
       case 3:
+        void window.electronAPI
+          ?.ipcInvoke("checkForUpdates")
+          .catch((error: unknown) => {
+            feedbackToast({ error });
+          });
+        break;
+      case 4:
         tryLogout();
         break;
       default:
@@ -203,18 +224,19 @@ const LeftNavBar = memo(() => {
           customRequest={customUpload as any}
         >
           <div className={styles["avatar-wrapper"]}>
-            <OIMAvatar
-              src={selfInfo.faceURL}
-              text={selfInfo.nickname}
-            />
+            <OIMAvatar src={selfInfo.faceURL} text={selfInfo.nickname} />
             <div className={styles["mask"]}>
               <img src={change_avatar} width={19} alt="" />
             </div>
           </div>
         </Upload>
-        <div className="flex-1 overflow-hidden min-w-0">
-          <div className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{selfInfo.nickname}</div>
-          <div className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">ID: {selfInfo.userID}</div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
+            {selfInfo.nickname}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-[var(--text-tertiary)]">
+            ID: {selfInfo.userID}
+          </div>
         </div>
       </div>
       {profileMenuList.map((menu) => (
@@ -224,11 +246,12 @@ const LeftNavBar = memo(() => {
             onClick={() => profileMenuClick(menu.idx)}
           >
             <span className="text-sm text-[var(--text-secondary)]">{menu.title}</span>
-            <RightOutlined rev={undefined} className="text-xs text-[var(--text-placeholder)]" />
+            <RightOutlined
+              rev={undefined}
+              className="text-xs text-[var(--text-placeholder)]"
+            />
           </div>
-          {menu.gap && (
-            <Divider className="my-1 border-[var(--divider-color)]" />
-          )}
+          {menu.gap && <Divider className="my-1 border-[var(--divider-color)]" />}
         </div>
       ))}
     </div>
@@ -258,7 +281,7 @@ const LeftNavBar = memo(() => {
           />
         </Popover>
 
-        <div className="w-full px-2.5 space-y-1">
+        <div className="w-full space-y-1 px-2.5">
           {navList.map((nav) => (
             <NavItem nav={nav} key={nav.path} />
           ))}

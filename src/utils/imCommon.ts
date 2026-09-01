@@ -439,6 +439,12 @@ export const conversationSort = (
   });
 
   filterArr.sort((a, b) => {
+    const aUnread = a.unreadCount > 0;
+    const bUnread = b.unreadCount > 0;
+    if (aUnread !== bUnread) {
+      return aUnread ? -1 : 1;
+    }
+
     if (a.isPinned === b.isPinned) {
       const aCompare =
         a.draftTextTime > a.latestMsgSendTime ? a.draftTextTime : a.latestMsgSendTime;

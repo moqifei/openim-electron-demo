@@ -181,7 +181,7 @@ const runCheck = async () => {
       return;
     }
 
-    if (isSandboxEnvironment()) {
+    if (await isSandboxEnvironment()) {
       await showSandboxUpdateNotice();
       return;
     }
@@ -242,6 +242,19 @@ export const initDebAutoUpdater = () => {
     "[deb-updater] periodic check scheduled every",
     `${config.checkIntervalMs}ms`,
   );
+};
+
+export const checkForUpdates = async () => {
+  if (!isProd || !app.isPackaged) return;
+
+  const config = readUpdateConfig();
+  if (!config.enabled || !config.url) return;
+
+  if (!updaterInitialized) {
+    initDebAutoUpdater();
+  }
+
+  await runCheck();
 };
 
 export const destroyDebAutoUpdater = () => {

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-APP_NAME="年糕"
+APP_NAME="StickyCake"
 EXECUTABLE_NAME="stickycake"
 APP_ID="io.opencorp.desktop.base"
 APP_DIR="/opt/$APP_NAME"

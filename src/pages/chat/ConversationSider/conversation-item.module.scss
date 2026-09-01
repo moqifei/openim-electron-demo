@@ -1,7 +1,7 @@
 /* MVP1: 会话列表项 - 飞书风格 */
 
 .conversation-item {
-  @apply relative flex items-center rounded-lg px-2.5 py-2.5 mx-1.5 transition-colors duration-150 cursor-pointer;
+  @apply relative mx-1.5 flex cursor-pointer items-center rounded-lg px-2.5 py-2.5 transition-colors duration-150;
 
   &:hover {
     background: var(--bg-hover);
@@ -24,11 +24,7 @@
   }
 
   /* 未读角标 - 飞书风格小红点/数字 */
-  &-unread {
-    position: absolute;
-    right: 4px;
-    top: 4px;
-    z-index: 2;
+  &-unread-right {
     display: flex;
     min-width: 18px;
     height: 18px;
@@ -42,6 +38,7 @@
     font-weight: 600;
     line-height: 1;
     padding: 0 5px;
+    white-space: nowrap;
   }
 
   /* AI 智能体未读角标 */

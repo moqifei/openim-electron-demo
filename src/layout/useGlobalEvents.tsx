@@ -18,7 +18,7 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 import { t } from "i18next";
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { CustomType } from "@/constants";
 import { SystemMessageTypes } from "@/constants/im";
@@ -72,7 +72,10 @@ const resolveImWsPort = async (host: string): Promise<string> => {
 
 export function useGlobalEvent() {
   const navigate = useNavigate();
+  const location = useLocation();
   const resume = useRef(false);
+  const isMessagePageOpenRef = useRef(false);
+  isMessagePageOpenRef.current = location.pathname.startsWith("/chat/");
 
   // user
   const updateSyncState = useUserStore((state) => state.updateSyncState);
@@ -457,6 +460,7 @@ export function useGlobalEvent() {
     }
     if (message.sendID === useUserStore.getState().selfInfo.userID) return;
     if (SystemMessageTypes.includes(message.contentType)) return;
+    if (isMessagePageOpenRef.current && canAutoMarkConversationAsRead()) return;
 
     const messageConversationID = getConversationIDByMsg(message);
     const currentConversationID =

@@ -144,16 +144,6 @@ const ConversationItem = ({
             onClick={handleAvatarClick}
           />
         )}
-        {conversation.unreadCount > 0 && (
-          <span
-            className={clsx(
-              styles["conversation-item-unread"],
-              isAgent && styles["conversation-item-unread-agent"],
-            )}
-          >
-            {formatUnreadCount(conversation.unreadCount)}
-          </span>
-        )}
         {isAgent && (
           <span className={styles["conversation-item-agent-corner"]}>AI</span>
         )}
@@ -184,8 +174,20 @@ const ConversationItem = ({
               </span>
             )}
           </div>
-          <div className="ml-2 shrink-0 text-xs text-[var(--text-placeholder)]">
-            {latestMessageTime}
+          <div className="ml-2 flex shrink-0 flex-col items-end gap-1">
+            <div className="text-xs text-[var(--text-placeholder)]">
+              {latestMessageTime}
+            </div>
+            {conversation.unreadCount > 0 && (
+              <span
+                className={clsx(
+                  styles["conversation-item-unread-right"],
+                  isAgent && styles["conversation-item-unread-agent"],
+                )}
+              >
+                {formatUnreadCount(conversation.unreadCount)}
+              </span>
+            )}
           </div>
         </div>
 

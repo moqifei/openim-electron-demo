@@ -308,6 +308,7 @@ export const createTray = () => {
   appTray.setToolTip(app.getName());
   appTray.setIgnoreDoubleClickEvents(true);
   appTray.on("click", (_event, bounds) => {
+    clearTrayAttention();
     latestTrayPanelAnchor = bounds;
     latestTrayHoverBounds = getTrayHoverBounds(bounds);
     showWindow();
@@ -323,6 +324,15 @@ export const createTray = () => {
   });
 
   updateTrayContextMenu();
+};
+
+export const stopTrayAttentionFlash = () => {
+  if (trayFlashTimer) {
+    clearInterval(trayFlashTimer);
+    trayFlashTimer = null;
+  }
+  trayFlashVisible = true;
+  restoreTray();
 };
 
 export const setTrayAttention = (conversations: ReminderConversation[]) => {
@@ -354,12 +364,7 @@ export const clearTrayAttention = () => {
   trayAttentionConversations = [];
   trayPanelHtml = "";
   hideTrayReminderPanel();
-  if (trayFlashTimer) {
-    clearInterval(trayFlashTimer);
-    trayFlashTimer = null;
-  }
-  trayFlashVisible = true;
-  restoreTray();
+  stopTrayAttentionFlash();
 };
 
 export const destroyTray = () => {

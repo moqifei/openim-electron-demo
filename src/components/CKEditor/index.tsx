@@ -19,7 +19,7 @@ import {
   useRef,
 } from "react";
 
-import { getPreferredChatPasteText } from "@/utils/chatInput";
+import { escapeChatPasteText, getPreferredChatPasteText } from "@/utils/chatInput";
 
 export type CKEditorRef = {
   focus: (moveToEnd?: boolean) => void;
@@ -49,24 +49,6 @@ const keyCodes = {
   backspace: 8,
   composing: 229,
 };
-
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
 
 const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
   { value, placeholder, onChange, onEnter, onPasteFile, onKeydown, fontSize = 14 },
@@ -274,7 +256,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
       if (!pastedText) return;
 
       data.content = editor.data.htmlProcessor.toView(
-        `<p>${escapeHtml(pastedText)}</p>`,
+        `<p>${escapeChatPasteText(pastedText)}</p>`,
       );
     };
 

@@ -37,7 +37,7 @@ const init = () => {
   if (isLinux && !process.env.APPIMAGE) {
     initDebAutoUpdater();
   } else {
-    initAutoUpdater();
+    void initAutoUpdater();
   }
 };
 

@@ -7,12 +7,14 @@ import { t } from "i18next";
 import { forwardRef, ForwardRefRenderFunction, memo, useEffect, useState } from "react";
 import { useCopyToClipboard } from "react-use";
 
-import logo from "@/assets/images/profile/logo.png";
 import { APP_NAME, APP_VERSION, SDK_VERSION } from "@/config";
 import { feedbackToast } from "@/utils/common";
+import { publicAsset } from "@/utils/publicAsset";
 
 import { OverlayVisibleHandle, useOverlayVisible } from "../../hooks/useOverlayVisible";
 import { IMSDK } from "../MainContentWrap";
+
+const appIcon = publicAsset("icons/icon-new.png");
 
 const About: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (_, ref) => {
   const [form] = Form.useForm();
@@ -142,7 +144,7 @@ export const AboutContent = ({ closeOverlay }: { closeOverlay?: () => void }) =>
           />
         </div>
         <div className="flex flex-col items-center justify-center">
-          <img className="mb-2 mt-7" width={56} src={logo} alt="" />
+          <img className="mb-2 mt-7" width={56} src={appIcon} alt="StickyCake" />
           <div
             className="mb-5 flex cursor-pointer flex-col items-center"
             onClick={handleCopy}

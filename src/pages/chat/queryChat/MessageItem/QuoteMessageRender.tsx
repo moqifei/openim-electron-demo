@@ -1,8 +1,7 @@
 import { MessageItem, MessageType } from "@openim/wasm-client-sdk";
-import { Image } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
-import { FC, useCallback, useState } from "react";
+import { FC, useCallback } from "react";
 
 import { message as antdMessage } from "@/AntdGlobalComp";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
@@ -30,7 +29,6 @@ const QuoteMessageRender: FC<
     message.advancedTextElem?.text ||
     "";
   const quoteMessage = quoteElem?.quoteMessage;
-  const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
 
   const getQuoteContent = (msg: MessageItem) => {
     switch (msg.contentType) {
@@ -66,7 +64,7 @@ const QuoteMessageRender: FC<
 
       if (quoteMessage.contentType === MessageType.PictureMessage) {
         e.stopPropagation();
-        setImagePreviewVisible(true);
+        jumpToOriginal(quoteMessage);
         return;
       }
 
@@ -111,17 +109,14 @@ const QuoteMessageRender: FC<
     >
       {quoteMessage && (
         <>
-          {quoteMessage.contentType === MessageType.PictureMessage && imageUrl && (
-            <Image
-              className="hidden"
-              src={imageUrl}
-              preview={{
-                visible: imagePreviewVisible,
-                onVisibleChange: setImagePreviewVisible,
-              }}
-            />
-          )}
           <div className={styles.quoteMessageReference} onClick={handleQuoteClick}>
+            {quoteMessage.contentType === MessageType.PictureMessage && imageUrl && (
+              <img
+                className="quote-message-image mr-2 inline-block h-10 w-10 rounded object-cover align-middle"
+                src={imageUrl}
+                alt={t("messageDescription.imageMessage")}
+              />
+            )}
             <span className={styles.quoteMessageAuthor}>
               {t("placeholder.reply")} {quoteMessage.senderNickname || ""}：
             </span>

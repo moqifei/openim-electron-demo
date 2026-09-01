@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { isProd } from "../utils";
 import "@openim/electron-client-sdk/lib/preload";
 import { Platform } from "@openim/wasm-client-sdk";
+import { getFileMimeType } from "./fileMimeType";
 
 const getPlatform = () => {
   if (process.platform === "darwin") {
@@ -92,7 +93,7 @@ const recoverMojibakePath = (filePath: string) => {
 const readFileAsBrowserFile = async (filePath: string) => {
   const filename = path.basename(filePath);
   const data = await fs.promises.readFile(filePath);
-  return new File([data], filename);
+  return new File([data], filename, { type: getFileMimeType(filename) });
 };
 
 const getFileByPath = async (filePath: string) => {

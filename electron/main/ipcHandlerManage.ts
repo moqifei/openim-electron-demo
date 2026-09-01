@@ -40,6 +40,8 @@ import { getDownloadFileFilters } from "../utils/downloadFileFilters";
 import { changeLanguage } from "../i18n";
 import { logger } from ".";
 import { updateScreenshotShortcut } from "./shortcutManage";
+import { checkForUpdates as checkForDebUpdates } from "./debUpdateManage";
+import { checkForUpdates as checkForWindowsUpdates } from "./updateManage";
 import {
   clearMessageReminderConversation,
   showMessageReminder,
@@ -231,6 +233,12 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.closeWindow, () => {
     closeWindow();
+  });
+  ipcMain.handle(IpcRenderToMain.checkForUpdates, async () => {
+    if (process.platform === "linux") {
+      return checkForDebUpdates();
+    }
+    return checkForWindowsUpdates();
   });
   ipcMain.handle(IpcRenderToMain.showMessageBox, (_, options) => {
     return dialog
