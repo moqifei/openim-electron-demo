@@ -34,6 +34,7 @@ const DEFAULT_UPDATE_CONFIG: Required<UpdateConfig> = {
 
 let updaterInitialized = false;
 let periodicCheckTimer: NodeJS.Timeout | null = null;
+let manualCheckRequested = false;
 
 const showSandboxUpdateNotice = () =>
   dialog.showMessageBox({
@@ -110,18 +111,46 @@ export const initAutoUpdater = async () => {
 
   autoUpdater.on("update-available", async (info) => {
     logger.info("[updater] update available", info.version);
+    const isManualCheck = manualCheckRequested;
+    manualCheckRequested = false;
     const isSandboxNow = await isSandboxEnvironment();
-    autoUpdater.autoDownload = isSandboxNow ? false : config.autoDownload;
+    autoUpdater.autoDownload = isSandboxNow || isManualCheck ? false : config.autoDownload;
     autoUpdater.autoInstallOnAppQuit = isSandboxNow
       ? false
       : config.autoInstallOnAppQuit;
     if (isSandboxNow) {
       void showSandboxUpdateNotice();
+      return;
+    }
+    if (isManualCheck) {
+      const result = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["立即下载", "稍后"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "发现新版本",
+        message: `发现新版本 ${info.version}`,
+        detail: "是否立即下载更新包？",
+      });
+
+      if (result.response === 0) {
+        await autoUpdater.downloadUpdate();
+      }
     }
   });
 
-  autoUpdater.on("update-not-available", (info) => {
+  autoUpdater.on("update-not-available", async (info) => {
     logger.info("[updater] update not available", info.version);
+    if (manualCheckRequested) {
+      manualCheckRequested = false;
+      await dialog.showMessageBox({
+        type: "info",
+        buttons: ["确定"],
+        title: "检查更新",
+        message: "当前已是最新版本",
+        detail: `当前版本 ${app.getVersion()}`,
+      });
+    }
   });
 
   autoUpdater.on("download-progress", (progress) => {
@@ -165,6 +194,8 @@ export const initAutoUpdater = async () => {
   });
 
   const runCheck = () => {
+    autoUpdater.autoDownload = config.autoDownload;
+    autoUpdater.autoInstallOnAppQuit = config.autoInstallOnAppQuit;
     autoUpdater.checkForUpdates().catch((error) => {
       logger.error("[updater] checkForUpdates failed", error);
     });
@@ -181,7 +212,7 @@ export const initAutoUpdater = async () => {
   logger.info("[updater] periodic check scheduled every", `${intervalMs}ms`);
 };
 
-export const checkForUpdates = async () => {
+export const checkForUpdates = async ({ manual = false }: { manual?: boolean } = {}) => {
   if (!updaterInitialized) {
     await initAutoUpdater();
   }
@@ -191,7 +222,18 @@ export const checkForUpdates = async () => {
   const config = readUpdateConfig();
   if (!config.enabled || !config.url) return;
 
-  await autoUpdater.checkForUpdates();
+  if (manual) {
+    manualCheckRequested = true;
+    autoUpdater.autoDownload = false;
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    manualCheckRequested = false;
+    autoUpdater.autoDownload = config.autoDownload;
+    throw error;
+  }
 };
 
 // 应用退出时清理周期性检查定时器, 避免句柄泄漏

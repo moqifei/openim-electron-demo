@@ -95,7 +95,7 @@ const availableHandler = updateManage
 assert.match(availableHandler, /isSandboxEnvironment\(\)/);
 assert.match(
   availableHandler,
-  /autoUpdater\.autoDownload = isSandboxNow \? false : config\.autoDownload/,
+  /autoUpdater\.autoDownload = isSandboxNow \|\| isManualCheck \? false : config\.autoDownload/,
 );
 const downloadedHandler = updateManage
   .split('autoUpdater.on("update-downloaded"')[1]

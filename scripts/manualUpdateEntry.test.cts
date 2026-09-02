@@ -16,7 +16,7 @@ assert.ok(
 );
 assert.ok(
   leftNav.includes('t("placeholder.checkNewVersion")') &&
-    leftNav.includes('window.electronAPI?.ipcInvoke("checkForUpdates")'),
+    leftNav.includes('?.ipcInvoke("checkForUpdates")'),
   "avatar menu should expose and trigger manual update checking",
 );
 assert.ok(
@@ -32,8 +32,43 @@ assert.ok(
 );
 assert.ok(
   debUpdateManage.includes("export const checkForUpdates") &&
-    debUpdateManage.includes("await runCheck()"),
+    debUpdateManage.includes("await runCheck(manual)"),
   "deb updater path should expose a manual check",
+);
+assert.match(
+  ipc,
+  /checkForWindowsUpdates\(\{ manual: true \}\)/,
+  "manual IPC should identify an interactive update check",
+);
+assert.match(
+  updateManage,
+  /manualCheckRequested/,
+  "Windows updater should track interactive update checks",
+);
+assert.match(
+  updateManage,
+  /await autoUpdater\.downloadUpdate\(\)/,
+  "Windows updater should download only after the manual confirmation",
+);
+assert.match(
+  updateManage,
+  /当前已是最新版本/,
+  "Windows updater should notify when already up to date",
+);
+assert.match(
+  debUpdateManage,
+  /runCheck\(manual\)/,
+  "deb updater should pass the interactive check state",
+);
+assert.match(
+  debUpdateManage,
+  /立即下载/,
+  "deb updater should ask before downloading a manual update",
+);
+assert.match(
+  debUpdateManage,
+  /当前已是最新版本/,
+  "deb updater should notify when already up to date",
 );
 
 console.log("manualUpdateEntry tests passed");

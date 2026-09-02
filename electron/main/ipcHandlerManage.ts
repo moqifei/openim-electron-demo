@@ -236,9 +236,9 @@ export const setIpcMainListener = () => {
   });
   ipcMain.handle(IpcRenderToMain.checkForUpdates, async () => {
     if (process.platform === "linux") {
-      return checkForDebUpdates();
+      return checkForDebUpdates({ manual: true });
     }
-    return checkForWindowsUpdates();
+    return checkForWindowsUpdates({ manual: true });
   });
   ipcMain.handle(IpcRenderToMain.showMessageBox, (_, options) => {
     return dialog

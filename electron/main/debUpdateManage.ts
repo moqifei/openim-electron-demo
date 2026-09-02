@@ -159,7 +159,16 @@ const installDownloadedDeb = async (debPath: string, version: string) => {
   }
 };
 
-const runCheck = async () => {
+const showLatestVersionNotice = () =>
+  dialog.showMessageBox({
+    type: "info",
+    buttons: ["确定"],
+    title: "检查更新",
+    message: "当前已是最新版本",
+    detail: `当前版本 ${app.getVersion()}`,
+  });
+
+const runCheck = async (manual = false) => {
   if (checkInProgress) return;
   checkInProgress = true;
   const config = readUpdateConfig();
@@ -178,12 +187,28 @@ const runCheck = async () => {
 
     if (!isNewerVersion(app.getVersion(), manifest.version, config.allowPrerelease)) {
       logger.info("[deb-updater] no update available", app.getVersion());
+      if (manual) {
+        await showLatestVersionNotice();
+      }
       return;
     }
 
     if (await isSandboxEnvironment()) {
       await showSandboxUpdateNotice();
       return;
+    }
+
+    if (manual) {
+      const result = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["立即下载", "稍后"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "发现新版本",
+        message: `发现新版本 ${manifest.version}`,
+        detail: "是否立即下载更新包？",
+      });
+      if (result.response !== 0) return;
     }
 
     const updateFile = getDebUpdateFile(manifest, process.arch);
@@ -244,7 +269,7 @@ export const initDebAutoUpdater = () => {
   );
 };
 
-export const checkForUpdates = async () => {
+export const checkForUpdates = async ({ manual = false }: { manual?: boolean } = {}) => {
   if (!isProd || !app.isPackaged) return;
 
   const config = readUpdateConfig();
@@ -254,7 +279,7 @@ export const checkForUpdates = async () => {
     initDebAutoUpdater();
   }
 
-  await runCheck();
+  await runCheck(manual);
 };
 
 export const destroyDebAutoUpdater = () => {
