@@ -27,14 +27,19 @@ import { updateOneMessage, useHistoryMessageList } from "./useHistoryMessageList
 
 // 与上一条消息间隔超过该值（毫秒）则显示时间分割线
 const TIME_DIVIDER_GAP = 10 * 60 * 1000;
+const HISTORY_JUMP_SETTLE_DELAY = 300;
 
 const ChatContent = () => {
   const virtuoso = useRef<VirtuosoHandle>(null);
   const stickyScrollFrame = useRef<number>();
+  const bottomScrollTimer = useRef<number>();
+  const historyJumpUnlockTimer = useRef<number>();
   const pauseStickyScroll = useRef(false);
   const isUserViewingHistory = useRef(false);
   const isAtBottom = useRef(false);
   const touchStartY = useRef<number>();
+  const pendingJumpClientMsgID = useRef<string>();
+  const historyJumpTargetRendered = useRef(false);
   const forwardModalRef = useRef<ForwardModalHandle>(null);
   const selfUserID = useUserStore((state) => state.selfInfo.userID);
   const currentConversation = useConversationStore(
@@ -48,11 +53,18 @@ const ChatContent = () => {
   }>({ isActive: false, selectedIds: new Set() });
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false);
   const [imagePreviewMessageID, setImagePreviewMessageID] = useState("");
+  const isHistoryJumpingRef = useRef(false);
 
   const scrollToBottom = () => {
+    if (isHistoryJumpingRef.current) return;
     isUserViewingHistory.current = false;
     pauseStickyScroll.current = false;
-    setTimeout(() => {
+    if (bottomScrollTimer.current) {
+      window.clearTimeout(bottomScrollTimer.current);
+    }
+    bottomScrollTimer.current = window.setTimeout(() => {
+      bottomScrollTimer.current = undefined;
+      if (isHistoryJumpingRef.current) return;
       virtuoso.current?.scrollToIndex({
         index: 9999,
         align: "end",
@@ -62,6 +74,7 @@ const ChatContent = () => {
   };
 
   const stickToBottomIfNeeded = () => {
+    if (isHistoryJumpingRef.current) return;
     if (pauseStickyScroll.current) return;
 
     const chatList = document.getElementById("chat-list");
@@ -76,6 +89,7 @@ const ChatContent = () => {
     }
     stickyScrollFrame.current = window.requestAnimationFrame(() => {
       stickyScrollFrame.current = undefined;
+      if (isHistoryJumpingRef.current) return;
       virtuoso.current?.scrollToIndex({
         index: 9999,
         align: "end",
@@ -115,8 +129,90 @@ const ChatContent = () => {
     }
   };
 
-  const { SPLIT_COUNT, conversationID, loadState, moreOldLoading, getMoreOldMessages } =
-    useHistoryMessageList();
+  const {
+    SPLIT_COUNT,
+    conversationID,
+    loadState,
+    moreOldLoading,
+    getMoreOldMessages,
+    findMessageAndLoad,
+  } = useHistoryMessageList();
+  const moreOldLoadingRef = useRef(moreOldLoading);
+  moreOldLoadingRef.current = moreOldLoading;
+
+  const scheduleHistoryJumpUnlock = useCallback((clientMsgID: string) => {
+    if (historyJumpUnlockTimer.current) {
+      window.clearTimeout(historyJumpUnlockTimer.current);
+    }
+    historyJumpUnlockTimer.current = window.setTimeout(() => {
+      historyJumpUnlockTimer.current = undefined;
+      if (pendingJumpClientMsgID.current !== clientMsgID || moreOldLoadingRef.current) {
+        return;
+      }
+      pendingJumpClientMsgID.current = undefined;
+      historyJumpTargetRendered.current = false;
+      isHistoryJumpingRef.current = false;
+    }, HISTORY_JUMP_SETTLE_DELAY);
+  }, []);
+
+  useEffect(() => {
+    if (moreOldLoading || !historyJumpTargetRendered.current) return;
+    const clientMsgID = pendingJumpClientMsgID.current;
+    if (clientMsgID) scheduleHistoryJumpUnlock(clientMsgID);
+  }, [moreOldLoading, scheduleHistoryJumpUnlock]);
+
+  const jumpToMessage = useCallback(
+    async (message: MessageItemType) => {
+      try {
+        if (!message.clientMsgID && message.seq <= 0) {
+          feedbackToast({ error: new Error(t("toast.messageLocationFailed")) });
+          return;
+        }
+        if (bottomScrollTimer.current) {
+          window.clearTimeout(bottomScrollTimer.current);
+          bottomScrollTimer.current = undefined;
+        }
+        if (stickyScrollFrame.current) {
+          window.cancelAnimationFrame(stickyScrollFrame.current);
+          stickyScrollFrame.current = undefined;
+        }
+        if (historyJumpUnlockTimer.current) {
+          window.clearTimeout(historyJumpUnlockTimer.current);
+          historyJumpUnlockTimer.current = undefined;
+        }
+        pendingJumpClientMsgID.current = message.clientMsgID;
+        historyJumpTargetRendered.current = false;
+        isHistoryJumpingRef.current = true;
+        const location = await findMessageAndLoad(message);
+        if (!location) {
+          pendingJumpClientMsgID.current = undefined;
+          historyJumpTargetRendered.current = false;
+          isHistoryJumpingRef.current = false;
+          feedbackToast({ error: new Error(t("toast.messageLocationFailed")) });
+          return;
+        }
+
+        pendingJumpClientMsgID.current = location.clientMsgID;
+        if (import.meta.env.DEV) {
+          console.info(
+            `[history-location] scroll-request index=${location.messageIndex} clientMsgID=${location.clientMsgID}`,
+          );
+        }
+        virtuoso.current?.scrollToIndex({
+          index: location.messageIndex,
+          align: "center",
+          behavior: "smooth",
+        });
+      } catch (error) {
+        pendingJumpClientMsgID.current = undefined;
+        historyJumpTargetRendered.current = false;
+        isHistoryJumpingRef.current = false;
+        console.error("[history] failed to locate quoted message:", error);
+        feedbackToast({ error: new Error(t("toast.messageLocationFailed")) });
+      }
+    },
+    [findMessageAndLoad],
+  );
 
   const imageMessages = useMemo(
     () =>
@@ -164,6 +260,12 @@ const ChatContent = () => {
       if (stickyScrollFrame.current) {
         window.cancelAnimationFrame(stickyScrollFrame.current);
       }
+      if (bottomScrollTimer.current) {
+        window.clearTimeout(bottomScrollTimer.current);
+      }
+      if (historyJumpUnlockTimer.current) {
+        window.clearTimeout(historyJumpUnlockTimer.current);
+      }
     };
   }, []);
 
@@ -171,6 +273,17 @@ const ChatContent = () => {
   useEffect(() => {
     isUserViewingHistory.current = false;
     pauseStickyScroll.current = false;
+    pendingJumpClientMsgID.current = undefined;
+    historyJumpTargetRendered.current = false;
+    isHistoryJumpingRef.current = false;
+    if (bottomScrollTimer.current) {
+      window.clearTimeout(bottomScrollTimer.current);
+      bottomScrollTimer.current = undefined;
+    }
+    if (historyJumpUnlockTimer.current) {
+      window.clearTimeout(historyJumpUnlockTimer.current);
+      historyJumpUnlockTimer.current = undefined;
+    }
     setMultiSelectState({ isActive: false, selectedIds: new Set() });
     setImagePreviewVisible(false);
     setImagePreviewMessageID("");
@@ -189,6 +302,7 @@ const ChatContent = () => {
   }, [multiSelectState.isActive]);
 
   const loadMoreMessage = () => {
+    if (isHistoryJumpingRef.current) return;
     if (!loadState.hasMoreOld || moreOldLoading) return;
     getMoreOldMessages();
   };
@@ -485,8 +599,30 @@ const ChatContent = () => {
               }
             }}
             followOutput={(isAtBottom) =>
-              isAtBottom && !pauseStickyScroll.current ? "smooth" : false
+              isAtBottom && !isHistoryJumpingRef.current && !pauseStickyScroll.current
+                ? "smooth"
+                : false
             }
+            itemsRendered={(items) => {
+              const clientMsgID = pendingJumpClientMsgID.current;
+              if (
+                !clientMsgID ||
+                !items.some((item) => item.data?.clientMsgID === clientMsgID)
+              ) {
+                return;
+              }
+
+              requestAnimationFrame(() => {
+                if (pendingJumpClientMsgID.current !== clientMsgID) return;
+                const element = document.getElementById(`chat_${clientMsgID}`);
+                if (!element) return;
+
+                historyJumpTargetRendered.current = true;
+                element.classList.add("animate-pulse");
+                setTimeout(() => element.classList.remove("animate-pulse"), 2000);
+                scheduleHistoryJumpUnlock(clientMsgID);
+              });
+            }}
             firstItemIndex={loadState.firstItemIndex}
             initialTopMostItemIndex={SPLIT_COUNT - 1}
             startReached={loadMoreMessage}
@@ -548,6 +684,7 @@ const ChatContent = () => {
                     onMultiSelect={handleMultiSelect}
                     onRevoke={handleRevoke}
                     onAvatarClick={handleAvatarClick}
+                    onQuoteMessage={jumpToMessage}
                   />
                 </>
               );

@@ -17,6 +17,18 @@ export const setAdUsername = (username: string) =>
 export const getAdUsername = () => localStorage.getItem("IM_AD_USERNAME") ?? "";
 
 const REMEMBERED_AD_PASSWORDS_KEY = "IM_AD_REMEMBERED_PASSWORDS";
+const MANUAL_LOGOUT_KEY = "IM_MANUAL_LOGOUT";
+let startupAutoLoginConsumed = false;
+
+export const markManualLogout = () => sessionStorage.setItem(MANUAL_LOGOUT_KEY, "1");
+export const clearManualLogout = () => sessionStorage.removeItem(MANUAL_LOGOUT_KEY);
+export const shouldSkipAutoLogin = () =>
+  sessionStorage.getItem(MANUAL_LOGOUT_KEY) === "1";
+export const consumeStartupAutoLogin = () => {
+  if (startupAutoLoginConsumed) return false;
+  startupAutoLoginConsumed = true;
+  return true;
+};
 
 const getRememberedAdPasswords = (): Record<string, string> => {
   try {

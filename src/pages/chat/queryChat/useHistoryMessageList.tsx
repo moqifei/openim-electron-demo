@@ -1,6 +1,6 @@
 import { MessageItem, SessionType, ViewType } from "@openim/wasm-client-sdk";
 import { useLatest, useRequest } from "ahooks";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { getGroupMessagesReadInfo, markMsgsAsRead } from "@/api/imApi";
@@ -15,6 +15,12 @@ import emitter, { emit } from "@/utils/events";
 const START_INDEX = 10000;
 const SPLIT_COUNT = 20;
 
+export type MessageLocation = {
+  messageIndex: number;
+  firstItemIndex: number;
+  clientMsgID: string;
+};
+
 const canSendGroupReadReceipt = () => {
   const lib = (IMSDK as any).libOpenIMSDK;
   return typeof lib?.send_group_message_read_receipt === "function";
@@ -26,6 +32,34 @@ const getHistoryStartClientMsgID = (messages: MessageItem[]) => {
     if (clientMsgID) return clientMsgID;
   }
   return "";
+};
+
+const mergeMessageList = (current: MessageItem[], incoming: MessageItem[]) => {
+  const messageMap = new Map(current.map((message) => [message.clientMsgID, message]));
+  incoming.forEach((message) => {
+    if (message.clientMsgID) messageMap.set(message.clientMsgID, message);
+  });
+  return [...messageMap.values()].sort(
+    (left, right) => left.sendTime - right.sendTime || left.seq - right.seq,
+  );
+};
+
+const getMessageIdentifiers = (message: MessageItem) =>
+  [
+    message.clientMsgID,
+    getAgentStreamRealClientMsgID(message),
+    message.serverMsgID,
+  ].filter(Boolean);
+
+const isSameMessage = (left: MessageItem, right: MessageItem) => {
+  if (left.seq > 0 && right.seq > 0 && left.seq === right.seq) {
+    return true;
+  }
+
+  const rightIdentifiers = new Set(getMessageIdentifiers(right));
+  return getMessageIdentifiers(left).some((identifier) =>
+    rightIdentifiers.has(identifier),
+  );
 };
 
 export function useHistoryMessageList() {
@@ -161,9 +195,7 @@ export function useHistoryMessageList() {
     // seq===0, then fetch its read info right away.
     const resolvePendingSeqs = async () => {
       const list = latestLoadState.current.messageList;
-      const pending = list.filter(
-        (m) => m.sendID === currentUserID && m.seq === 0,
-      );
+      const pending = list.filter((m) => m.sendID === currentUserID && m.seq === 0);
       if (pending.length === 0) return;
       try {
         const { data } = await IMSDK.getAdvancedHistoryMessageList({
@@ -173,9 +205,7 @@ export function useHistoryMessageList() {
           viewType: ViewType.History,
         });
         if (cancelled) return;
-        const byClientID = new Map(
-          data.messageList.map((m) => [m.clientMsgID, m]),
-        );
+        const byClientID = new Map(data.messageList.map((m) => [m.clientMsgID, m]));
         const resolved = pending
           .map((m) => byClientID.get(m.clientMsgID))
           .filter((m): m is MessageItem => Boolean(m) && m!.seq > 0);
@@ -193,8 +223,7 @@ export function useHistoryMessageList() {
 
         // Fetch read info immediately so the dot can flip without waiting
         // for the next poll cycle.
-        const groupID =
-          resolved[0].groupID ?? list.find((m) => m.groupID)?.groupID;
+        const groupID = resolved[0].groupID ?? list.find((m) => m.groupID)?.groupID;
         const { data: readInfos } = await getGroupMessagesReadInfo({
           conversationID: conversationID ?? "",
           groupID,
@@ -261,8 +290,7 @@ export function useHistoryMessageList() {
           const info = readInfoMap.get(msg.seq);
           if (!info) return;
           const next = info.hasReadUserIDList ?? [];
-          const prev =
-            msg.attachedInfoElem?.groupHasReadInfo?.hasReadUserIDList ?? [];
+          const prev = msg.attachedInfoElem?.groupHasReadInfo?.hasReadUserIDList ?? [];
           // Only log when there's an actual change (helps diagnose real-time updates)
           if (next.join(",") !== prev.join(",")) {
             console.log(
@@ -304,7 +332,13 @@ export function useHistoryMessageList() {
   const { loading: moreOldLoading, runAsync: getMoreOldMessages } = useRequest(
     async (loadMore = true) => {
       const reqConversationID = conversationID;
-      console.log("[history] getAdvancedHistoryMessageList start", "convID:", conversationID, "loadMore:", loadMore);
+      console.log(
+        "[history] getAdvancedHistoryMessageList start",
+        "convID:",
+        conversationID,
+        "loadMore:",
+        loadMore,
+      );
       const { data } = await IMSDK.getAdvancedHistoryMessageList({
         count: SPLIT_COUNT,
         startClientMsgID: loadMore
@@ -315,19 +349,33 @@ export function useHistoryMessageList() {
       });
       if (conversationID !== reqConversationID) return;
 
-      const loadedSeqs = data.messageList.map((m: MessageItem) => m.seq).sort((a: number, b: number) => a - b);
-      console.log("[history] getAdvancedHistoryMessageList result",
-        "count:", data.messageList.length,
-        "isEnd:", data.isEnd,
-        "seqRange:", loadedSeqs.length > 0 ? `${loadedSeqs[0]}-${loadedSeqs[loadedSeqs.length-1]}` : "empty",
-        "seqs:", loadedSeqs);
+      const loadedSeqs = data.messageList
+        .map((m: MessageItem) => m.seq)
+        .sort((a: number, b: number) => a - b);
+      console.log(
+        "[history] getAdvancedHistoryMessageList result",
+        "count:",
+        data.messageList.length,
+        "isEnd:",
+        data.isEnd,
+        "seqRange:",
+        loadedSeqs.length > 0
+          ? `${loadedSeqs[0]}-${loadedSeqs[loadedSeqs.length - 1]}`
+          : "empty",
+        "seqs:",
+        loadedSeqs,
+      );
 
       let currentMsgList = loadMore
         ? [...data.messageList, ...latestLoadState.current.messageList]
         : data.messageList;
 
       const sessionType = data.messageList[0]?.sessionType;
-      if (currentMsgList.length > 0 && sessionType === SessionType.Group && reqConversationID) {
+      if (
+        currentMsgList.length > 0 &&
+        sessionType === SessionType.Group &&
+        reqConversationID
+      ) {
         const ownGroupMessages = currentMsgList.filter(
           (msg) => msg.sendID === currentUserID && msg.seq > 0,
         );
@@ -378,53 +426,306 @@ export function useHistoryMessageList() {
 
       // 群聊消息：拉取后标记会话已读。当前 native SDK 可能未导出逐消息群回执函数，
       // 因此逐消息回执仅作为可选增强，避免阻断会话已读状态更新。
-      console.log("[read] checking group read receipt, sessionType:", sessionType, "msgCount:", currentMsgList.length);
-      
+      console.log(
+        "[read] checking group read receipt, sessionType:",
+        sessionType,
+        "msgCount:",
+        currentMsgList.length,
+      );
+
       if (currentMsgList.length > 0 && sessionType === SessionType.Group) {
         const unreadMessages = currentMsgList
           .filter((msg) => !msg.isRead && msg.sendID !== currentUserID)
           .filter((msg) => msg.seq > 0);
         const unreadMsgIDs = unreadMessages.map((msg) => msg.clientMsgID);
-        const unreadSeqs = unreadMessages
-          .map((msg) => msg.seq)
-          .sort((a, b) => a - b);
-        
-        console.log("[read] filtered unread msgIDs:", unreadMsgIDs.length, unreadMsgIDs);
-        
+        const unreadSeqs = unreadMessages.map((msg) => msg.seq).sort((a, b) => a - b);
+
+        console.log(
+          "[read] filtered unread msgIDs:",
+          unreadMsgIDs.length,
+          unreadMsgIDs,
+        );
+
         if (unreadMsgIDs.length > 0) {
           if (canSendGroupReadReceipt()) {
-            console.log("[read] sending group read receipt for", unreadMsgIDs.length, "messages");
+            console.log(
+              "[read] sending group read receipt for",
+              unreadMsgIDs.length,
+              "messages",
+            );
             IMSDK.sendGroupMessageReadReceipt({
               conversationID: reqConversationID,
               clientMsgIDList: unreadMsgIDs,
-            }).then(() => {
-              console.log("[read] group read receipt sent successfully");
-            }).catch((err) => {
-              console.error("[read] failed to send group read receipt:", err);
-            });
+            })
+              .then(() => {
+                console.log("[read] group read receipt sent successfully");
+              })
+              .catch((err) => {
+                console.error("[read] failed to send group read receipt:", err);
+              });
           } else {
             if (!reqConversationID) return;
-            console.warn("[read] native group read receipt is unavailable, using mark_msgs_as_read fallback");
+            console.warn(
+              "[read] native group read receipt is unavailable, using mark_msgs_as_read fallback",
+            );
             markMsgsAsRead({
               conversationID: reqConversationID,
               seqs: unreadSeqs,
               userID: currentUserID,
-            }).then(() => {
-              console.log("[read] mark_msgs_as_read fallback sent successfully");
-            }).catch((err) => {
-              console.error("[read] failed to send mark_msgs_as_read fallback:", err);
-            });
+            })
+              .then(() => {
+                console.log("[read] mark_msgs_as_read fallback sent successfully");
+              })
+              .catch((err) => {
+                console.error("[read] failed to send mark_msgs_as_read fallback:", err);
+              });
           }
         } else {
           console.log("[read] no unread messages to send receipt for");
         }
       } else {
-        console.log("[read] skipping group read receipt: not a group conversation or no messages");
+        console.log(
+          "[read] skipping group read receipt: not a group conversation or no messages",
+        );
       }
+
+      return data;
     },
     {
       manual: true,
     },
+  );
+  const latestMoreOldLoading = useLatest(moreOldLoading);
+
+  const findMessageAndLoad = useCallback(
+    async (targetMessage: MessageItem): Promise<MessageLocation | null> => {
+      const clientMsgID = targetMessage.clientMsgID;
+      if (!clientMsgID && targetMessage.seq <= 0) {
+        if (import.meta.env.DEV) {
+          console.info("[history-location] missing-identifier", {
+            clientMsgID,
+            serverMsgID: targetMessage.serverMsgID,
+            seq: targetMessage.seq,
+          });
+        }
+        return null;
+      }
+
+      if (import.meta.env.DEV) {
+        console.info("[history-location] start", {
+          conversationID,
+          clientMsgID,
+          serverMsgID: targetMessage.serverMsgID,
+          seq: targetMessage.seq,
+          loadedCount: latestLoadState.current.messageList.length,
+          hasMoreOld: latestLoadState.current.hasMoreOld,
+        });
+      }
+
+      let hasMoreOld = true;
+      while (hasMoreOld) {
+        const currentLoadState = latestLoadState.current;
+        if (!currentLoadState) return null;
+        const messageIndex = currentLoadState.messageList.findIndex((message) =>
+          isSameMessage(message, targetMessage),
+        );
+        if (messageIndex >= 0) {
+          if (import.meta.env.DEV) {
+            console.info("[history-location] loaded-match", {
+              messageIndex,
+              firstItemIndex: currentLoadState.firstItemIndex,
+              clientMsgID: currentLoadState.messageList[messageIndex].clientMsgID,
+            });
+          }
+          return {
+            messageIndex,
+            firstItemIndex: currentLoadState.firstItemIndex,
+            clientMsgID: currentLoadState.messageList[messageIndex].clientMsgID,
+          };
+        }
+
+        const realClientMsgID = getAgentStreamRealClientMsgID(targetMessage);
+        const resolvedTargetMessage = realClientMsgID
+          ? { ...targetMessage, clientMsgID: realClientMsgID }
+          : targetMessage;
+        try {
+          const lookupClientMsgIDs = [resolvedTargetMessage.clientMsgID].filter(
+            Boolean,
+          );
+          if (conversationID && lookupClientMsgIDs.length > 0) {
+            const response = await IMSDK.findMessageList([
+              {
+                conversationID,
+                clientMsgIDList: lookupClientMsgIDs,
+              },
+            ]);
+            const result = response.data as unknown;
+            const data = Array.isArray(result)
+              ? (result as MessageItem[])
+              : (
+                  result as {
+                    findResultItems?: { messageList?: MessageItem[] }[];
+                  }
+                ).findResultItems?.flatMap((item) => item.messageList || []) ?? [];
+            const storedMessage = data.find((message) =>
+              isSameMessage(message, resolvedTargetMessage),
+            );
+            if (import.meta.env.DEV) {
+              console.info("[history-location] local-result", {
+                responseType: Array.isArray(result) ? "array" : "find-result-items",
+                messageCount: data.length,
+                matched: Boolean(storedMessage),
+              });
+            }
+            if (storedMessage) {
+              const mergedMessages = mergeMessageList(currentLoadState.messageList, [
+                storedMessage,
+              ]);
+              const nextMessageList = compactAgentStreamMessages(mergedMessages);
+              const firstExistingID = currentLoadState.messageList[0]?.clientMsgID;
+              const firstExistingIndex = firstExistingID
+                ? nextMessageList.findIndex(
+                    (message) => message.clientMsgID === firstExistingID,
+                  )
+                : 0;
+              setLoadState((preState) => ({
+                ...preState,
+                initLoading: false,
+                messageList: nextMessageList,
+                firstItemIndex: preState.firstItemIndex - firstExistingIndex,
+              }));
+              for (let attempt = 0; attempt < 20; attempt += 1) {
+                const nextState = latestLoadState.current;
+                const nextMessageIndex = nextState.messageList.findIndex((message) =>
+                  isSameMessage(message, storedMessage),
+                );
+                if (nextMessageIndex >= 0) {
+                  return {
+                    messageIndex: nextMessageIndex,
+                    firstItemIndex: nextState.firstItemIndex,
+                    clientMsgID: nextState.messageList[nextMessageIndex].clientMsgID,
+                  };
+                }
+                await new Promise<void>((resolve) => setTimeout(resolve, 16));
+              }
+              return null;
+            }
+          }
+        } catch (error) {
+          console.warn("[history] failed to find quoted message by id:", error);
+        }
+
+        try {
+          const { data } = await IMSDK.fetchSurroundingMessages({
+            startMessage: resolvedTargetMessage,
+            viewType: ViewType.History,
+            before: SPLIT_COUNT,
+            after: SPLIT_COUNT,
+          });
+          const surroundingMessages = data.messageList ?? [];
+          const hasSurroundingTarget = surroundingMessages.some((message) =>
+            isSameMessage(message, resolvedTargetMessage),
+          );
+          if (import.meta.env.DEV) {
+            console.info("[history-location] surrounding-result", {
+              messageCount: surroundingMessages.length,
+              matched: hasSurroundingTarget,
+            });
+          }
+          if (hasSurroundingTarget) {
+            const mergedMessages = mergeMessageList(
+              currentLoadState.messageList,
+              surroundingMessages,
+            );
+            const nextMessageList = compactAgentStreamMessages(mergedMessages);
+            const firstExistingID = currentLoadState.messageList[0]?.clientMsgID;
+            const firstExistingIndex = firstExistingID
+              ? nextMessageList.findIndex(
+                  (message) => message.clientMsgID === firstExistingID,
+                )
+              : 0;
+            setLoadState((preState) => ({
+              ...preState,
+              initLoading: false,
+              messageList: nextMessageList,
+              firstItemIndex: preState.firstItemIndex - firstExistingIndex,
+            }));
+            for (let attempt = 0; attempt < 20; attempt += 1) {
+              const nextState = latestLoadState.current;
+              const nextMessageIndex = nextState.messageList.findIndex((message) =>
+                isSameMessage(message, targetMessage),
+              );
+              if (nextMessageIndex >= 0) {
+                return {
+                  messageIndex: nextMessageIndex,
+                  firstItemIndex: nextState.firstItemIndex,
+                  clientMsgID: nextState.messageList[nextMessageIndex].clientMsgID,
+                };
+              }
+              await new Promise<void>((resolve) => setTimeout(resolve, 16));
+            }
+            return null;
+          }
+        } catch (error) {
+          console.warn("[history] failed to fetch surrounding messages:", error);
+        }
+
+        hasMoreOld = currentLoadState.hasMoreOld;
+        if (!hasMoreOld) {
+          if (import.meta.env.DEV) {
+            console.info("[history-location] end-of-history", {
+              loadedCount: currentLoadState.messageList.length,
+            });
+          }
+          return null;
+        }
+
+        for (
+          let attempt = 0;
+          latestMoreOldLoading.current && attempt < 60;
+          attempt += 1
+        ) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 16));
+        }
+        if (latestMoreOldLoading.current) return null;
+
+        const previousLength = currentLoadState.messageList.length;
+        try {
+          const result = await getMoreOldMessages();
+          if (import.meta.env.DEV) {
+            console.info("[history-location] page-result", {
+              messageCount: result?.messageList?.length ?? 0,
+              isEnd: result?.isEnd,
+            });
+          }
+          if (!result?.messageList?.length) {
+            return null;
+          }
+        } catch (error) {
+          console.error("[history] failed to load messages for jump:", error);
+          return null;
+        }
+
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          if (
+            latestLoadState.current &&
+            latestLoadState.current.messageList.length > previousLength
+          ) {
+            break;
+          }
+          await new Promise<void>((resolve) => setTimeout(resolve, 16));
+        }
+        if (
+          !latestLoadState.current ||
+          latestLoadState.current.messageList.length === previousLength
+        ) {
+          return null;
+        }
+      }
+
+      return null;
+    },
+    [getMoreOldMessages, latestLoadState, latestMoreOldLoading],
   );
 
   return {
@@ -434,6 +735,7 @@ export function useHistoryMessageList() {
     conversationID,
     moreOldLoading,
     getMoreOldMessages,
+    findMessageAndLoad,
   };
 }
 

@@ -50,6 +50,7 @@
     "updateBlackStateFailed": "Failed to modify blacklist status!",
     "unfriendFailed": "Failed to unfriend!",
     "getMessageListFailed": "Failed to get message list!",
+    "messageLocationFailed": "Unable to locate the original message. Please try again later!",
     "sendApplicationFailed": "Failed to send request!",
     "loading": "Logging in...",
     "syncing": "Syncing...",

@@ -2,11 +2,16 @@ import { t } from "i18next";
 import { create } from "zustand";
 
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
-import { searchADMembers, getADDepartmentList } from "@/api/organization";
+import { getADDepartmentList, searchADMembers } from "@/api/organization";
 import { IMSDK } from "@/layout/MainContentWrap";
 import router from "@/routes";
 import { feedbackToast } from "@/utils/common";
-import { clearIMProfile, getLocale, setLocale } from "@/utils/storage";
+import {
+  clearIMProfile,
+  getLocale,
+  markManualLogout,
+  setLocale,
+} from "@/utils/storage";
 
 import { useContactStore } from "./contact";
 import { useConversationStore } from "./conversation";
@@ -58,7 +63,10 @@ export const useUserStore = create<UserStore>()((set, get) => ({
       .then(async ({ data }) => {
         set(() => ({ selfInfo: data as unknown as BusinessUserInfo }));
         const { data: bizData } = await getBusinessUserInfo([data.userID]);
-        console.log("[selfInfo] businessUserInfo raw:", JSON.stringify(bizData.users?.[0], null, 2));
+        console.log(
+          "[selfInfo] businessUserInfo raw:",
+          JSON.stringify(bizData.users?.[0], null, 2),
+        );
         const merged = { ...data, ...bizData.users[0] };
         // Fetch AD department info and cache into selfInfo.
         // The search component (SearchUserOrGroup) proves that searching by
@@ -71,29 +79,44 @@ export const useUserStore = create<UserStore>()((set, get) => ({
             pagination: { pageNumber: 1, showNumber: 5 },
           });
           const adMember = adData.members?.[0];
-          console.log("[selfInfo] AD search result:", JSON.stringify({
-            total: adData.total,
-            membersCount: adData.members?.length ?? 0,
-            member: adMember ? {
-              userID: adMember.userID,
-              username: adMember.username,
-              nickname: adMember.nickname,
-              departmentName: adMember.departmentName,
-              departmentID: adMember.departmentID,
-            } : null,
-          }, null, 2));
+          console.log(
+            "[selfInfo] AD search result:",
+            JSON.stringify(
+              {
+                total: adData.total,
+                membersCount: adData.members?.length ?? 0,
+                member: adMember
+                  ? {
+                      userID: adMember.userID,
+                      username: adMember.username,
+                      nickname: adMember.nickname,
+                      departmentName: adMember.departmentName,
+                      departmentID: adMember.departmentID,
+                    }
+                  : null,
+              },
+              null,
+              2,
+            ),
+          );
 
           if (adMember) {
             // Priority 1: AD returned departmentName directly
             if (adMember.departmentName) {
               merged.departmentName = adMember.departmentName;
-              console.log("[selfInfo] cached departmentName (from AD field):", merged.departmentName);
+              console.log(
+                "[selfInfo] cached departmentName (from AD field):",
+                merged.departmentName,
+              );
             } else if (adMember.departmentID) {
               // Priority 2: Parse from LDAP DN (ou=部门名,...)
               const dnMatch = adMember.departmentID.match(/ou=([^,]+)/i);
               if (dnMatch?.[1]) {
                 merged.departmentName = dnMatch[1];
-                console.log("[selfInfo] cached departmentName (from DN parse):", merged.departmentName);
+                console.log(
+                  "[selfInfo] cached departmentName (from DN parse):",
+                  merged.departmentName,
+                );
               } else {
                 // Priority 3: Fallback to getADDepartmentList lookup
                 try {
@@ -104,7 +127,10 @@ export const useUserStore = create<UserStore>()((set, get) => ({
                   );
                   if (dept?.name) {
                     merged.departmentName = dept.name;
-                    console.log("[selfInfo] cached departmentName (from dept list):", merged.departmentName);
+                    console.log(
+                      "[selfInfo] cached departmentName (from dept list):",
+                      merged.departmentName,
+                    );
                   }
                 } catch (deptErr) {
                   console.warn("[selfInfo] getADDepartmentList failed", deptErr);
@@ -122,18 +148,29 @@ export const useUserStore = create<UserStore>()((set, get) => ({
             const adMember2 = adData2.members?.[0];
             if (adMember2?.departmentName) {
               merged.departmentName = adMember2.departmentName;
-              console.log("[selfInfo] cached departmentName (via nickname):", merged.departmentName);
+              console.log(
+                "[selfInfo] cached departmentName (via nickname):",
+                merged.departmentName,
+              );
             } else if (adMember2?.departmentID) {
               const dnMatch2 = adMember2.departmentID.match(/ou=([^,]+)/i);
               if (dnMatch2?.[1]) {
                 merged.departmentName = dnMatch2[1];
-                console.log("[selfInfo] cached departmentName (via nickname + DN):", merged.departmentName);
+                console.log(
+                  "[selfInfo] cached departmentName (via nickname + DN):",
+                  merged.departmentName,
+                );
               }
             }
           }
 
           if (!merged.departmentName) {
-            console.warn("[selfInfo] no AD department found. account:", account, "nickname:", data.nickname);
+            console.warn(
+              "[selfInfo] no AD department found. account:",
+              account,
+              "nickname:",
+              data.nickname,
+            );
           }
         } catch (adErr) {
           console.warn("[selfInfo] AD department fetch failed (non-fatal)", adErr);
@@ -154,7 +191,7 @@ export const useUserStore = create<UserStore>()((set, get) => ({
     }
     set((state) => ({ appSettings: { ...state.appSettings, ...settings } }));
   },
-  userLogout: async (force?: boolean) => {
+  userLogout: async (force?: boolean, manual?: boolean) => {
     if (!force) {
       try {
         await IMSDK.logout();
@@ -165,6 +202,7 @@ export const useUserStore = create<UserStore>()((set, get) => ({
         console.warn("ignore logout sdk error", error);
       }
     }
+    if (manual) markManualLogout();
     clearIMProfile();
     set({ selfInfo: {} as BusinessUserInfo, progress: 0 });
     useContactStore.getState().clearContactStore();

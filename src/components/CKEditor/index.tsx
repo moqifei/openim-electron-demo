@@ -26,6 +26,7 @@ export type CKEditorRef = {
   insertText: (text: string) => void;
   replaceTextBeforeSelection: (length: number, text: string) => void;
   setText: (text: string) => void;
+  getText: () => string;
   getEditor: () => ClassicEditor | null;
 };
 
@@ -140,6 +141,24 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
     });
     editor.editing.view.focus();
     onChange?.(editor.getData());
+  };
+
+  const getText = () => {
+    const editor = ckEditor.current;
+    const root = editor?.model.document.getRoot();
+    if (!root) return "";
+
+    return Array.from(root.getChildren())
+      .map((block) => {
+        if (!block.is("element")) return "";
+        return Array.from(block.getChildren())
+          .map((child) => {
+            if (child.is("$text")) return child.data;
+            return child.is("element", "softBreak") ? "\n" : "";
+          })
+          .join("");
+      })
+      .join("\n");
   };
 
   const listenKeydown = (editor: ClassicEditor) => {
@@ -304,6 +323,7 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
       insertText,
       replaceTextBeforeSelection,
       setText,
+      getText,
       getEditor: () => ckEditor.current,
     }),
     [],

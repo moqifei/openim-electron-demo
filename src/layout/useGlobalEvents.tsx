@@ -30,6 +30,7 @@ import { useConversationStore, useUserStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { feedbackToast } from "@/utils/common";
 import { getIMHost, getIMWsPort } from "@/utils/config";
+import { isConversationDoNotDisturb } from "@/utils/conversationNotification";
 import emitter from "@/utils/events";
 import {
   getConversationContent,
@@ -412,6 +413,7 @@ export function useGlobalEvent() {
   const handleShakeMessage = async (message: MessageItem) => {
     const conversation = await getConversationFromMessage(message);
     if (!conversation || !canUseShake(conversation, message)) return;
+    if (isConversationDoNotDisturb(conversation)) return;
 
     await window.electronAPI?.ipcInvoke("showMainWindow");
     await updateCurrentConversation({ ...conversation });
@@ -474,6 +476,7 @@ export function useGlobalEvent() {
     const conversation = useConversationStore
       .getState()
       .conversationList.find((item) => item.conversationID === messageConversationID);
+    if (conversation && isConversationDoNotDisturb(conversation)) return;
     const title =
       conversation?.showName ||
       (message.sessionType === SessionType.Group ||

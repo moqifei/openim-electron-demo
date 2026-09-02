@@ -50,6 +50,7 @@
     "updateBlackStateFailed": "修改黑名单状态失败！",
     "unfriendFailed": "解除好友失败！",
     "getMessageListFailed": "获取消息列表失败！",
+    "messageLocationFailed": "无法定位原消息，请稍后重试！",
     "sendApplicationFailed": "发送请求失败！",
     "loading": "登录中...",
     "syncing": "同步中...",

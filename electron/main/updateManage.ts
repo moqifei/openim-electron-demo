@@ -35,14 +35,27 @@ const DEFAULT_UPDATE_CONFIG: Required<UpdateConfig> = {
 let updaterInitialized = false;
 let periodicCheckTimer: NodeJS.Timeout | null = null;
 let manualCheckRequested = false;
+let sandboxNoticePromise: Promise<void> | null = null;
+let sandboxUpdateBlockedVersion: string | null = null;
+let sandboxEnvironmentDetected = false;
 
-const showSandboxUpdateNotice = () =>
-  dialog.showMessageBox({
-    type: "info",
-    buttons: ["确定"],
-    title: "检测到新版本",
-    message: SANDBOX_UPDATE_MESSAGE,
-  });
+const showSandboxUpdateNotice = () => {
+  if (sandboxNoticePromise) return sandboxNoticePromise;
+
+  sandboxNoticePromise = dialog
+    .showMessageBox({
+      type: "info",
+      buttons: ["确定"],
+      title: "检测到新版本",
+      message: SANDBOX_UPDATE_MESSAGE,
+    })
+    .then(() => undefined)
+    .finally(() => {
+      sandboxNoticePromise = null;
+    });
+
+  return sandboxNoticePromise;
+};
 
 const normalizeBaseUrl = (url: string) => {
   const trimmed = url.trim();
@@ -95,7 +108,8 @@ export const initAutoUpdater = async () => {
 
   autoUpdater.logger = logger;
   const isSandbox = await isSandboxEnvironment();
-  autoUpdater.autoDownload = isSandbox ? false : config.autoDownload;
+  sandboxEnvironmentDetected = isSandbox;
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = isSandbox
     ? false
     : config.autoInstallOnAppQuit;
@@ -114,7 +128,10 @@ export const initAutoUpdater = async () => {
     const isManualCheck = manualCheckRequested;
     manualCheckRequested = false;
     const isSandboxNow = await isSandboxEnvironment();
-    autoUpdater.autoDownload = isSandboxNow || isManualCheck ? false : config.autoDownload;
+    if (isSandboxNow) {
+      sandboxUpdateBlockedVersion = info.version;
+    }
+    autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = isSandboxNow
       ? false
       : config.autoInstallOnAppQuit;
@@ -136,6 +153,10 @@ export const initAutoUpdater = async () => {
       if (result.response === 0) {
         await autoUpdater.downloadUpdate();
       }
+      return;
+    }
+    if (config.autoDownload) {
+      await autoUpdater.downloadUpdate();
     }
   });
 
@@ -164,7 +185,9 @@ export const initAutoUpdater = async () => {
 
   autoUpdater.on("update-downloaded", async (info) => {
     logger.info("[updater] update downloaded", info.version);
-    if (await isSandboxEnvironment()) {
+    if (sandboxUpdateBlockedVersion === info.version) return;
+    if (sandboxEnvironmentDetected || (await isSandboxEnvironment())) {
+      sandboxUpdateBlockedVersion = info.version;
       await showSandboxUpdateNotice();
       return;
     }
@@ -193,22 +216,25 @@ export const initAutoUpdater = async () => {
     logger.error("[updater] update failed", error);
   });
 
-  const runCheck = () => {
-    autoUpdater.autoDownload = config.autoDownload;
-    autoUpdater.autoInstallOnAppQuit = config.autoInstallOnAppQuit;
-    autoUpdater.checkForUpdates().catch((error) => {
+  const runCheck = async () => {
+    autoUpdater.autoDownload = false;
+    const isSandboxNow = await isSandboxEnvironment();
+    autoUpdater.autoInstallOnAppQuit = isSandboxNow
+      ? false
+      : config.autoInstallOnAppQuit;
+    await autoUpdater.checkForUpdates().catch((error) => {
       logger.error("[updater] checkForUpdates failed", error);
     });
   };
 
   // 启动后延迟首次检查
   if (config.checkOnStart) {
-    setTimeout(runCheck, config.checkDelayMs);
+    setTimeout(() => void runCheck(), config.checkDelayMs);
   }
 
   // 周期性检查: 即使客户端长期不退出/不重启, 也能持续发现新版本
   const intervalMs = Math.max(60 * 1000, config.checkIntervalMs);
-  periodicCheckTimer = setInterval(runCheck, intervalMs);
+  periodicCheckTimer = setInterval(() => void runCheck(), intervalMs);
   logger.info("[updater] periodic check scheduled every", `${intervalMs}ms`);
 };
 

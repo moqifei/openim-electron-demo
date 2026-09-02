@@ -1,4 +1,5 @@
 import { RightOutlined } from "@ant-design/icons";
+import { MessageReceiveOptType } from "@openim/wasm-client-sdk";
 import { Button, Divider, Upload } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
@@ -11,6 +12,7 @@ import EditableContent from "@/components/EditableContent";
 import OIMAvatar from "@/components/OIMAvatar";
 import SettingRow from "@/components/SettingRow";
 import { useCurrentMemberRole } from "@/hooks/useCurrentMemberRole";
+import { useConversationStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
 import { emit } from "@/utils/events";
 import { uploadFile } from "@/utils/imCommon";
@@ -27,9 +29,17 @@ const GroupSettings = ({
   closeOverlay: () => void;
 }) => {
   const { isNomal, isOwner, isAdmin, isJoinGroup } = useCurrentMemberRole();
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
 
-  const { currentGroupInfo, updateGroupInfo, tryQuitGroup, tryDismissGroup } =
-    useGroupSettings({ closeOverlay });
+  const {
+    currentGroupInfo,
+    updateGroupInfo,
+    updateConversationNotification,
+    tryQuitGroup,
+    tryDismissGroup,
+  } = useGroupSettings({ closeOverlay });
 
   const [_, copyToClipboard] = useCopyToClipboard();
 
@@ -106,6 +116,14 @@ const GroupSettings = ({
         />
       )}
       <Divider className="m-0 border-4 border-[var(--bg-body)]" />
+
+      {isJoinGroup && (
+        <SettingRow
+          title={t("placeholder.notNotify")}
+          value={currentConversation?.recvMsgOpt === MessageReceiveOptType.NotNotify}
+          tryChange={updateConversationNotification}
+        />
+      )}
 
       <Divider className="m-0 border-4 border-[#F4F5F7]" />
       <SettingRow className="pb-2" title={`${t("placeholder.group")}ID`}>

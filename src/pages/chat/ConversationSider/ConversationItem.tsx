@@ -1,4 +1,4 @@
-import { EditOutlined } from "@ant-design/icons";
+import { BellOutlined, EditOutlined } from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
 import type {
   ConversationItem,
@@ -15,9 +15,14 @@ import { getCleanText } from "@/components/CKEditor/utils";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
+import { isConversationDoNotDisturb } from "@/utils/conversationNotification";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
 import emitter from "@/utils/events";
-import { formatConversionTime, getConversationContent } from "@/utils/imCommon";
+import {
+  formatConversionTime,
+  getConversationContent,
+  isGroupSession,
+} from "@/utils/imCommon";
 
 import styles from "./conversation-item.module.scss";
 
@@ -95,6 +100,8 @@ const ConversationItem = ({
   }, [draftText]);
 
   const isSingleConversation = conversation.conversationType === SessionType.Single;
+  const isGroupConversation = isGroupSession(conversation.conversationType);
+  const isDoNotDisturb = isConversationDoNotDisturb(conversation);
   const isAgent = isAgentConversation(conversation, latestMessage);
   const latestMessageIsDigitalTwin =
     isSingleConversation && latestMessage ? isDigitalTwinMessage(latestMessage) : false;
@@ -174,24 +181,14 @@ const ConversationItem = ({
               </span>
             )}
           </div>
-          <div className="ml-2 flex shrink-0 flex-col items-end gap-1">
+          <div className="ml-2 flex shrink-0 items-center">
             <div className="text-xs text-[var(--text-placeholder)]">
               {latestMessageTime}
             </div>
-            {conversation.unreadCount > 0 && (
-              <span
-                className={clsx(
-                  styles["conversation-item-unread-right"],
-                  isAgent && styles["conversation-item-unread-agent"],
-                )}
-              >
-                {formatUnreadCount(conversation.unreadCount)}
-              </span>
-            )}
           </div>
         </div>
 
-        <div className="flex items-center">
+        <div className="flex min-w-0 items-center justify-between">
           <div className="flex min-h-[16px] flex-1 items-center overflow-hidden text-xs">
             {draftPreview !== null && !isActive ? (
               /* Draft preview — shown when not active and draft exists */
@@ -217,6 +214,31 @@ const ConversationItem = ({
                   }}
                 ></div>
               </>
+            )}
+          </div>
+          <div className="ml-2 flex shrink-0 items-center gap-1">
+            {isGroupConversation && isDoNotDisturb && (
+              <span
+                className="relative inline-flex h-4 w-4 items-center justify-center leading-none text-[var(--text-tertiary)]"
+                title={t("placeholder.notNotify")}
+                aria-label={t("placeholder.notNotify")}
+              >
+                <BellOutlined className="text-[14px]" aria-hidden="true" />
+                <span
+                  className="absolute left-1/2 top-1/2 z-10 h-px w-[15px] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[var(--text-tertiary)]"
+                  aria-hidden="true"
+                />
+              </span>
+            )}
+            {conversation.unreadCount > 0 && (
+              <span
+                className={clsx(
+                  styles["conversation-item-unread-right"],
+                  isAgent && styles["conversation-item-unread-agent"],
+                )}
+              >
+                {formatUnreadCount(conversation.unreadCount)}
+              </span>
             )}
           </div>
         </div>

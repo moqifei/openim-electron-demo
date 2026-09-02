@@ -1,3 +1,4 @@
+import { MessageReceiveOptType } from "@openim/wasm-client-sdk";
 import { GroupItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { t } from "i18next";
 import { useCallback, useRef } from "react";
@@ -10,7 +11,13 @@ import { feedbackToast } from "@/utils/common";
 export type PermissionField = "applyMemberFriend" | "lookMemberInfo";
 
 export function useGroupSettings({ closeOverlay }: { closeOverlay: () => void }) {
+  const currentConversation = useConversationStore(
+    (state) => state.currentConversation,
+  );
   const currentGroupInfo = useConversationStore((state) => state.currentGroupInfo);
+  const updateConversationList = useConversationStore(
+    (state) => state.updateConversationList,
+  );
 
   const modalRef = useRef<{
     destroy: () => void;
@@ -29,6 +36,28 @@ export function useGroupSettings({ closeOverlay }: { closeOverlay: () => void })
       }
     },
     [currentGroupInfo?.groupID],
+  );
+
+  const updateConversationNotification = useCallback(
+    async (checked: boolean) => {
+      if (!currentConversation?.conversationID) return;
+      const recvMsgOpt = checked
+        ? MessageReceiveOptType.NotNotify
+        : MessageReceiveOptType.Normal;
+      try {
+        await IMSDK.setConversation({
+          conversationID: currentConversation.conversationID,
+          recvMsgOpt,
+        });
+        updateConversationList([{ ...currentConversation, recvMsgOpt }], "filter");
+      } catch (error) {
+        feedbackToast({
+          error,
+          msg: t("toast.setConversationRecvMessageOptFailed"),
+        });
+      }
+    },
+    [currentConversation, updateConversationList],
   );
 
   const tryDismissGroup = () => {
@@ -90,6 +119,7 @@ export function useGroupSettings({ closeOverlay }: { closeOverlay: () => void })
   return {
     currentGroupInfo,
     updateGroupInfo,
+    updateConversationNotification,
     tryQuitGroup,
     tryDismissGroup,
   };

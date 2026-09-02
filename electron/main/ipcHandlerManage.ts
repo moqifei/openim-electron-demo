@@ -93,6 +93,28 @@ const getDownloadDirectory = () => {
 const getKeyStoreValue = (key: string) =>
   key === "downloadPath" ? getDownloadDirectory() : store.get(key);
 
+const openLocalPath = async (filePath: string) => {
+  if (process.platform === "linux") {
+    const systemEnv = { ...process.env };
+    delete systemEnv.LD_LIBRARY_PATH;
+    delete systemEnv.GIO_MODULE_DIR;
+    delete systemEnv.GSETTINGS_SCHEMA_DIR;
+    const xdgOpenError = await new Promise<Error | null>((resolve) => {
+      execFile("xdg-open", [filePath], { env: systemEnv }, (error) => {
+        resolve(error);
+      });
+    });
+
+    if (!xdgOpenError) return "";
+    logger.warn("[ipcMain] xdg-open failed, falling back to Electron shell", {
+      filePath,
+      error: xdgOpenError,
+    });
+  }
+
+  return shell.openPath(filePath);
+};
+
 type ServerEnvironment = {
   key: string;
   name: string;
@@ -459,7 +481,7 @@ export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.openLocalPath, async (_, filePath: string) => {
     if (!filePath || !path.isAbsolute(filePath)) return "Invalid file path";
     if (!fs.existsSync(filePath)) return "File does not exist";
-    return shell.openPath(filePath);
+    return openLocalPath(filePath);
   });
 
   ipcMain.handle(IpcRenderToMain.openLocalFolder, async (_, filePath: string) => {

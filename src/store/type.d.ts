@@ -30,7 +30,7 @@ export interface UserStore {
   updateSelfInfo: (info: Partial<BusinessUserInfo>) => void;
   getSelfInfoByReq: () => void;
   updateAppSettings: (settings: Partial<AppSettings>) => void;
-  userLogout: (force?: boolean) => Promise<void>;
+  userLogout: (force?: boolean, manual?: boolean) => Promise<void>;
 }
 
 export interface AppSettings {

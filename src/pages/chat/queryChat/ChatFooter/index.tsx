@@ -601,7 +601,8 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   }, []);
 
   const enterToSend = useCallback(async () => {
-    const cleanText = getCleanText(latestHtml.current ?? "");
+    const sendText =
+      editorRef.current?.getText() ?? getCleanText(latestHtml.current ?? "");
     const sendTarget: FileSendTarget = {
       recvID: currentConversation?.userID,
       groupID: currentConversation?.groupID,
@@ -618,9 +619,8 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       await handleSendPendingFiles(filesToSend, sendTarget);
     }
 
-    if (!cleanText) return;
+    if (!sendText.trim()) return;
     // Clear input BEFORE awaiting (keep local copy of text and at ref)
-    const sendText = cleanText;
     const currentAtMembers = new Map(atMembersRef.current);
     setHtml("");
     atMembersRef.current.clear();
@@ -716,7 +716,7 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     pendingFilesKey,
   ]);
 
-  const getQuotePreview = (msg: MessageItem) => {
+  const getQuotePreview = (msg: MessageItem): string => {
     switch (msg.contentType) {
       case MessageType.TextMessage:
         return msg.textElem?.content || "";
@@ -730,6 +730,12 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
         return t("messageDescription.cardMessage");
       case MessageType.MergeMessage:
         return msg.mergeElem?.title || t("messageDescription.mergeMessage");
+      case MessageType.QuoteMessage: {
+        const nestedMessage = msg.quoteElem?.quoteMessage;
+        return nestedMessage
+          ? `${t("messageDescription.quoteMessage")} ${getQuotePreview(nestedMessage)}`
+          : t("messageDescription.quoteMessage");
+      }
       default:
         return t("messageDescription.catchMessage");
     }

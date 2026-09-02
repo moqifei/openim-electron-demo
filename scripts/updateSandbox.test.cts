@@ -86,16 +86,24 @@ const debUpdateManage = require("fs").readFileSync(
   require("path").join(process.cwd(), "electron/main/debUpdateManage.ts"),
   "utf8",
 );
-assert.ok(updateManage.includes("autoUpdater.autoDownload = isSandbox ? false : config.autoDownload"));
+assert.ok(updateManage.includes("autoUpdater.autoDownload = false"));
 assert.ok(updateManage.includes("showSandboxUpdateNotice"));
 assert.match(updateManage, /await isSandboxEnvironment\(\)/);
 const availableHandler = updateManage
   .split('autoUpdater.on("update-available"')[1]
   .split('autoUpdater.on("update-not-available"')[0];
+const automaticCheck = updateManage
+  .split("const runCheck =")[1]
+  .split("// 启动后延迟首次检查")[0];
 assert.match(availableHandler, /isSandboxEnvironment\(\)/);
 assert.match(
   availableHandler,
-  /autoUpdater\.autoDownload = isSandboxNow \|\| isManualCheck \? false : config\.autoDownload/,
+  /autoUpdater\.autoDownload = false/,
+);
+assert.match(
+  automaticCheck,
+  /autoUpdater\.autoDownload = false[\s\S]*await isSandboxEnvironment\(\)[\s\S]*autoUpdater\.checkForUpdates\(\)/,
+  "automatic checks must finish the sandbox probe before allowing any update download",
 );
 const downloadedHandler = updateManage
   .split('autoUpdater.on("update-downloaded"')[1]
@@ -108,6 +116,21 @@ assert.doesNotMatch(
   downloadedHandler,
   /if \(isSandbox\)\s*\{/,
   "download completion must re-check the current sandbox environment",
+);
+assert.match(
+  updateManage,
+  /sandboxNoticePromise/,
+  "sandbox update notices should be deduplicated when update events overlap",
+);
+assert.match(
+  updateManage,
+  /sandboxUpdateBlockedVersion/,
+  "a sandbox-blocked update must remain blocked when its download event arrives later",
+);
+assert.match(
+  updateManage,
+  /sandboxEnvironmentDetected/,
+  "the initial sandbox result must prevent an in-flight update from showing a normal download dialog",
 );
 assert.ok(debUpdateManage.includes("if (await isSandboxEnvironment())"));
 assert.ok(debUpdateManage.includes("await showSandboxUpdateNotice();"));

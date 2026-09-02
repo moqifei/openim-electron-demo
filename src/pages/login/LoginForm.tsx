@@ -1,16 +1,18 @@
 import { Button, Checkbox, Form, Input, Tabs } from "antd";
 import { t } from "i18next";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useADLogin } from "@/api/login";
 import { ensureServerEnvironmentSelected } from "@/utils/serverEnvironment";
 import {
+  consumeStartupAutoLogin,
   getAdUsername,
   getRememberedAdLogin,
   saveRememberedAdLogin,
   setAdUsername,
   setIMProfile,
+  shouldSkipAutoLogin,
 } from "@/utils/storage";
 
 import styles from "./index.module.scss";
@@ -25,6 +27,7 @@ const LoginForm = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [selectingServer, setSelectingServer] = useState(false);
+  const autoLoginStarted = useRef(false);
   const { mutateAsync: adLogin, isLoading: adLoginLoading } = useADLogin();
   const initialUsername = getAdUsername();
   const rememberedLogin = getRememberedAdLogin(initialUsername);
@@ -34,23 +37,47 @@ const LoginForm = () => {
     void handleAdLogin(params);
   };
 
-  const handleAdLogin = async (params: AdLoginFormValues) => {
-    setAdUsername(params.username);
-    setSelectingServer(true);
-    try {
-      await ensureServerEnvironmentSelected(true);
-      const data = await adLogin({
-        username: params.username,
-        password: params.password,
-      });
-      const { chatToken, imToken, userID } = data.data;
-      setIMProfile({ chatToken, imToken, userID });
-      saveRememberedAdLogin(params.username, params.password, params.rememberPassword);
-      navigate("/chat");
-    } finally {
-      setSelectingServer(false);
+  const handleAdLogin = useCallback(
+    async (params: AdLoginFormValues) => {
+      setAdUsername(params.username);
+      setSelectingServer(true);
+      try {
+        await ensureServerEnvironmentSelected(true);
+        const data = await adLogin({
+          username: params.username,
+          password: params.password,
+        });
+        const { chatToken, imToken, userID } = data.data;
+        setIMProfile({ chatToken, imToken, userID });
+        saveRememberedAdLogin(
+          params.username,
+          params.password,
+          params.rememberPassword,
+        );
+        navigate("/chat");
+      } finally {
+        setSelectingServer(false);
+      }
+    },
+    [adLogin, navigate],
+  );
+
+  useEffect(() => {
+    if (autoLoginStarted.current || shouldSkipAutoLogin()) return;
+    autoLoginStarted.current = true;
+    if (!consumeStartupAutoLogin() || !initialUsername || !rememberedLogin.password) {
+      return;
     }
-  };
+
+    void handleAdLogin({
+      username: initialUsername,
+      password: rememberedLogin.password,
+      rememberPassword: true,
+    }).catch(() => {
+      // The login mutation already displays the existing login error toast.
+      // Keep the login form available so the user can retry manually.
+    });
+  }, [handleAdLogin, initialUsername, rememberedLogin.password]);
 
   return (
     <>
@@ -66,7 +93,7 @@ const LoginForm = () => {
         form={form}
         layout="vertical"
         onFinish={onFinish}
-        onValuesChange={(changedValues) => {
+        onValuesChange={(changedValues: Record<string, unknown>) => {
           const changedUsername: unknown = changedValues.username;
           if (typeof changedUsername !== "string") return;
           const nextLogin = getRememberedAdLogin(changedUsername);

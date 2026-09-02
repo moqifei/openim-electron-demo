@@ -54,6 +54,7 @@ export interface IMessageItemProps {
   onMultiSelect?: (message: MessageItemType) => void;
   onRevoke?: (message: MessageItemType) => void;
   onAvatarClick?: (message: MessageItemType) => void;
+  onQuoteMessage?: (message: MessageItemType) => void | Promise<void>;
   imagePreviewIndex?: number;
   onImagePreview?: (index: number) => void;
 }
@@ -81,6 +82,7 @@ const MessageItem: FC<IMessageItemProps> = ({
   onMultiSelect,
   onRevoke,
   onAvatarClick,
+  onQuoteMessage,
   imagePreviewIndex,
   onImagePreview,
 }) => {
@@ -266,6 +268,7 @@ const MessageItem: FC<IMessageItemProps> = ({
                   isMultiSelectActive={isMultiSelectActive}
                   imagePreviewIndex={imagePreviewIndex}
                   onImagePreview={onImagePreview}
+                  onQuoteMessage={onQuoteMessage}
                 />
               </MessageItemErrorBoundary>
 

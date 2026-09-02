@@ -1,5 +1,4 @@
 import { dialog, app } from "electron";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
 import http from "node:http";
@@ -18,7 +17,6 @@ import {
   getDebManifestUrl,
   getDebUpdateFile,
   isNewerVersion,
-  verifySha512Digest,
 } from "./debUpdateUtils";
 import {
   isSandboxEnvironment,
@@ -84,15 +82,9 @@ const readResponseText = async (response: IncomingMessage) => {
 const downloadDeb = async (url: string, destination: string) => {
   const response = await requestUrl(url);
   const output = createWriteStream(destination, { flags: "wx" });
-  const hash = createHash("sha512");
-  let bytes = 0;
 
   try {
     await new Promise<void>((resolve, reject) => {
-      response.on("data", (chunk: Buffer) => {
-        bytes += chunk.length;
-        hash.update(chunk);
-      });
       response.on("error", reject);
       output.on("error", reject);
       output.on("finish", resolve);
@@ -102,13 +94,6 @@ const downloadDeb = async (url: string, destination: string) => {
     output.destroy();
     throw error;
   }
-
-  const digest = hash.digest();
-  return {
-    bytes,
-    base64: digest.toString("base64"),
-    hex: digest.toString("hex"),
-  };
 };
 
 const installDeb = (debPath: string) =>
@@ -217,16 +202,7 @@ const runCheck = async (manual = false) => {
     debPath = join(tmpdir(), `${fileName}.${process.pid}.${Date.now()}.download`);
     logger.info("[deb-updater] downloading update", manifest.version, updateUrl);
 
-    const downloaded = await downloadDeb(updateUrl, debPath);
-    if (updateFile.size !== undefined && downloaded.bytes !== updateFile.size) {
-      throw new Error(
-        `Downloaded deb size mismatch: expected ${updateFile.size}, got ${downloaded.bytes}`,
-      );
-    }
-    if (!verifySha512Digest(downloaded.base64, downloaded.hex, updateFile.sha512)) {
-      throw new Error("Downloaded deb sha512 mismatch");
-    }
-
+    await downloadDeb(updateUrl, debPath);
     await installDownloadedDeb(debPath, manifest.version);
   } catch (error) {
     logger.error("[deb-updater] update failed", error);

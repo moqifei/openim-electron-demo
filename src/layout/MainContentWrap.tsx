@@ -5,7 +5,12 @@ import { Outlet, useNavigate } from "react-router-dom";
 
 import { useConversationStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
-import { getIMToken, getIMUserID, clearIMProfile } from "@/utils/storage";
+import {
+  clearIMProfile,
+  clearManualLogout,
+  getIMToken,
+  getIMUserID,
+} from "@/utils/storage";
 
 // const isElectronProd = import.meta.env.MODE !== "development" && window.electronAPI;
 
@@ -25,10 +30,12 @@ export const MainContentWrap = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    clearManualLogout();
+
     const loginCheck = async () => {
       // 启动时强制清除持久化的登录态, 确保每次启动客户端(包括系统重启后)
       // 都需要重新登录, 避免关机前未主动退出登录导致 token 残留、重启后免登录的安全风险。
-      await clearIMProfile();
+      clearIMProfile();
       const IMToken = await getIMToken();
       const IMUserID = await getIMUserID();
       if (!IMToken || !IMUserID) {

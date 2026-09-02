@@ -186,7 +186,7 @@ const LeftNavBar = memo(() => {
       content: t("toast.confirmlogOut"),
       onOk: async () => {
         try {
-          await userLogout();
+          await userLogout(false, true);
         } catch (error) {
           feedbackToast({ error });
         }

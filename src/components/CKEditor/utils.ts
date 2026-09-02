@@ -13,8 +13,10 @@ export const replaceEmoji2Str = (text: string) => {
 
 export const getCleanText = (html: string) => {
   let text = replaceEmoji2Str(html);
-  text = text.replace(/<\/p><p>/g, "\n");
-  text = text.replace(/<br\s*[/]?>/gi, "\n");
+  text = text.replace(/<p>[ \t\r\n]*/gi, "<p>");
+  text = text.replace(/[ \t\r\n]*<\/p>/gi, "</p>");
+  text = text.replace(/<\/p>\s*<p>/g, "\n");
+  text = text.replace(/<br\s*[/]?>[ \t\r\n]*/gi, "\n");
   text = text.replace(/<[^>]+>/g, "");
   text = convertChar(text);
   text = decodeHtmlEntities(text);

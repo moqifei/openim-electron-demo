@@ -3,10 +3,6 @@ import clsx from "clsx";
 import { t } from "i18next";
 import { FC, useCallback } from "react";
 
-import { message as antdMessage } from "@/AntdGlobalComp";
-import { downloadFileWithProgress } from "@/utils/fileDownload";
-import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
-
 import { IMessageItemProps } from "./index";
 import styles from "./message-item.module.scss";
 
@@ -21,7 +17,7 @@ const QuoteMessageRender: FC<
     | "onMultiSelect"
     | "onRevoke"
   >
-> = ({ message, isSender }) => {
+> = ({ message, isSender, onQuoteMessage }) => {
   const quoteElem = message.quoteElem;
   const text =
     quoteElem?.text ||
@@ -30,7 +26,7 @@ const QuoteMessageRender: FC<
     "";
   const quoteMessage = quoteElem?.quoteMessage;
 
-  const getQuoteContent = (msg: MessageItem) => {
+  const getQuoteContent = (msg: MessageItem): string => {
     switch (msg.contentType) {
       case MessageType.TextMessage:
         return msg.textElem?.content || "";
@@ -44,19 +40,34 @@ const QuoteMessageRender: FC<
         return t("messageDescription.cardMessage");
       case MessageType.MergeMessage:
         return msg.mergeElem?.title || t("messageDescription.mergeMessage");
+      case MessageType.QuoteMessage: {
+        const nestedMessage = msg.quoteElem?.quoteMessage;
+        return nestedMessage
+          ? `${t("messageDescription.quoteMessage")} ${getQuoteContent(nestedMessage)}`
+          : t("messageDescription.quoteMessage");
+      }
       default:
         return t("messageDescription.catchMessage");
     }
   };
 
-  const jumpToOriginal = useCallback((originalMsg: MessageItem) => {
-    if (!originalMsg.clientMsgID) return;
-    const el = document.getElementById(`chat_${originalMsg.clientMsgID}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-    el.classList.add("animate-pulse");
-    setTimeout(() => el.classList.remove("animate-pulse"), 2000);
-  }, []);
+  const jumpToOriginal = useCallback(
+    async (originalMsg: MessageItem) => {
+      if (onQuoteMessage) {
+        await onQuoteMessage(originalMsg);
+        return;
+      }
+
+      if (!originalMsg.clientMsgID) return;
+
+      const el = document.getElementById(`chat_${originalMsg.clientMsgID}`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("animate-pulse");
+      setTimeout(() => el.classList.remove("animate-pulse"), 2000);
+    },
+    [onQuoteMessage],
+  );
 
   const handleQuoteClick = useCallback(
     async (e: React.MouseEvent) => {
@@ -64,31 +75,17 @@ const QuoteMessageRender: FC<
 
       if (quoteMessage.contentType === MessageType.PictureMessage) {
         e.stopPropagation();
-        jumpToOriginal(quoteMessage);
+        await jumpToOriginal(quoteMessage);
         return;
       }
 
       if (quoteMessage.contentType === MessageType.FileMessage) {
         e.stopPropagation();
-        const fileElem = quoteMessage.fileElem;
-        if (fileElem?.sourceUrl) {
-          try {
-            await downloadFileWithProgress({
-              url: fileElem.sourceUrl,
-              fileName: fileElem.fileName,
-              knownSize: fileElem.fileSize,
-              showProgressToast: true,
-              progressTitle: t("toast.downloading"),
-            });
-          } catch (error) {
-            console.error("[QuoteMessageRender] download failed:", error);
-            antdMessage.error(getFileTransferErrorMessage(error, "download"));
-          }
-        }
+        await jumpToOriginal(quoteMessage);
         return;
       }
 
-      jumpToOriginal(quoteMessage);
+      await jumpToOriginal(quoteMessage);
     },
     [quoteMessage, jumpToOriginal],
   );
