@@ -7,6 +7,11 @@ import {
 } from "./fileTransferProgress";
 import { inferDownloadFileName } from "./downloadFileName";
 import { getFileTransferErrorReason } from "./fileTransferError";
+import {
+  getDownloadErrorDiagnostics,
+  getDownloadUrlLogDetails,
+  getDownloadXhrDiagnostics,
+} from "./fileDownloadDiagnostics";
 
 type DownloadFileOptions = {
   url: string;
@@ -48,6 +53,9 @@ export const downloadFileWithProgress = async ({
   return new Promise<string | undefined>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let downloadFileName = fileName || "download";
+    let latestProgress: ProgressEvent | undefined;
+    let lastLoggedProgress = -1;
+    let lastLoggedLoaded = -1;
     const progressKey = showProgressToast
       ? createFileTransferProgressKey("file-download")
       : "";
@@ -70,6 +78,18 @@ export const downloadFileWithProgress = async ({
     };
 
     const failDownload = (error: unknown) => {
+      console.error("[fileDownload] failed", {
+        error: getDownloadErrorDiagnostics(error),
+        xhr: getDownloadXhrDiagnostics(
+          xhr,
+          latestProgress,
+          knownSize,
+          typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        ),
+        request: getDownloadUrlLogDetails(resolvedUrl),
+        fileName: downloadFileName,
+        fileSize: knownSize ?? 0,
+      });
       const reason = getFileTransferErrorReason(error);
       const title = reason
         ? t("toast.downloadFailedWithReason", { reason })
@@ -92,19 +112,62 @@ export const downloadFileWithProgress = async ({
     };
 
     const resolvedUrl = resolveFileDownloadUrl(url);
+    console.info("[fileDownload] start", {
+      request: getDownloadUrlLogDetails(resolvedUrl),
+      fileName: fileName || "",
+      fileSize: knownSize ?? 0,
+      authHeader: "not-set",
+    });
     xhr.open("GET", resolvedUrl, true);
     xhr.responseType = "blob";
+
+    xhr.onloadstart = () => {
+      console.info("[fileDownload] loadstart", {
+        request: getDownloadUrlLogDetails(resolvedUrl),
+      });
+    };
+
+    xhr.onreadystatechange = () => {
+      console.info("[fileDownload] ready-state", {
+        readyState: xhr.readyState,
+        status: xhr.status,
+      });
+    };
 
     updateProgress(0);
 
     xhr.onprogress = (event) => {
+      latestProgress = event;
       const total = event.lengthComputable ? event.total : knownSize;
+      const progress = total ? Math.round((event.loaded / total) * 100) : -1;
+      const shouldLogProgress =
+        progress === 100 ||
+        (progress >= 0 && progress - lastLoggedProgress >= 10) ||
+        (progress < 0 &&
+          (lastLoggedLoaded < 0 || event.loaded - lastLoggedLoaded >= 1024 * 1024));
+      if (shouldLogProgress) {
+        console.info("[fileDownload] progress", {
+          loaded: event.loaded,
+          total: total ?? 0,
+          lengthComputable: event.lengthComputable,
+          percent: progress,
+        });
+        lastLoggedProgress = progress;
+        lastLoggedLoaded = event.loaded;
+      }
       if (!total) return;
-      const progress = Math.round((event.loaded / total) * 100);
       updateProgress(Math.min(99, Math.max(0, progress)));
     };
 
     xhr.onload = async () => {
+      console.info("[fileDownload] load", {
+        xhr: getDownloadXhrDiagnostics(
+          xhr,
+          latestProgress,
+          knownSize,
+          typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        ),
+      });
       if ((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) {
         try {
           downloadFileName = inferDownloadFileName({
@@ -116,6 +179,11 @@ export const downloadFileWithProgress = async ({
 
           const electronAPI = window.electronAPI;
           if (electronAPI?.saveDownloadedFile) {
+            console.info("[fileDownload] saving", {
+              fileName: downloadFileName,
+              fileSize: xhr.response?.size ?? 0,
+              hasTargetPath: Boolean(filePath),
+            });
             const savedPath = await electronAPI.saveDownloadedFile({
               data: await xhr.response.arrayBuffer(),
               fileName: downloadFileName,
@@ -125,10 +193,19 @@ export const downloadFileWithProgress = async ({
               failDownload(new Error("Target file path is invalid"));
               return;
             }
+            console.info("[fileDownload] saved", {
+              fileName: downloadFileName,
+              fileSize: xhr.response?.size ?? 0,
+              hasTargetPath: Boolean(filePath),
+            });
             updateProgress(100, "success");
             resolve(savedPath);
             return;
           } else {
+            console.info("[fileDownload] saving-browser-blob", {
+              fileName: downloadFileName,
+              fileSize: xhr.response?.size ?? 0,
+            });
             saveBlob(xhr.response, downloadFileName);
           }
           updateProgress(100, "success");
@@ -139,13 +216,52 @@ export const downloadFileWithProgress = async ({
         return;
       }
       const responseError = await readResponseError();
+      console.error("[fileDownload] http-error", {
+        status: xhr.status,
+        statusText: xhr.statusText,
+        responseUrl: xhr.responseURL ? getDownloadUrlLogDetails(xhr.responseURL) : "",
+        responseSize: xhr.response?.size ?? 0,
+      });
       failDownload(responseError || new Error(`HTTP ${xhr.status}`));
     };
 
-    xhr.onerror = () => {
+    xhr.onerror = (event) => {
+      console.error("[fileDownload] network-error", {
+        eventType: event.type,
+        ...getDownloadXhrDiagnostics(
+          xhr,
+          latestProgress,
+          knownSize,
+          typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        ),
+        request: getDownloadUrlLogDetails(resolvedUrl),
+      });
       failDownload(new Error("Network error"));
     };
-    xhr.onabort = () => {
+    xhr.ontimeout = (event) => {
+      console.error("[fileDownload] timeout", {
+        eventType: event.type,
+        ...getDownloadXhrDiagnostics(
+          xhr,
+          latestProgress,
+          knownSize,
+          typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        ),
+        request: getDownloadUrlLogDetails(resolvedUrl),
+      });
+      failDownload(new Error("Download timed out"));
+    };
+    xhr.onabort = (event) => {
+      console.error("[fileDownload] abort", {
+        eventType: event.type,
+        ...getDownloadXhrDiagnostics(
+          xhr,
+          latestProgress,
+          knownSize,
+          typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        ),
+        request: getDownloadUrlLogDetails(resolvedUrl),
+      });
       failDownload(new Error("Download aborted"));
     };
     xhr.send();

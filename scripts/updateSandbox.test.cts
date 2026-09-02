@@ -1,4 +1,15 @@
 import assert = require("assert");
+import fs = require("fs");
+import path = require("path");
+
+const electronBuilderConfig = fs.readFileSync(
+  path.join(process.cwd(), "electron-builder.json5"),
+  "utf8",
+);
+assert.ok(
+  electronBuilderConfig.includes('"src/config/serverEnvironments.json"'),
+  "packaged app must include the server environment config used by the main process",
+);
 
 const {
   isSandboxEnvironment,

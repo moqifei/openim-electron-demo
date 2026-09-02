@@ -16,6 +16,7 @@
     "dist",
     "!dist/*.wasm",
     "dist-electron",
+    "src/config/serverEnvironments.json",
     "!node_modules/rxjs/**/*",
     "!node_modules/koffi/src/**/*",
     "!node_modules/koffi/build/**/*",
