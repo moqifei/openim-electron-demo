@@ -46,10 +46,7 @@ export function createMainWindow() {
   createSplashWindow();
   mainWindow = new BrowserWindow({
     title: "Dev-ER",
-    icon: join(
-      global.pathConfig.publicPath,
-      `icons/${isWin ? "icon-new.ico" : "icon-new.png"}`,
-    ),
+    icon: global.pathConfig.trayIcon,
     frame: false,
     show: false,
     width: 1024,

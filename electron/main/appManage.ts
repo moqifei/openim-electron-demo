@@ -2,7 +2,7 @@ import { app, powerMonitor, ipcMain, BrowserWindow } from "electron";
 import { isExistMainWindow, sendEvent, showWindow } from "./windowManage";
 import { join } from "node:path";
 import fs from "fs";
-import { isMac, isProd, isWin } from "../utils";
+import { isLinux, isMac, isProd, isWin } from "../utils";
 import { getStore } from "./storeManage";
 import { IpcMainToRender } from "../constants";
 import { logger } from ".";
@@ -85,6 +85,10 @@ export const setAppGlobalData = () => {
   const electronDistPath = join(__dirname, "../");
   const distPath = join(electronDistPath, "../dist");
   const publicPath = isProd ? distPath : join(electronDistPath, "../public");
+  const nativeIconPath =
+    isProd && isLinux
+      ? join(process.resourcesPath, "icons")
+      : join(publicPath, "icons");
   const asarPath = process.resourcesPath;
 
   global.pathConfig = {
@@ -100,8 +104,8 @@ export const setAppGlobalData = () => {
           "/app.asar.unpacked/node_modules/@openim/electron-client-sdk/assets",
         )
       : join(__dirname, "../../node_modules/@openim/electron-client-sdk/assets"),
-    trayIcon: join(publicPath, `/icons/${isWin ? "icon-new.ico" : "icon-new.png"}`),
-    emptyTrayIcon: join(publicPath, `/icons/${"empty_tray.png"}`),
+    trayIcon: join(nativeIconPath, isWin ? "icon-new.ico" : "icon-new.png"),
+    emptyTrayIcon: join(nativeIconPath, "empty_tray.png"),
     indexHtml: isProd ? join(distPath, "index.html") : join(publicPath, "index.html"),
     splashHtml: join(publicPath, "splash.html"),
     preload: join(__dirname, "../preload/index.js"),

@@ -53,9 +53,9 @@ normalize_desktop_file() {
   fi
 
   if grep -q '^Icon=' "$target" 2>/dev/null; then
-    sed -i "s|^Icon=.*|Icon=$APP_DIR/resources/dist/icons/icon-new.png|" "$target"
+    sed -i "s|^Icon=.*|Icon=$APP_DIR/resources/icons/icon-new.png|" "$target"
   else
-    sed -i "/^\[Desktop Entry\]/a Icon=$APP_DIR/resources/dist/icons/icon-new.png" "$target" 2>/dev/null || true
+    sed -i "/^\[Desktop Entry\]/a Icon=$APP_DIR/resources/icons/icon-new.png" "$target" 2>/dev/null || true
   fi
 }
 
@@ -105,7 +105,7 @@ Name=$DISPLAY_NAME
 Exec=/opt/StickyCake/年糕 %U
 Terminal=false
 Type=Application
-Icon=/opt/StickyCake/resources/dist/icons/icon-new.png
+Icon=/opt/StickyCake/resources/icons/icon-new.png
 StartupWMClass=$APP_NAME
 Categories=Utility;
 $MANAGED_MARKER

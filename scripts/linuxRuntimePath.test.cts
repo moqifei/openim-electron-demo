@@ -12,7 +12,7 @@ assert.match(
   /target="\$SYSTEM_BIN_DIR\/\$EXECUTABLE_NAME"[\s\S]*ln -sfn "\$APP_DIR\/\$EXECUTABLE_NAME" "\$target"/,
 );
 assert.match(createShortcutSource, /Exec=\/opt\/StickyCake\/年糕 %U/);
-assert.match(createShortcutSource, /Icon=\/opt\/StickyCake\/resources\/dist\/icons\/icon-new\.png/);
+assert.match(createShortcutSource, /Icon=\/opt\/StickyCake\/resources\/icons\/icon-new\.png/);
 assert.match(
   removeShortcutSource,
   /target="\$SYSTEM_BIN_DIR\/\$EXECUTABLE_NAME"[\s\S]*rm -f "\$target"/,

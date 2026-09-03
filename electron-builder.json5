@@ -92,6 +92,10 @@
     category: "Utility",
     extraResources: [
       {
+        from: "dist/icons",
+        to: "icons",
+      },
+      {
         from: "node_modules/@openim/electron-client-sdk/assets/linux_${arch}/",
         to: "app.asar.unpacked/node_modules/@openim/electron-client-sdk/assets/linux_${arch}",
       },
