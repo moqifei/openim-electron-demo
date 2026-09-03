@@ -1,137 +1,186 @@
-# UOS 消息提醒、应用品牌、截图与图片另存为实施计划
+# UOS 托盘悬停提醒、Linux 品牌、截图与图片另存为实施计划（修订版）
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 修复 UOS 消息弹窗、Linux 桌面启动、截图后台行为，并为图片预览增加自定义路径另存为，同时保持现有 Windows 和聊天发送流程不回归。
+**Goal:** 以当前 Windows 托盘悬停实现为基准，修复 UOS 托盘消息展示、Linux 桌面启动、截图后台行为和图片预览另存为。
 
-**Architecture:** 保留现有 Electron 主进程提醒窗口、原生截图、统一文件下载和主进程保存 IPC。将 UOS 提醒窗口稳定为不抢焦点的自绘通知，将 Linux 用户可见名称与 ASCII 执行文件名分离并统一 desktop/启动器路径，删除截图隐藏状态后让快捷键仅触发渲染层截图事件，图片预览复用 `chooseDownloadPath` + `downloadFileWithProgress`。
+**Architecture:** 保留 `messageReminderManage.ts` 中 Windows 已使用的短时即时提醒，并保留 `trayManage.ts` 中 Windows 已使用的托盘悬停面板作为 Windows/UOS 共用入口；新消息同时更新提醒状态、托盘闪烁、tooltip 和即时弹窗，鼠标进入/移动托盘图标时显示共用的多消息面板，移开后按现有计时器隐藏。Linux 用户可见名称和实际可执行文件为“年糕”，内部目录、desktop 文件、包标识和脚本路径使用 `stickycake`。截图继续复用现有 Electron 原生链路，但移除隐藏窗口参数和任何主窗口显示/聚焦动作；图片另存为复用已有原生保存 IPC。
 
 **Tech Stack:** Electron、Electron Builder、React、TypeScript、Ant Design、Playwright、Node.js、POSIX shell。
 
 ## Global Constraints
 
-- UOS 消息提醒采用年糕自绘弹窗，不接入 UOS 系统通知中心。
-- 桌面和弹窗等用户可见名称统一为“年糕”；Linux 实际可执行文件使用稳定的 ASCII 名称 `niangao`。
-- 不修改消息协议、服务器接口、图片上传接口、托盘消息数据结构或现有 Windows 安装向导。
-- 不新增独立截图窗口，不更换截图原生模块，不改变截图分辨率和 fallback 策略。
-- 截图接口收敛为 `startScreenshot(): Promise<{ dataUrl: string; isSelection: boolean } | null>`。
-- 后台快捷键截图不得调用主窗口的 `show()`、`restore()` 或 `focus()`，也不得改变主窗口原有显示状态。
-- 图片“下载”继续使用默认下载目录；“另存为”必须经过主进程保存对话框和统一下载 IPC。
-- 用户取消图片另存为不视为下载失败，不显示错误提示。
-- 实现每项行为时先写失败测试，运行并确认失败，再写最小生产代码，最后运行相关测试。
-- 工作区中已有用户修改和未合并内容必须保留；只修改本计划列出的需求相关文件。
+- UOS 收到消息时必须保留 Windows 当前的几秒钟即时提醒，并同步更新未读状态、托盘闪烁和 tooltip。
+- UOS 托盘悬停消息面板必须依赖 `mouse-enter`/`mouse-move`，并复用当前 Windows 的 HTML、样式、尺寸、位置、鼠标监控、点击和隐藏时序；只允许增加 UOS 必需的窗口兼容参数。
+- 桌面显示名称为 `年糕`；Linux 实际可执行文件为 `年糕`；Linux 内部目录、desktop 文件名、脚本变量和安装路径使用 `stickycake`。
+- Linux desktop 启动入口固定为 `/opt/stickycake/年糕 %U`，实际打包产物检查必须证明该文件存在且可执行。
+- Windows 的现有产品名、NSIS 配置、安装向导、任务栏提醒和产物兼容行为保持不变。
+- 不使用 `niangao` 作为 Linux 执行文件或内部标识；不新增 `OpenCorp-Base` Linux 执行路径。
+- 截图接口统一为 `startScreenshot(): Promise<{ dataUrl: string; isSelection: boolean } | null>`。
+- 后台快捷键截图不得调用主窗口的 `show()`、`restore()` 或 `focus()`，不得改变主窗口原有状态。
+- 图片“下载”继续使用默认下载目录；“另存为”经过 `chooseDownloadPath` 和主进程保存 IPC。
+- 用户取消图片另存为不显示下载失败。
+- 每项行为先写失败测试，运行确认失败，再写最小实现并运行相关测试。
+- 保留工作区已有用户修改和未合并内容，只修改需求相关文件。
 
 ---
 
 ## 文件结构与责任边界
 
-| 文件                                                          | 责任                                                         |
-| ------------------------------------------------------------- | ------------------------------------------------------------ |
-| `electron/main/messageReminderManage.ts`                      | UOS/Windows 自绘消息弹窗的窗口生命周期、定位、加载和点击跳转 |
-| `electron/main/windowManage.ts`                               | 主窗口状态、全局截图事件转发和任务栏提醒                     |
-| `electron/main/ipcHandlerManage.ts`                           | 截图 IPC、保存 IPC、显示器选择和主进程文件写入               |
-| `electron/main/shortcutManage.ts`                             | 全局截图快捷键注册和配置更新                                 |
-| `electron/preload/index.ts`                                   | 将截图与保存能力安全暴露给渲染进程                           |
-| `src/types/globalExpose.d.ts`                                 | Electron API 类型契约                                        |
-| `src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx` | 截图按钮，不再提供隐藏窗口选项                               |
-| `src/pages/chat/queryChat/ChatFooter/index.tsx`               | 截图触发、剪贴板写入和待发送图片队列                         |
-| `src/pages/chat/queryChat/ChatContent.tsx`                    | 图片预览工具栏的下载和另存为操作                             |
-| `src/utils/downloadFileName.ts`                               | 普通文件和图片的文件名/MIME 扩展名推断                       |
-| `electron-builder.json5`                                      | Linux executableName、安装包和桌面入口配置                   |
-| `scripts/linuxCreateDesktopShortcut.sh`                       | 安装后创建和修正用户桌面快捷方式                             |
-| `scripts/linuxRemoveDesktopShortcut.sh`                       | 卸载时清理本项目管理的快捷方式                               |
-| `scripts/afterPackBundledGlibc.cjs`                           | bundled glibc 场景的 Linux 启动器和真实可执行文件            |
-| `build-linux-deb.sh`                                          | 自定义 deb 构建入口与 electron-builder 输出目录              |
-| `scripts/*.test.cts` / `e2e/*.spec.ts`                        | 源码契约、纯函数和构建配置回归测试                           |
+| 文件                                                          | 责任                                                        |
+| ------------------------------------------------------------- | ----------------------------------------------------------- |
+| `electron/main/trayManage.ts`                                 | Windows/UOS 共用托盘悬停面板、鼠标边界和显示/隐藏时序       |
+| `electron/main/messageReminderManage.ts`                      | 现有即时提醒兼容边界；不得成为 UOS 托盘悬停逻辑的第二套实现 |
+| `electron/main/messageReminderState.ts`                       | 未读会话状态和共用面板 HTML                                 |
+| `electron/main/ipcHandlerManage.ts`                           | 新消息提醒 IPC、截图 IPC、保存 IPC                          |
+| `electron/main/windowManage.ts`                               | 全局截图事件转发和主窗口状态                                |
+| `electron/preload/index.ts`                                   | no-argument screenshot API 和保存 API 暴露                  |
+| `src/types/globalExpose.d.ts`                                 | Electron API 类型契约                                       |
+| `src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx` | 截图按钮和截图设置移除                                      |
+| `src/pages/chat/queryChat/ChatFooter/index.tsx`               | 截图调用、剪贴板和待发送队列                                |
+| `src/pages/chat/queryChat/ChatContent.tsx`                    | 图片预览下载/另存为工具栏                                   |
+| `src/utils/downloadFileName.ts`                               | 下载文件名和 MIME 扩展名推断                                |
+| `electron-builder.json5`                                      | Linux 产品名、执行文件和打包元数据                          |
+| `scripts/linuxCreateDesktopShortcut.sh`                       | Linux desktop 文件和用户桌面快捷方式                        |
+| `scripts/linuxRemoveDesktopShortcut.sh`                       | Linux 卸载清理                                              |
+| `scripts/afterPackBundledGlibc.cjs`                           | bundled glibc 启动器和真实执行文件                          |
+| `build-linux-deb.sh`                                          | 自定义 deb 构建路径和内部包标识                             |
+| `scripts/*.test.cts` / `e2e/*.spec.ts`                        | 回归测试和产物契约测试                                      |
 
 ---
 
-### Task 1: 稳定 UOS 自绘消息弹窗
+### Task 1: 统一 Windows/UOS 即时提醒与托盘悬停面板
 
 **Files:**
 
-- Modify: `electron/main/messageReminderManage.ts:1-280`
+- Modify: `electron/main/messageReminderManage.ts:1-280` to remove the Linux/UOS-specific immediate reminder appearance and retain the Windows behavior for every desktop platform
+- Modify: `electron/main/trayManage.ts:90-380` only if a UOS Electron window compatibility guard is required after the shared path is verified
+- Modify: `electron/main/ipcHandlerManage.ts:570-595` only if the incoming-message handler needs a narrow logging or validation adjustment; it must continue calling `showMessageReminder`
+- Test: `scripts/trayHover.test.cts`
 - Test: `scripts/messageReminderUos.test.cts`
-- Test: `scripts/messageReminderUtils.test.cts`
+- Test: `scripts/messageReminderState.test.cts`
+- Test: `scripts/taskbarMessageAttention.test.cts`
 
 **Interfaces:**
 
-- Consumes: `ReminderPayload`, `addReminderConversation`, tray synchronization, and `openim-tray://conversation/<conversationID>`.
-- Produces: existing `showMessageReminder(payload: ReminderPayload): void`, `hideMessageReminder(): void`, and `clearMessageReminderConversation(conversationID: string): void`.
+- Consumes: `notifyIncomingMessage`, `setTrayAttention`, `getReminderConversations`, `buildReminderPanelHtml`, `handleTrayHover`, `showTrayReminderPanel`, and existing `openim-tray://conversation/<id>` handling.
+- Produces: `notifyIncomingMessage -> showMessageReminder` for the same 5-second immediate reminder on Windows and UOS, plus `mouse-enter`/`mouse-move -> handleTrayHover -> buildReminderPanelHtml` for the shared multi-message tray panel.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Rewrite the failing tests to encode both Windows message-entry paths**
 
-Append these assertions to `scripts/messageReminderUos.test.cts`:
+Extend `scripts/trayHover.test.cts` with:
 
 ```ts
-assert.ok(source.includes("skipTaskbar: true"));
-assert.ok(source.includes("focusable: false"));
+assert.match(source, /appTray\.on\("mouse-enter"[\s\S]*?handleTrayHover\(position\)/);
+assert.match(source, /appTray\.on\("mouse-move"[\s\S]*?handleTrayHover\(position\)/);
+assert.ok(source.includes("showTrayReminderPanel"));
 assert.ok(
-  source.includes('backgroundColor: isLinuxReminder ? "#181c24" : "#00000000"'),
+  source.includes("buildReminderPanelHtml(app.getName(), trayAttentionConversations)"),
 );
-assert.ok(source.includes("window.showInactive()"));
-assert.ok(source.includes("openim-tray://conversation/"));
-assert.ok(source.includes("!window.isDestroyed()"));
-assert.ok(source.includes("reminderLoadRequest"));
+assert.ok(source.includes("startTrayPanelMouseMonitor"));
+assert.ok(source.includes("scheduleHideTrayReminderPanel"));
+assert.ok(source.includes("panel.showInactive()"));
 ```
 
-Also assert that showing a message does not depend on tray hover:
+Add these panel-contract assertions to the same test:
 
 ```ts
-assert.ok(source.includes("export const showMessageReminder"));
-assert.ok(!source.includes("showTrayReminderPanel("));
+const stateSource = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/messageReminderState.ts"),
+  "utf8",
+);
+assert.match(stateSource, /class="conversation"/);
+assert.match(stateSource, /class="ignore-all"/);
+assert.match(stateSource, /忽略全部/);
+assert.match(stateSource, /border-bottom: 1px solid #edf0f5/);
 ```
 
-- [ ] **Step 2: Run the tests and verify RED**
+Replace the old Linux-specific assertions in `scripts/messageReminderUos.test.cts` with:
+
+```ts
+const reminderSource = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/messageReminderManage.ts"),
+  "utf8",
+);
+const ipcSource = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/ipcHandlerManage.ts"),
+  "utf8",
+);
+const traySource = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/trayManage.ts"),
+  "utf8",
+);
+
+assert.match(reminderSource, /const REMINDER_TIMEOUT_MS = 5000/);
+assert.ok(reminderSource.includes("window.showInactive()"));
+assert.ok(reminderSource.includes("window.setBounds(getReminderBounds(), false)"));
+assert.doesNotMatch(reminderSource, /isLinuxReminder|pageBackground|toastBackground/);
+assert.ok(ipcSource.includes("IpcRenderToMain.notifyIncomingMessage"));
+assert.ok(ipcSource.includes("showMessageReminder({"));
+assert.ok(traySource.includes("handleTrayHover"));
+assert.ok(traySource.includes("buildReminderPanelHtml"));
+```
+
+This test explicitly prevents the current Linux/UOS-only dark notification branch while preserving the immediate popup entry point. Keep the existing taskbar attention assertions unchanged.
+
+- [ ] **Step 2: Run the tests and verify RED before changing production code**
 
 Run:
 
 ```powershell
+node --require ts-node/register/transpile-only scripts/trayHover.test.cts
 node --require ts-node/register/transpile-only scripts/messageReminderUos.test.cts
-```
-
-Expected before implementation: the test fails at the missing `reminderLoadRequest` assertion. A loader error is not an acceptable RED result; if it occurs, use the installed TypeScript runner to execute the same test and then rerun until an assertion about the missing behavior fails.
-
-- [ ] **Step 3: Implement the minimal lifecycle fix**
-
-In `electron/main/messageReminderManage.ts`:
-
-1. Keep the existing reminder dimensions, work-area placement, 5-second timeout, text escaping, tray state synchronization, and URL click handling.
-2. Keep Linux notification properties opaque and non-activating:
-
-```ts
-skipTaskbar: true,
-show: false,
-alwaysOnTop: true,
-focusable: false,
-transparent: false,
-backgroundColor: "#181c24",
-```
-
-Preserve the current non-Linux transparent configuration. 3. Add `let reminderLoadRequest = 0;`. Each `showMessageReminder` call increments it, captures the request id, and registers a `did-finish-load` callback for its `loadURL` call. The callback may call `window.showInactive()` only when the window is not destroyed and its request id equals the latest request id. 4. Do not create a new BrowserWindow for each message. Do not call `focus()` or the main-window `showWindow()` from the reminder path. 5. Keep `setAlwaysOnTop(true, isLinuxReminder ? "pop-up-menu" : "screen-saver")`, bottom-right work-area positioning, `openim-tray://conversation/<id>` click routing, and timeout hiding. 6. If an old load callback fires after a newer message, it must not display stale content.
-
-- [ ] **Step 4: Run the tests and verify GREEN**
-
-Run:
-
-```powershell
-node --require ts-node/register/transpile-only scripts/messageReminderUos.test.cts
-node --require ts-node/register/transpile-only scripts/messageReminderUtils.test.cts
 node --require ts-node/register/transpile-only scripts/messageReminderState.test.cts
 ```
 
-Expected: all commands exit 0 and print their existing test-passed messages.
+Expected before implementation: `messageReminderUos.test.cts` fails because the current implementation contains `isLinuxReminder`, `pageBackground` and `toastBackground`; the panel/state tests may pass. Do not weaken the test to make the current Linux-specific appearance pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 3: Implement the Windows-baseline immediate reminder**
+
+1. In `electron/main/messageReminderManage.ts`, remove `isLinuxReminder` and the conditional `pageBackground`, `toastBackground`, `focusable`, `transparent`, `backgroundColor` and always-on-top level values. Keep one `BrowserWindow` configuration and one `buildReminderHtml` result for Windows and UOS, using the current Windows values: `REMINDER_WIDTH = 320`, `REMINDER_HEIGHT = 110`, transparent background, `focusable: true`, `alwaysOnTop: true`, `showInactive()`, and a 5-second timeout.
+2. Keep `showMessageReminder(payload)` responsible for adding/updating the conversation in `messageReminderState.ts`, synchronizing tooltip and tray attention, loading the one-message HTML, resetting the existing timeout, and hiding the reminder after `REMINDER_TIMEOUT_MS`.
+3. Keep `ipcHandlerManage.ts`'s valid-payload branch as the single incoming-message entry point:
+
+```ts
+showMessageReminder({
+  conversationID: payload.conversationID,
+  title: payload.title,
+  body: payload.body,
+});
+```
+
+Do not replace this call with only a state update and do not add a second UOS notification builder.
+
+- [ ] **Step 4: Verify the shared tray-hover panel contract**
+
+1. Keep `trayManage.ts`'s `mouse-enter`, `mouse-move`, `mouse-leave`, `handleTrayHover`, `showTrayReminderPanel`, work-area placement, mouse monitor, `showInactive`, click routing and delayed hide logic unchanged unless a test exposes a concrete UOS timing issue.
+2. Confirm `buildReminderPanelHtml(app.getName(), trayAttentionConversations)` is the only panel renderer. Each `.conversation` item must remain a separate block with title and body; `.ignore-all` must be after all conversation items.
+3. If UOS needs a window-manager compatibility setting, change only the existing `trayPanelWindow` properties and prove that the shared HTML, width, dynamic height, placement and mouse event flow remain unchanged. Do not create UOS-only CSS or a second panel window.
+4. Keep `messageReminderState.ts` as the single source for conversation ordering, escaping and panel HTML.
+
+- [ ] **Step 5: Run the tests and verify GREEN**
+
+Run:
 
 ```powershell
-git add -- electron/main/messageReminderManage.ts electron/main/messageReminderState.ts scripts/messageReminderUos.test.cts scripts/messageReminderUtils.test.cts
-git commit -m "fix: stabilize UOS message reminder"
+node --require ts-node/register/transpile-only scripts/trayHover.test.cts
+node --require ts-node/register/transpile-only scripts/messageReminderUos.test.cts
+node --require ts-node/register/transpile-only scripts/messageReminderState.test.cts
+node --require ts-node/register/transpile-only scripts/taskbarMessageAttention.test.cts
+```
+
+Expected: all four commands exit 0 and print their test-passed messages.
+
+- [ ] **Step 6: Commit**
+
+```powershell
+git add -- electron/main/trayManage.ts electron/main/ipcHandlerManage.ts electron/main/messageReminderManage.ts scripts/trayHover.test.cts scripts/messageReminderUos.test.cts scripts/messageReminderState.test.cts scripts/taskbarMessageAttention.test.cts
+git commit -m "fix: align UOS reminders with Windows"
 ```
 
 ---
 
-### Task 2: 删除截图隐藏选项并保持后台截图静默
+### Task 2: 删除截图隐藏选项并保持后台快捷键静默
 
 **Files:**
 
@@ -141,17 +190,17 @@ git commit -m "fix: stabilize UOS message reminder"
 - Modify: `src/types/globalExpose.d.ts:34-39`
 - Modify: `src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx:74-225,290-325`
 - Modify: `src/pages/chat/queryChat/ChatFooter/index.tsx:370-415,750-765`
-- Test: `e2e/screenshotData.spec.ts`
 - Test: create `scripts/screenshotSilentBehavior.test.cts`
+- Test: `e2e/screenshotData.spec.ts`
 
 **Interfaces:**
 
-- Consumes: existing screenshot IPC, `IpcMainToRender.triggerScreenshot`, native screenshot/fallback capture, and clipboard writing.
-- Produces: `triggerScreenshot(): void` that only sends the renderer event, and `startScreenshot(): Promise<{ dataUrl: string; isSelection: boolean } | null>` with no parameter.
+- Consumes: existing native screenshot/fallback capture, `IpcMainToRender.triggerScreenshot`, and clipboard writing.
+- Produces: `triggerScreenshot(): void` without window manipulation and `startScreenshot(): Promise<{ dataUrl: string; isSelection: boolean } | null>` with no parameter.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write failing tests**
 
-Create `scripts/screenshotSilentBehavior.test.cts` with:
+Create `scripts/screenshotSilentBehavior.test.cts`:
 
 ```ts
 import assert = require("assert");
@@ -206,11 +255,11 @@ node --require ts-node/register/transpile-only scripts/screenshotSilentBehavior.
 npx playwright test e2e/screenshotData.spec.ts --workers=1
 ```
 
-Expected before implementation: the new test fails because the current global trigger manipulates the main window and the renderer still reads `screenshotHideWindow`.
+Expected before implementation: tests fail because the global trigger manipulates the main window and the renderer still reads `screenshotHideWindow`.
 
-- [ ] **Step 3: Implement the minimal no-hide API**
+- [ ] **Step 3: Implement the no-hide screenshot API**
 
-1. Replace `triggerScreenshot` in `windowManage.ts` with:
+1. Replace `triggerScreenshot` with:
 
 ```ts
 export const triggerScreenshot = () => {
@@ -219,9 +268,9 @@ export const triggerScreenshot = () => {
 };
 ```
 
-2. Change the main IPC handler to `ipcMain.handle(IpcRenderToMain.startScreenshot, async () => {`. Remove hide-window logging, the hide/wait block, and the final show/focus block. If no window is focused, select `screen.getDisplayNearestPoint(screen.getCursorScreenPoint())`; use `screen.getPrimaryDisplay()` only as the final fallback.
-3. Preserve the native overlay, macOS capture, `node-screenshots`, Windows `screen.dipToScreenPoint`, thumbnail fallback, PNG diagnostics, permission error, and `{ dataUrl, isSelection }` result.
-4. Expose the no-argument preload method:
+2. Change the main handler to `ipcMain.handle(IpcRenderToMain.startScreenshot, async () => {`. Remove hide/wait/finally-show-focus logic. Select the display from the focused window when available, otherwise the cursor display, then the primary display.
+3. Preserve native overlay, macOS capture, `node-screenshots`, Windows `screen.dipToScreenPoint`, thumbnail fallback, PNG diagnostics, permission errors and result shape.
+4. Expose the preload method as:
 
 ```ts
 const startScreenshot = (): Promise<{
@@ -231,16 +280,9 @@ const startScreenshot = (): Promise<{
 ```
 
 5. Change `IElectronAPI.startScreenshot` to `() => Promise<{ dataUrl: string; isSelection: boolean } | null>`.
-6. Change `ChatFooter`'s callback signature from `(hideWindow: boolean)` to `()`, call `window.electronAPI.startScreenshot()`, and use this event handler:
-
-```ts
-const unsubscribe = window.electronAPI?.subscribe("triggerScreenshot", () => {
-  void startScreenshot();
-});
-```
-
-7. In `SendActionBar`, remove `hideWindowConfig`, `configOpen`, the localStorage reads/writes, `screenshotConfigContent`, the screenshot Popover/arrow, and change `onScreenshot` to `() => void`. The screenshot icon calls `onScreenshot()` directly.
-8. Keep clipboard writes, selected-image queue insertion, full-screen preview editing, final cropped-image clipboard writes, and existing errors unchanged.
+6. Change `ChatFooter` to call `startScreenshot()` from both the button callback and `triggerScreenshot` subscription, without reading localStorage.
+7. Remove `hideWindowConfig`, `configOpen`, screenshot Popover content, localStorage reads/writes and dropdown arrow in `SendActionBar`; change `onScreenshot` to `() => void` and invoke it directly.
+8. Keep clipboard writes, image queue insertion, crop confirmation and existing screenshot errors unchanged.
 
 - [ ] **Step 4: Run the tests and verify GREEN**
 
@@ -266,17 +308,16 @@ git commit -m "fix: keep background screenshots silent"
 
 **Files:**
 
-- Modify: `src/pages/chat/queryChat/ChatContent.tsx:1-20,217-240,550-595`
-- Modify: `src/utils/downloadFileName.ts:1-110`
+- Modify: `src/pages/chat/queryChat/ChatContent.tsx:551-590` to add the save-as action beside the existing image download action
+- Modify: `src/utils/downloadFileName.ts:8-24` to recognize GIF, BMP and WEBP MIME types consistently
 - Test: create `scripts/imagePreviewSaveAs.test.cts`
-- Test: `e2e/downloadFileName.spec.ts`
 
 **Interfaces:**
 
-- Consumes: `downloadFileWithProgress({ url, fileName?, filePath?, showProgressToast?, progressTitle? })`, `window.electronAPI.ipcInvoke("chooseDownloadPath", { fileName })`, and `inferDownloadFileName`.
-- Produces: the existing default image download action plus an explicit Save As action that passes the selected path to the unified download helper.
+- Consumes: `window.electronAPI.ipcInvoke("chooseDownloadPath", { fileName })`, `inferDownloadFileName`, `downloadFileWithProgress`, `t("placeholder.saveAs")`, and the existing image preview `originalUrl`.
+- Produces: default download remains unchanged; save-as invokes the native save dialog and downloads to the selected absolute path.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write failing tests for the image preview actions**
 
 Create `scripts/imagePreviewSaveAs.test.cts`:
 
@@ -285,49 +326,34 @@ import assert = require("assert");
 import fs = require("fs");
 import path = require("path");
 
-const source = fs.readFileSync(
+const contentSource = fs.readFileSync(
   path.join(process.cwd(), "src/pages/chat/queryChat/ChatContent.tsx"),
   "utf8",
 );
+const fileNameSource = fs.readFileSync(
+  path.join(process.cwd(), "src/utils/downloadFileName.ts"),
+  "utf8",
+);
+const ipcSource = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/ipcHandlerManage.ts"),
+  "utf8",
+);
 
-assert.ok(source.includes("chooseDownloadPath"));
-assert.ok(source.includes("downloadFileWithProgress"));
-assert.ok(source.includes("filePath: selectedPath"));
-assert.ok(source.includes('t("placeholder.saveAs")'));
-assert.ok(source.includes('title={t("placeholder.saveAs")}'));
-assert.ok(source.includes('aria-label={t("placeholder.saveAs")}'));
-assert.ok(source.includes("if (!selectedPath) return"));
+assert.ok(contentSource.includes("DownloadOutlined"));
+assert.ok(contentSource.includes('t("placeholder.saveAs")'));
+assert.ok(contentSource.includes('ipcInvoke<string | false>("chooseDownloadPath"'));
+assert.ok(contentSource.includes("inferDownloadFileName({"));
+assert.ok(contentSource.includes("filePath: selectedPath"));
+assert.ok(contentSource.includes("showProgressToast: true"));
+assert.ok(ipcSource.includes("IpcRenderToMain.chooseDownloadPath"));
+assert.ok(fileNameSource.includes('"image/gif": "gif"'));
+assert.ok(fileNameSource.includes('"image/bmp": "bmp"'));
+assert.ok(fileNameSource.includes('"image/webp": "webp"'));
 
 console.log("imagePreviewSaveAs tests passed");
 ```
 
-Extend `e2e/downloadFileName.spec.ts` with:
-
-```ts
-test("infers common image extensions for preview save as", () => {
-  expect(
-    inferDownloadFileName({
-      url: "https://example.test/image/1",
-      mimeType: "image/png",
-    }),
-  ).toBe("download.png");
-  expect(inferDownloadFileName({ url: "https://example.test/image/photo.JPG" })).toBe(
-    "photo.JPG",
-  );
-  expect(
-    inferDownloadFileName({
-      url: "https://example.test/image/1",
-      mimeType: "image/gif",
-    }),
-  ).toBe("download.gif");
-  expect(
-    inferDownloadFileName({
-      url: "https://example.test/image/1",
-      mimeType: "image/webp",
-    }),
-  ).toBe("download.webp");
-});
-```
+The focused contract test must assert the same observable boundary in source: default download does not invoke `chooseDownloadPath`; “另存为” invokes it with the inferred file name; a `false` result returns before downloading; and a confirmed absolute path is passed as `filePath` to `downloadFileWithProgress`.
 
 - [ ] **Step 2: Run the tests and verify RED**
 
@@ -335,65 +361,42 @@ Run:
 
 ```powershell
 node --require ts-node/register/transpile-only scripts/imagePreviewSaveAs.test.cts
-npx playwright test e2e/downloadFileName.spec.ts --workers=1
 ```
 
-Expected before implementation: the source test fails because the image toolbar has no path chooser or Save As button; GIF/WEBP cases fail because the MIME map lacks those extensions.
+Expected before implementation: the test fails because `ChatContent.tsx` has no save-as action and does not call `chooseDownloadPath` or `inferDownloadFileName` for the image preview.
 
-- [ ] **Step 3: Implement the minimal image Save As flow**
+- [ ] **Step 3: Implement the minimal save-as action**
 
-1. Add these entries to `MIME_EXTENSIONS` in `src/utils/downloadFileName.ts`:
-
-```ts
-"image/gif": "gif",
-"image/bmp": "bmp",
-"image/webp": "webp",
-```
-
-Keep the existing priority: valid caller filename, content disposition, URL path, MIME extension, then `download`.
-
-2. In `ChatContent.tsx`, import `SaveOutlined`. Add a component-level callback with this exact behavior:
-
-```ts
-const handleImageSaveAs = useCallback(async (url: string, fileName?: string) => {
-  if (!url || !window.electronAPI?.ipcInvoke) return;
-  const selectedPath = await window.electronAPI.ipcInvoke<string | false>(
-    "chooseDownloadPath",
-    { fileName },
-  );
-  if (!selectedPath) return;
-  await downloadFileWithProgress({
-    url,
-    fileName,
-    filePath: selectedPath,
-    showProgressToast: true,
-    progressTitle: t("toast.downloading"),
-  });
-}, []);
-```
-
-If lint requires dependencies, include the stable callback dependencies used by the component. Do not create a second download implementation.
-
-3. In `toolbarRender`, derive a source URL exactly as the current download action does. Derive a default image name from the URL when no message filename field exists by passing `undefined` to `downloadFileWithProgress`; the unified response URL/MIME inference will produce the extension. Render the existing download icon plus a button wrapping `SaveOutlined`:
+In `ChatContent.tsx`, keep the current download icon and callback intact. Add a second toolbar action immediately beside it:
 
 ```tsx
-<button
-  type="button"
+<SaveOutlined
+  className="cursor-pointer text-lg text-white"
   title={t("placeholder.saveAs")}
-  aria-label={t("placeholder.saveAs")}
-  className="text-white"
   onClick={() => {
     if (!originalUrl) return;
-    void handleImageSaveAs(originalUrl).catch((error) => {
+    const fileName = inferDownloadFileName({ url: originalUrl });
+    void (async () => {
+      const selectedPath = await window.electronAPI.ipcInvoke<string | false>(
+        "chooseDownloadPath",
+        { fileName },
+      );
+      if (!selectedPath) return;
+      await downloadFileWithProgress({
+        url: originalUrl,
+        fileName,
+        filePath: selectedPath,
+        showProgressToast: true,
+        progressTitle: t("toast.downloading"),
+      });
+    })().catch((error) => {
       console.error("Save image as failed:", error);
     });
   }}
->
-  <SaveOutlined className="cursor-pointer text-lg" />
-</button>
+/>
 ```
 
-The existing download icon must not call `chooseDownloadPath`. A false/empty selected path must return before starting the download and must not call an error toast.
+Import `SaveOutlined` and `inferDownloadFileName` using the existing project import style. Preserve preview navigation, zoom, close, and default-download behavior. Add the missing image MIME mappings in `downloadFileName.ts`; do not change file-message download behavior.
 
 - [ ] **Step 4: Run the tests and verify GREEN**
 
@@ -401,39 +404,36 @@ Run:
 
 ```powershell
 node --require ts-node/register/transpile-only scripts/imagePreviewSaveAs.test.cts
-npx playwright test e2e/downloadFileName.spec.ts --workers=1
 ```
 
-Expected: all selected tests pass, including the existing unified image-download contract.
+Expected: the static test passes, and the implementation contains no download call after a canceled dialog. A canceled dialog must not emit a download failure toast.
 
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add -- src/pages/chat/queryChat/ChatContent.tsx src/utils/downloadFileName.ts scripts/imagePreviewSaveAs.test.cts e2e/downloadFileName.spec.ts
-git commit -m "feat: add image preview save as"
+git add -- src/pages/chat/queryChat/ChatContent.tsx src/utils/downloadFileName.ts scripts/imagePreviewSaveAs.test.cts
+git commit -m "feat: add image save as action"
 ```
 
 ---
 
-### Task 4: 统一 Linux/UOS 桌面品牌和执行路径
+### Task 4: 统一 Linux/UOS “年糕”品牌与 `stickycake` 执行路径
 
 **Files:**
 
-- Modify: `electron-builder.json5:1-125`
-- Modify: `scripts/linuxCreateDesktopShortcut.sh:1-220`
-- Modify: `scripts/linuxRemoveDesktopShortcut.sh:1-100`
-- Modify: `scripts/afterPackBundledGlibc.cjs:1-15,235-255,335-350,1485-1535`
-- Modify: `build-linux-deb.sh:1-100`
-- Modify: `scripts/writeDebUpdateManifest.cjs:1-25` only if the output path remains inconsistent
+- Modify: `electron-builder.json5:5-100` to set the Linux executable and package metadata without changing Windows outputs
+- Modify: `scripts/linuxCreateDesktopShortcut.sh:1-330` to use the fixed Linux display name, executable, install directory and desktop file
+- Modify: `scripts/linuxRemoveDesktopShortcut.sh:1-110` to remove the new managed shortcut safely and retain guarded legacy cleanup
+- Modify: `scripts/afterPackBundledGlibc.cjs:1-20,230-270,1490-1520` to find and wrap the actual `年糕` executable under `/opt/stickycake`
+- Modify: `build-linux-deb.sh:1-100` to use the internal package/path identifier `stickycake`
 - Test: create `scripts/linuxBrandIdentity.test.cts`
-- Test: modify `scripts/brandIdentity.test.cts` only where its expectations describe the old Linux user-facing name
 
 **Interfaces:**
 
-- Consumes: electron-builder `productName`, `executableName`, `appInfo.executableName`, deb lifecycle scripts, and the current `release/StickyCake/${version}` output convention.
-- Produces: Linux package with user-visible name “年糕”, actual executable `niangao`, matching desktop `Exec`, matching bundled-glibc launcher, and a desktop shortcut that launches successfully.
+- Consumes: Electron Builder `productName`/`executableName`, generated Linux unpacked output, the deb maintainer scripts, and the bundled-glibc launcher.
+- Produces: desktop display `年糕`, executable `/opt/stickycake/年糕`, desktop file `stickycake.desktop`, and desktop launch line `/opt/stickycake/年糕 %U`; Windows `StickyCake` artifacts remain unchanged.
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write failing tests for the Linux naming contract**
 
 Create `scripts/linuxBrandIdentity.test.cts`:
 
@@ -446,232 +446,155 @@ const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "
 const builder = read("electron-builder.json5");
 const createShortcut = read("scripts/linuxCreateDesktopShortcut.sh");
 const removeShortcut = read("scripts/linuxRemoveDesktopShortcut.sh");
-const afterPack = read("scripts/afterPackBundledGlibc.cjs");
-const debScript = read("build-linux-deb.sh");
+const glibc = read("scripts/afterPackBundledGlibc.cjs");
+const deb = read("build-linux-deb.sh");
 
-assert.match(builder, /productName:\s*"年糕"/);
-assert.match(builder, /executableName:\s*"niangao"/);
-assert.match(createShortcut, /SHORTCUT_DISPLAY_NAME="年糕"/);
-assert.match(createShortcut, /EXECUTABLE_NAME="niangao"/);
-assert.match(createShortcut, /APP_DIR="\/opt\/niangao"/);
-assert.match(createShortcut, /Exec=\/opt\/niangao\/niangao %U/);
-assert.match(removeShortcut, /SHORTCUT_NAME="niangao\.desktop"/);
-assert.doesNotMatch(createShortcut, /Exec=\/opt\/OpenCorp-Base\/opencorp-base/);
+assert.match(builder, /productName: "年糕"/);
+assert.match(builder, /executableName: "年糕"/);
+assert.match(createShortcut, /APP_NAME="stickycake"/);
+assert.match(createShortcut, /EXECUTABLE_NAME="年糕"/);
+assert.match(createShortcut, /APP_DIR="\/opt\/stickycake"/);
+assert.match(createShortcut, /SHORTCUT_NAME="stickycake\.desktop"/);
+assert.match(createShortcut, /Name=年糕/);
+assert.match(createShortcut, /Exec=\/opt\/stickycake\/年糕 %U/);
+assert.match(removeShortcut, /SHORTCUT_NAME="stickycake\.desktop"/);
+assert.match(glibc, /DEFAULT_EXECUTABLE_NAME = "年糕"/);
+assert.match(glibc, /DEFAULT_LINUX_INSTALL_DIR = "\/opt\/stickycake"/);
+assert.match(deb, /PRODUCT_NAME="stickycake"/);
 assert.doesNotMatch(createShortcut, /Exec=\/opt\/StickyCake\/stickycake/);
-assert.doesNotMatch(afterPack, /DEFAULT_LINUX_INSTALL_DIR = "\/opt\/OpenCorp-Base"/);
-assert.doesNotMatch(afterPack, /DEFAULT_EXECUTABLE_NAME = "opencorp-base"/);
-assert.doesNotMatch(debScript, /OUTPUT_DIR="release\/Base\//);
+assert.doesNotMatch(createShortcut, /Exec=\/opt\/OpenCorp-Base\/opencorp-base/);
+assert.doesNotMatch(createShortcut, /EXECUTABLE_NAME="niangao"/);
 
 console.log("linuxBrandIdentity tests passed");
 ```
 
-Update `scripts/brandIdentity.test.cts` to assert the intended user-facing brand:
-
-```ts
-assert.match(builderSource, /productName:\s*"年糕"/);
-assert.match(linuxShortcutSource, /SHORTCUT_DISPLAY_NAME="年糕"/);
-```
-
-Keep `StickyCake` assertions only for Windows artifact names or explicitly internal compatibility. Do not require it as the Linux desktop display name.
-
-- [ ] **Step 2: Run the tests and verify RED**
+- [ ] **Step 2: Run the test and verify RED**
 
 Run:
 
 ```powershell
 node --require ts-node/register/transpile-only scripts/linuxBrandIdentity.test.cts
-node --require ts-node/register/transpile-only scripts/brandIdentity.test.cts
 ```
 
-Expected before implementation: the new test fails on the missing Linux `executableName`, old shortcut display/path, old bundled-glibc defaults, and `release/Base` output path.
+Expected before implementation: the test fails because the current Linux shortcut still uses `StickyCake` as `APP_NAME`, `stickycake` as the executable, and `/opt/StickyCake/stickycake`; the bundled-glibc and custom deb scripts still use `OpenCorp-Base`/`opencorp-base` defaults.
 
-- [ ] **Step 3: Implement one consistent Linux executable identity**
+- [ ] **Step 3: Implement the exact Linux mapping without changing Windows configuration**
 
-1. Add `executableName: "niangao"` under `linux` in `electron-builder.json5`. Keep `productName: "年糕"`. Keep Windows/macOS artifact names `StickyCake_*` unless builder validation requires a scoped change.
-
-2. In `scripts/linuxCreateDesktopShortcut.sh`, use:
+1. In `electron-builder.json5`, retain the root `productName: "年糕"`, add Linux `executableName: "年糕"`, and leave the Windows artifact names, NSIS `shortcutName`, and `uninstallDisplayName` unchanged. Set Linux maintainer/package metadata to `stickycake` where it controls the Linux package identity.
+2. In `linuxCreateDesktopShortcut.sh`, use these exact values for the new managed shortcut:
 
 ```sh
-APP_NAME="niangao"
-EXECUTABLE_NAME="niangao"
+APP_NAME="stickycake"
 DISPLAY_NAME="年糕"
-APP_DIR="/opt/$APP_NAME"
-SHORTCUT_DISPLAY_NAME="$DISPLAY_NAME"
-SHORTCUT_NAME="${EXECUTABLE_NAME}.desktop"
+EXECUTABLE_NAME="年糕"
+APP_DIR="/opt/stickycake"
+SHORTCUT_NAME="stickycake.desktop"
 ```
 
-Use `Exec=/opt/niangao/niangao %U`, `Icon=niangao`, and `StartupWMClass=niangao` in fallback and copied desktop files. Keep the existing logged-in-user discovery and ownership logic. Use a new explicit marker such as `X-Niangao-Managed-Desktop-Shortcut=true`; recognize the old marker only when the file also contains an old project execution path, so unrelated user files are not deleted.
+Write `Name=年糕`, `Exec=/opt/stickycake/年糕 %U`, and the existing application ID. Use `DISPLAY_NAME` for visible text and `APP_NAME` for internal logs/markers. Keep legacy cleanup restricted to the existing managed marker or explicit old executable path; do not treat arbitrary user desktop files as removable. 3. In `linuxRemoveDesktopShortcut.sh`, remove `stickycake.desktop` only when it is the managed file, and retain guarded removal of the old `opencorp-base.desktop` only when its marker or explicit old `Exec` proves it belongs to this application. 4. In `afterPackBundledGlibc.cjs`, make the defaults `DEFAULT_EXECUTABLE_NAME = "年糕"` and `DEFAULT_LINUX_INSTALL_DIR = "/opt/stickycake"`; have `findExecutable` prefer `appInfo.executableName` and verify the real generated file before renaming it to `年糕.real`. The generated launcher must execute that real file and use `/opt/stickycake` in runtime patching. 5. In `build-linux-deb.sh`, use `PRODUCT_NAME="stickycake"`, package `stickycake`, internal output directory `release/stickycake/${VERSION}`, and the actual unpacked executable directory produced by Electron Builder. Do not alter the Windows build scripts or `release/StickyCake` Windows output convention.
 
-3. In `scripts/linuxRemoveDesktopShortcut.sh`, remove only `niangao.desktop` and legacy project-managed files. Do not remove arbitrary `StickyCake.desktop` files unless their contents contain the old project marker or old project `Exec` path.
-
-4. In `scripts/afterPackBundledGlibc.cjs`:
-
-- Set `DEFAULT_EXECUTABLE_NAME = "niangao"`.
-- Set `DEFAULT_LINUX_INSTALL_DIR = "/opt/niangao"`.
-- Keep `findExecutable` preferring `appInfo.executableName`, then product filename/name, then the default.
-- Keep `getLinuxInstallDir` preferring `BUNDLED_GLIBC_LINUX_INSTALL_DIR`; otherwise derive `/opt/${appInfo.executableName || "niangao"}`.
-- Ensure the renamed executable is `${actualExecutableName}.real` and the generated launcher retains the actual executable basename.
-
-5. In `build-linux-deb.sh`, use the builder output directory:
-
-```bash
-PRODUCT_NAME="StickyCake"
-OUTPUT_DIR="release/StickyCake/${VERSION}"
-```
-
-Do not copy the unpacked application into a second incompatible package layout. If this custom script remains supported, derive `UNPACKED_DIR` by locating the actual `linux-unpacked` directory under `OUTPUT_DIR`, and do not reintroduce `OpenCorp-Base` execution paths.
-
-6. Leave `scripts/writeDebUpdateManifest.cjs` using `release/StickyCake/${version}`, which is the output directory configured by `electron-builder.json5`.
-
-- [ ] **Step 4: Run the tests and inspect the effective config**
+- [ ] **Step 4: Run the static contract test and a Linux packaging smoke check**
 
 Run:
 
 ```powershell
 node --require ts-node/register/transpile-only scripts/linuxBrandIdentity.test.cts
-node --require ts-node/register/transpile-only scripts/brandIdentity.test.cts
-npx electron-builder --config electron-builder.json5 --linux --x64 --dir --publish never
+npm run build:linux
 ```
 
-Expected: tests pass and the builder command exits 0. Inspect the generated output:
+Then inspect the generated Linux unpacked directory and desktop metadata with equivalent UOS/Linux commands:
 
-```powershell
-$version = node -p "require('./package.json').version"
-Get-ChildItem "release/StickyCake/$version" -Recurse -File |
-  Where-Object { $_.Name -eq 'niangao' -or $_.Name -eq '年糕' -or $_.Name -eq 'builder-effective-config.yaml' } |
-  Select-Object FullName, Length
+```sh
+UNPACKED_DIR="$(find release -type d -name '*-unpacked' | head -n 1)"
+DESKTOP_FILE="$(find release -type f -name 'stickycake.desktop' | head -n 1)"
+test -n "$UNPACKED_DIR"
+test -n "$DESKTOP_FILE"
+test -x "$UNPACKED_DIR/年糕"
+grep -F 'Name=年糕' "$DESKTOP_FILE"
+grep -F 'Exec=/opt/stickycake/年糕 %U' "$DESKTOP_FILE"
 ```
 
-The effective config and unpacked directory must use the configured executable identity. If the builder output contradicts `executableName: "niangao"`, correct the configuration and launcher derivation before continuing; do not point desktop files to a guessed filename.
+Expected: the executable file exists with execute permission, the desktop file points to the same executable name, and no generated new path uses `/opt/StickyCake`, `/opt/OpenCorp-Base`, `stickycake` as the executable, or `niangao`.
 
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add -- electron-builder.json5 scripts/linuxCreateDesktopShortcut.sh scripts/linuxRemoveDesktopShortcut.sh scripts/afterPackBundledGlibc.cjs build-linux-deb.sh scripts/writeDebUpdateManifest.cjs scripts/linuxBrandIdentity.test.cts scripts/brandIdentity.test.cts
-git commit -m "fix: align Linux app branding and launcher"
+git add -- electron-builder.json5 scripts/linuxCreateDesktopShortcut.sh scripts/linuxRemoveDesktopShortcut.sh scripts/afterPackBundledGlibc.cjs build-linux-deb.sh scripts/linuxBrandIdentity.test.cts
+git commit -m "fix: align Linux branding and launch path"
 ```
-
-Omit `scripts/writeDebUpdateManifest.cjs` if unchanged.
 
 ---
 
-### Task 5: 跨功能验证与 UOS 安装包验收
+### Task 5: 全量验证 Windows 回归与 UOS 现场验收
 
 **Files:**
 
-- Modify: `README.zh-CN.md` only if the final Linux build/installation command changes
-- Test: all tests created or modified in Tasks 1-4
+- Test: all files changed by Tasks 1-4 and their associated `scripts/*.test.cts` / `e2e/*.spec.ts` suites
+- Verify: generated Linux artifacts under `release/` without adding generated files to source control
 
 **Interfaces:**
 
-- Consumes: completed reminder, screenshot, image Save As, builder, and desktop-script contracts.
-- Produces: verified source, frontend bundle, Electron bundle, Linux artifact metadata, and a documented list of checks requiring a physical UOS desktop.
+- Consumes: the completed reminder, screenshot, save-as and Linux packaging changes.
+- Produces: evidence that Windows behavior is unchanged, UOS behavior matches the requested two-entry reminder design, and the Linux launcher/desktop contract is internally consistent.
 
-- [ ] **Step 1: Run all focused source and pure-function tests**
+- [ ] **Step 1: Run all focused static tests**
 
 Run:
 
 ```powershell
+node --require ts-node/register/transpile-only scripts/trayHover.test.cts
 node --require ts-node/register/transpile-only scripts/messageReminderUos.test.cts
-node --require ts-node/register/transpile-only scripts/messageReminderUtils.test.cts
 node --require ts-node/register/transpile-only scripts/messageReminderState.test.cts
-node --require ts-node/register/transpile-only scripts/screenshotSilentBehavior.test.cts
-node --require ts-node/register/transpile-only scripts/linuxBrandIdentity.test.cts
-node --require ts-node/register/transpile-only scripts/brandIdentity.test.cts
-node --require ts-node/register/transpile-only scripts/downloadPathAndAtEscape.test.cts
-node --require ts-node/register/transpile-only scripts/screenshotShortcut.test.cts
 node --require ts-node/register/transpile-only scripts/taskbarMessageAttention.test.cts
+node --require ts-node/register/transpile-only scripts/screenshotSilentBehavior.test.cts
 node --require ts-node/register/transpile-only scripts/imagePreviewSaveAs.test.cts
+node --require ts-node/register/transpile-only scripts/linuxBrandIdentity.test.cts
 ```
 
-Expected: every command exits 0 and prints its test-passed message. Existing checks for `StickyCake` may remain only where they explicitly cover Windows artifacts or internal compatibility.
+Expected: every command exits with code 0 and prints its test-passed message.
 
-- [ ] **Step 2: Run focused Playwright contract tests**
+- [ ] **Step 2: Run the frontend e2e and quality checks**
 
 Run:
 
 ```powershell
-npx playwright test e2e/downloadFileName.spec.ts e2e/screenshotData.spec.ts e2e/screenshotModuleLoading.spec.ts e2e/fileDownloadDiagnostics.spec.ts --workers=1
-```
-
-Expected: all selected tests pass with zero failed tests.
-
-- [ ] **Step 3: Run lint and the application build**
-
-Run:
-
-```powershell
+npx playwright test e2e/screenshotData.spec.ts e2e/screenshotModuleLoading.spec.ts --workers=1
 npm run lint
 npm run build
 ```
 
-Expected: both commands exit 0. Non-zero exit codes or TypeScript/Vite errors block completion.
+Expected: the selected e2e tests, lint, and the production frontend build pass without changes to unrelated files.
 
-- [ ] **Step 4: Build and inspect Linux metadata**
+- [ ] **Step 3: Confirm Windows package compatibility**
+
+Run the existing Windows build command in the Windows packaging environment:
+
+```powershell
+npm run build:win
+```
+
+Verify that the output still uses the existing `release/StickyCake/${version}` directory, `StickyCake_${version}.exe` artifact naming, `StickyCake` installer behavior, and the existing Windows tray reminder path. Do not accept a Linux naming change that modifies those Windows outputs.
+
+- [ ] **Step 4: Execute the UOS manual acceptance checklist**
+
+On a clean UOS installation, verify each item in order:
+
+1. Send a message while 年糕 is visible, minimized, and closed to tray. In every case, a Windows-style one-message reminder appears for approximately five seconds without stealing focus; the unread state, tooltip and tray flashing also update.
+2. Move the pointer onto the tray icon. The custom panel appears only from tray hover and shows every unread conversation as its own block with sender/conversation name and body. The last block is “忽略全部”.
+3. Move from the tray icon into the panel and back. The panel remains visible while either hit area is occupied, then hides after the existing delay when both are left.
+4. Click one message block and confirm 年糕 opens the matching conversation. Click “忽略全部” and confirm all unread panel entries, tooltip content and tray flashing are cleared.
+5. From the desktop and application menu, launch the installed program. Confirm the desktop label is “年糕”, the executable is `/opt/stickycake/年糕`, and the program opens successfully.
+6. Use the global screenshot shortcut while 年糕 is in the background or minimized. Confirm the screenshot flow does not bring the main window forward or alter its previous state.
+7. Open an image, verify default download still uses the default directory, then use “另存为” and confirm the native dialog allows a custom path. Cancel once and confirm no error is shown; confirm a selected path writes the image successfully.
+
+- [ ] **Step 5: Review the final diff and record verification evidence**
 
 Run:
 
 ```powershell
-npx electron-builder --config electron-builder.json5 --linux deb --x64 --publish never
-```
-
-Inspect:
-
-```powershell
-$version = node -p "require('./package.json').version"
-Get-ChildItem "release/StickyCake/$version" -Force |
-  Select-Object Name, Length
-Get-ChildItem "release/StickyCake/$version" -Recurse -File |
-  Where-Object { $_.Name -match 'niangao|\.desktop$|builder-effective-config\.yaml' } |
-  Select-Object FullName, Length
-```
-
-Expected: the Linux unpacked directory contains an executable named `niangao`; the effective config contains product name “年糕”; generated desktop metadata, if present, points to the same executable. If a Linux build cannot run on Windows because the host lacks the required Linux builder, report that exact limitation and complete the static checks without claiming package success.
-
-- [ ] **Step 5: Perform UOS manual acceptance when a Linux desktop is available**
-
-Install the generated deb and verify:
-
-1. The desktop shortcut displays “年糕”.
-2. Double-clicking the shortcut starts the application without a missing-executable error.
-3. A new message displays a bottom-right self-drawn notification containing sender/conversation and body text.
-4. Hovering the tray icon still shows the tray conversation panel.
-5. Clicking the notification opens the correct conversation.
-6. The screenshot action has no hide/show menu.
-7. Pressing `Ctrl+Shift+X` while the app is hidden or minimized does not bring the main window to the foreground.
-8. Completing or cancelling the screenshot does not change the original visibility, minimized, or focus state.
-9. Image Download saves to the configured default directory; image Save as opens a path chooser and writes to the chosen path.
-10. Cancelling Save as does not show a failure toast.
-
-- [ ] **Step 6: Review the final diff**
-
-Run:
-
-```powershell
-git status --short
 git diff --check
+git status --short
 git diff --stat
 ```
 
-Expected: `git diff --check` reports no whitespace errors and the diff contains only files required by this plan. Do not add generated release artifacts unless the repository already tracks them and the user explicitly requests them.
-
-- [ ] **Step 7: Commit the verified implementation**
-
-```powershell
-git add -- electron src scripts e2e electron-builder.json5 build-linux-deb.sh README.zh-CN.md
-git commit -m "fix: complete UOS desktop experience"
-```
-
-Run `git status --short` after the commit and confirm the intended working-tree state before reporting completion.
-
----
-
-## Plan self-review
-
-- UOS full message popup: Task 1 covers opaque/non-focusable window properties, stable loading, escaping, click routing, timeout, and independence from tray hover.
-- Linux desktop name and startup: Task 4 covers builder executableName, desktop scripts, bundled glibc launcher, deb output, legacy-path cleanup, and artifact inspection.
-- Screenshot option removal and silent background shortcut: Task 2 covers UI removal, API signature, main-window trigger behavior, display selection, and preservation of clipboard/send/fallback behavior.
-- Image Save As: Task 3 covers toolbar UI, path chooser, unified download path, MIME extensions, cancellation, and separation from default Download.
-- Regression protection: Task 5 covers focused tests, existing contract tests, lint, frontend build, Linux build, package inspection, and UOS manual checks.
-- No task uses `TODO`, `TBD`, or an unspecified “appropriate” implementation action.
-- Interfaces are consistent: `startScreenshot()` has no parameters in the main handler, preload API, global type, footer callback, and action-bar prop; image Save As always uses `chooseDownloadPath` followed by `downloadFileWithProgress({ filePath })`.
+Expected: no whitespace errors, only requirement-related files are changed, generated artifacts are not accidentally staged, and the final summary includes the focused test, lint, build, packaging, and UOS manual results.
