@@ -148,9 +148,6 @@ export function splashEnd() {
 
 export const triggerScreenshot = () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  if (!mainWindow.isVisible()) mainWindow.show();
-  mainWindow.focus();
   mainWindow.webContents.send(IpcMainToRender.triggerScreenshot);
 };
 

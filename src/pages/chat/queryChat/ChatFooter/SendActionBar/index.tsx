@@ -80,17 +80,12 @@ const SendActionBar = ({
     faceURL: string;
   }) => Promise<MessageItem>;
   editorRef: RefObject<CKEditorRef>;
-  onScreenshot: (hideWindow: boolean) => void;
+  onScreenshot: () => void;
   onSelectFiles: (files: File[]) => void;
 }) => {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [cardModalOpen, setCardModalOpen] = useState(false);
   const [fontPickerOpen, setFontPickerOpen] = useState(false);
-  const [hideWindowConfig, setHideWindowConfig] = useState(() => {
-    const v = localStorage.getItem("screenshotHideWindow");
-    return v === null ? true : v === "true";
-  });
-  const [configOpen, setConfigOpen] = useState(false);
 
   const chatFontSize = useConversationStore((state) => state.chatFontSize);
   const setChatFontSize = useConversationStore((state) => state.setChatFontSize);
@@ -191,35 +186,8 @@ const SendActionBar = ({
   };
 
   const handleScreenshotClick = () => {
-    onScreenshot(hideWindowConfig);
+    onScreenshot();
   };
-
-  const toggleHideWindow = () => {
-    const next = !hideWindowConfig;
-    setHideWindowConfig(next);
-    localStorage.setItem("screenshotHideWindow", String(next));
-  };
-
-  const screenshotConfigContent = (
-    <div
-      className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm"
-      onClick={(e) => {
-        e.stopPropagation();
-        toggleHideWindow();
-      }}
-    >
-      <div
-        className={`flex h-4 w-4 items-center justify-center rounded border text-xs ${
-          hideWindowConfig
-            ? "border-[var(--primary)] bg-[var(--primary)] text-white"
-            : "border-gray-300"
-        }`}
-      >
-        {hideWindowConfig && "✓"}
-      </div>
-      <span>截图时隐藏窗口</span>
-    </div>
-  );
 
   const fontPickerContent = (
     <div className="flex flex-col items-center gap-2 px-4 py-3" style={{ width: 200 }}>
@@ -304,32 +272,10 @@ const SendActionBar = ({
                     src={cutIcon}
                     width={20}
                     alt={t("placeholder.screenshot")}
-                    title={t("placeholder.screenshot")}
+                    title="截图（Ctrl+Shift+X）"
                     onClick={handleScreenshotClick}
                   />
                 </div>
-                <Popover
-                  placement="bottomRight"
-                  content={screenshotConfigContent}
-                  trigger="click"
-                  open={configOpen}
-                  onOpenChange={setConfigOpen}
-                  arrow={false}
-                >
-                  <div
-                    className="ml-0.5 flex h-3.5 items-center border-l border-[var(--border-color)] pl-0.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <svg
-                      width="8"
-                      height="8"
-                      viewBox="0 0 8 8"
-                      className="text-[var(--text-placeholder)]"
-                    >
-                      <path d="M0 2 L4 6 L8 2 Z" fill="currentColor" />
-                    </svg>
-                  </div>
-                </Popover>
               </div>
             );
           }

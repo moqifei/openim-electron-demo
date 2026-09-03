@@ -60,6 +60,14 @@ test("wires the global screenshot event and final image to ChatFooter", () => {
   expect(chatFooterSource).toContain("croppedBase64");
 });
 
+test("does not read the removed screenshot hide-window setting", () => {
+  const footerSource = fs.readFileSync(
+    "src/pages/chat/queryChat/ChatFooter/index.tsx",
+    "utf8",
+  );
+  expect(footerSource).not.toContain("screenshotHideWindow");
+});
+
 test("shows the global shortcut in the screenshot button hover text", () => {
   const actionBarSource = fs.readFileSync(
     "src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx",

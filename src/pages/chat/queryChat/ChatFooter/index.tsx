@@ -372,43 +372,39 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     }
   }, []);
 
-  const startScreenshot = useCallback(
-    async (hideWindow: boolean) => {
-      if (!window.electronAPI) {
-        message.warning(t("toast.accessFailed"));
-        return;
+  const startScreenshot = useCallback(async () => {
+    if (!window.electronAPI) {
+      message.warning(t("toast.accessFailed"));
+      return;
+    }
+    setScreenshotLoading(true);
+    try {
+      const result = await window.electronAPI.startScreenshot();
+      if (result?.dataUrl) {
+        await writeScreenshotToClipboard(result.dataUrl);
       }
-      setScreenshotLoading(true);
-      try {
-        const result = await window.electronAPI.startScreenshot(hideWindow);
-        if (result?.dataUrl) {
-          await writeScreenshotToClipboard(result.dataUrl);
-        }
-        if (result?.isSelection) {
-          addPendingFiles([
-            dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
-          ]);
-        } else if (result?.dataUrl) {
-          setScreenshotSrc(result.dataUrl);
-        }
-      } catch (error: any) {
-        console.error("[ChatFooter] screenshot failed:", error);
-        if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
-          message.error(t("toast.screenshotPermissionDenied"));
-        } else {
-          message.error(t("toast.accessFailed"));
-        }
-      } finally {
-        setScreenshotLoading(false);
+      if (result?.isSelection) {
+        addPendingFiles([
+          dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
+        ]);
+      } else if (result?.dataUrl) {
+        setScreenshotSrc(result.dataUrl);
       }
-    },
-    [addPendingFiles, writeScreenshotToClipboard],
-  );
+    } catch (error: any) {
+      console.error("[ChatFooter] screenshot failed:", error);
+      if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
+        message.error(t("toast.screenshotPermissionDenied"));
+      } else {
+        message.error(t("toast.accessFailed"));
+      }
+    } finally {
+      setScreenshotLoading(false);
+    }
+  }, [addPendingFiles, writeScreenshotToClipboard]);
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.subscribe("triggerScreenshot", () => {
-      const hideWindow = localStorage.getItem("screenshotHideWindow") !== "false";
-      void startScreenshot(hideWindow);
+      void startScreenshot();
     });
     return () => unsubscribe?.();
   }, [startScreenshot]);

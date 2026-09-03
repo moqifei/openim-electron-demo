@@ -614,14 +614,13 @@ export const setIpcMainListener = () => {
     },
   );
 
-  // Screenshot: capture the focused display at native resolution, then show the window.
-  ipcMain.handle(IpcRenderToMain.startScreenshot, async (_, hideWindow = true) => {
+  // Screenshot: capture the focused display at native resolution without changing window state.
+  ipcMain.handle(IpcRenderToMain.startScreenshot, async () => {
     const win = BrowserWindow.getFocusedWindow();
-    if (!win) {
-      throw new Error("No active window");
-    }
-
-    const display = screen.getDisplayMatching(win.getBounds());
+    const display = win
+      ? screen.getDisplayMatching(win.getBounds())
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) ||
+        screen.getPrimaryDisplay();
 
     logger.info("[screenshot] capture started", {
       appIsPackaged: app.isPackaged,
@@ -629,19 +628,11 @@ export const setIpcMainListener = () => {
       displayId: display.id,
       displayBounds: display.bounds,
       scaleFactor: display.scaleFactor,
-      hideWindow,
     });
-
-    if (hideWindow) {
-      win.hide();
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
+    // Use the native overlay first. It captures the real display and lets the
+    // user select the region directly on top of the current screen instead of
+    // selecting from a renderer thumbnail.
     try {
-      // Use the native overlay first. It captures the real display and lets the
-      // user select the region directly on top of the current screen instead of
-      // selecting from a renderer thumbnail.
-      try {
         const screenshots = await getNativeScreenshots();
         const selectedDataUrl = await new Promise<string | null>((resolve, reject) => {
           let settled = false;
@@ -691,17 +682,17 @@ export const setIpcMainListener = () => {
         });
 
         return selectedDataUrl ? { dataUrl: selectedDataUrl, isSelection: true } : null;
-      } catch (error) {
-        logger.warn(
-          "[screenshot] native overlay failed; continuing with display capture",
-          {
-            error:
-              error instanceof Error
-                ? { name: error.name, message: error.message, stack: error.stack }
-                : String(error),
-          },
-        );
-      }
+    } catch (error) {
+      logger.warn(
+        "[screenshot] native overlay failed; continuing with display capture",
+        {
+          error:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+        },
+      );
+    }
 
       // macOS: use native screencapture for reliable full-screen capture
       if (process.platform === "darwin") {
@@ -846,13 +837,7 @@ export const setIpcMainListener = () => {
         actualSize: source.thumbnail.getSize(),
       });
 
-      return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
-    } finally {
-      if (hideWindow) {
-        win.show();
-        win.focus();
-      }
-    }
+    return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
   });
 
   // Save screenshot base64 to temp file, return file path

@@ -32,9 +32,10 @@ export interface IElectronAPI {
     filePath?: string;
   }) => Promise<string | false>;
   openLocalPath: (filePath: string) => Promise<string>;
-  startScreenshot: (
-    hideWindow?: boolean,
-  ) => Promise<{ dataUrl: string; isSelection: boolean } | null>;
+  startScreenshot: () => Promise<{
+    dataUrl: string;
+    isSelection: boolean;
+  } | null>;
   readClipboardImage: () => Promise<string | null>;
   writeClipboardImage: (base64: string) => Promise<void>;
   writeClipboardImageFile: (data: ArrayBuffer) => Promise<void>;

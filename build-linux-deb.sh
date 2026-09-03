@@ -41,7 +41,7 @@ npm run build:linux-arm 2>/dev/null || npm run build:linux
 
 # 获取版本号
 VERSION=$(node -p "require('./package.json').version")
-PRODUCT_NAME="OpenCorp-Base"
+PRODUCT_NAME="StickyCake"
 
 # 根据架构设置对应的构建命令和目录名
 if [ "$ARCH" = "arm64" ]; then
@@ -58,7 +58,7 @@ echo "执行构建命令: npm run $BUILD_CMD"
 npm run $BUILD_CMD
 
 # 设置路径
-OUTPUT_DIR="release/Base/${VERSION}"
+OUTPUT_DIR="release/StickyCake/${VERSION}"
 UNPACKED_DIR="${OUTPUT_DIR}/${UNPACKED_SUFFIX}"
 DEB_CONTROL_DIR="${OUTPUT_DIR}/deb-control-${ARCH}"
 FINAL_DEB="${OUTPUT_DIR}/${PRODUCT_NAME}_${VERSION}_${DEB_ARCH}.deb"
@@ -68,7 +68,7 @@ mkdir -p "${DEB_CONTROL_DIR}/DEBIAN"
 
 # 创建 control 文件
 cat > "${DEB_CONTROL_DIR}/DEBIAN/control" << EOF
-Package: opencorp-base
+Package: stickycake
 Version: ${VERSION}
 Section: utils
 Priority: optional

@@ -2,15 +2,15 @@
 set -eu
 
 APP_NAME="StickyCake"
-EXECUTABLE_NAME="stickycake"
+DISPLAY_NAME="年糕"
+EXECUTABLE_NAME="年糕"
 APP_ID="io.opencorp.desktop.base"
-APP_DIR="/opt/$APP_NAME"
+APP_DIR="/opt/StickyCake"
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
-SHORTCUT_DISPLAY_NAME="$APP_NAME"
-SHORTCUT_NAME="${EXECUTABLE_NAME}.desktop"
+SHORTCUT_NAME="StickyCake.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
-POSTINST_LOG="/tmp/stickycake-postinst.log"
+POSTINST_LOG="/tmp/StickyCake-postinst.log"
 
 log() {
   printf '%s\n' "$*" >> "$POSTINST_LOG" 2>/dev/null || true
@@ -67,15 +67,15 @@ remove_legacy_system_desktop() {
 }
 
 create_fallback_desktop() {
-  fallback="$SYSTEM_APPLICATIONS_DIR/${EXECUTABLE_NAME}.desktop"
+  fallback="$SYSTEM_APPLICATIONS_DIR/$SHORTCUT_NAME"
   mkdir -p "$SYSTEM_APPLICATIONS_DIR"
   cat > "$fallback" <<EOF
 [Desktop Entry]
-Name=$SHORTCUT_DISPLAY_NAME
-Exec=/opt/$APP_NAME/$EXECUTABLE_NAME %U
+Name=$DISPLAY_NAME
+Exec=/opt/StickyCake/年糕 %U
 Terminal=false
 Type=Application
-Icon=$EXECUTABLE_NAME
+Icon=$APP_NAME
 StartupWMClass=$APP_NAME
 Categories=Utility;
 $MANAGED_MARKER
@@ -179,15 +179,15 @@ install_shortcut_to_desktop_dir() {
 
   cp "$source_desktop" "$target"
   if grep -q '^Name' "$target" 2>/dev/null; then
-    sed -i "s/^Name\\(\\[[^]]*\\]\\)\\?=.*/Name\\1=$SHORTCUT_DISPLAY_NAME/" "$target"
+    sed -i "s/^Name\\(\\[[^]]*\\]\\)\\?=.*/Name\\1=$DISPLAY_NAME/" "$target"
   else
-    sed -i "/^\[Desktop Entry\]/a Name=$SHORTCUT_DISPLAY_NAME" "$target" 2>/dev/null || true
+    sed -i "/^\[Desktop Entry\]/a Name=$DISPLAY_NAME" "$target" 2>/dev/null || true
   fi
 
   if grep -q '^Exec=' "$target" 2>/dev/null; then
-    sed -i "s|^Exec=.*|Exec=/opt/$APP_NAME/$EXECUTABLE_NAME %U|" "$target"
+    sed -i "s|^Exec=.*|Exec=/opt/StickyCake/年糕 %U|" "$target"
   else
-    sed -i "/^\[Desktop Entry\]/a Exec=/opt/$APP_NAME/$EXECUTABLE_NAME %U" "$target" 2>/dev/null || true
+    sed -i "/^\[Desktop Entry\]/a Exec=/opt/StickyCake/年糕 %U" "$target" 2>/dev/null || true
   fi
 
   if ! grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then

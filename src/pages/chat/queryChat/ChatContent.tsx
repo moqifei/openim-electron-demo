@@ -1,4 +1,4 @@
-import { DownloadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, SaveOutlined } from "@ant-design/icons";
 import {
   MessageItem as MessageItemType,
   MessageType,
@@ -14,6 +14,7 @@ import { SystemMessageTypes } from "@/constants/im";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
+import { inferDownloadFileName } from "@/utils/downloadFileName";
 import emitter from "@/utils/events";
 import { downloadFileWithProgress } from "@/utils/fileDownload";
 import { isShakeMessageData } from "@/utils/shakeMessage";
@@ -564,19 +565,44 @@ const ChatContent = () => {
                 message?.pictureElem?.sourcePicture?.url ||
                 message?.pictureElem?.snapshotPicture?.url ||
                 "";
+              const fileName = inferDownloadFileName({ url: originalUrl });
               return (
                 <div className="flex items-center gap-3">
                   {originalNode}
                   <DownloadOutlined
+                    title={t("placeholder.download")}
                     className="cursor-pointer text-lg text-white"
                     onClick={() => {
                       if (!originalUrl) return;
                       void downloadFileWithProgress({
                         url: originalUrl,
+                        fileName,
                         showProgressToast: true,
-                        progressTitle: "Downloading...",
+                        progressTitle: t("toast.downloading"),
                       }).catch((error) => {
                         console.error("Download failed:", error);
+                      });
+                    }}
+                  />
+                  <SaveOutlined
+                    title={t("placeholder.saveAs")}
+                    className="cursor-pointer text-lg text-white"
+                    onClick={() => {
+                      if (!originalUrl || !window.electronAPI?.ipcInvoke) return;
+                      void (async () => {
+                        const selectedPath = await window.electronAPI.ipcInvoke<
+                          string | false
+                        >("chooseDownloadPath", { fileName });
+                        if (!selectedPath) return;
+                        await downloadFileWithProgress({
+                          url: originalUrl,
+                          fileName,
+                          filePath: selectedPath,
+                          showProgressToast: true,
+                          progressTitle: t("toast.downloading"),
+                        });
+                      })().catch((error) => {
+                        console.error("Save image as failed:", error);
                       });
                     }}
                   />

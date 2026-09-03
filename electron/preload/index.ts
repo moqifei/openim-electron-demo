@@ -144,10 +144,11 @@ const saveFileToDisk = async ({
   return uniqueSavePath;
 };
 
-const startScreenshot = (
-  hideWindow?: boolean,
-): Promise<{ dataUrl: string; isSelection: boolean } | null> => {
-  return ipcRenderer.invoke(IpcRenderToMain.startScreenshot, hideWindow);
+const startScreenshot = (): Promise<{
+  dataUrl: string;
+  isSelection: boolean;
+} | null> => {
+  return ipcRenderer.invoke(IpcRenderToMain.startScreenshot);
 };
 
 const readClipboardImage = (): Promise<string | null> => {

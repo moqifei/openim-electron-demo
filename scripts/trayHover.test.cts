@@ -10,6 +10,10 @@ assert.ok(
   "Windows tray hover must use mouse-move; mouse-enter is macOS-only",
 );
 assert.ok(
+  /appTray\.on\("mouse-enter",[\s\S]*?handleTrayHover\(position\)/.test(source),
+  "tray mouse-enter should use the shared hover handler",
+);
+assert.ok(
   /appTray\.on\("mouse-move",\s*\(_event,\s*position\)\s*=>\s*\{[\s\S]*?handleTrayHover\(position\)/.test(
     source,
   ),
@@ -65,5 +69,9 @@ assert.ok(
   /html, body \{[\s\S]*?overflow: hidden;/.test(reminderStateSource),
   "tray reminder panel should hide the scrollbar",
 );
+assert.ok(reminderStateSource.includes('class="conversation"'));
+assert.ok(reminderStateSource.includes('class="ignore-all"'));
+assert.ok(reminderStateSource.includes("忽略全部"));
+assert.ok(reminderStateSource.includes("border-bottom: 1px solid #edf0f5"));
 
 console.log("trayHover tests passed");

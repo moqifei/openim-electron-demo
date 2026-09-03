@@ -2,14 +2,14 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const DEFAULT_EXECUTABLE_NAME = "opencorp-base";
+const DEFAULT_EXECUTABLE_NAME = "年糕";
 const DEFAULT_GLIBC_SOURCE_DIR = path.join(
   "build",
   "bundled-glibc",
   "x64",
   "install",
 );
-const DEFAULT_LINUX_INSTALL_DIR = "/opt/OpenCorp-Base";
+const DEFAULT_LINUX_INSTALL_DIR = "/opt/StickyCake";
 const SYSTEM_LIBS_DIR_NAME = "system-libs";
 const GDK_PIXBUF_RESOURCE_DIR_NAME = "gdk-pixbuf-2.0";
 const GDK_PIXBUF_VERSION_DIR_NAME = "2.10.0";
@@ -1324,7 +1324,7 @@ fi
 
 if [ "\${OPENCORP_LAUNCHER_DEBUG:-0}" = "1" ]; then
   if [ -z "\${OPENCORP_LOG_FILE:-}" ]; then
-    LOG_BASE="\${XDG_CACHE_HOME:-\${HOME:-/tmp}/.cache}/opencorp-base"
+    LOG_BASE="\${XDG_CACHE_HOME:-\${HOME:-/tmp}/.cache}/StickyCake"
     mkdir -p "$LOG_BASE" 2>/dev/null || LOG_BASE="/tmp"
     OPENCORP_LOG_FILE="$LOG_BASE/launcher-$(date +%Y%m%d-%H%M%S).log"
     exec >> "$OPENCORP_LOG_FILE" 2>&1

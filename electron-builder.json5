@@ -75,6 +75,7 @@
     ],
   },
   linux: {
+    executableName: "年糕",
     icon: "./dist/icons/icon-new.png",
     target: [
       {

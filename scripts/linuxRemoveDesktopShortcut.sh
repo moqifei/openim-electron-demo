@@ -2,7 +2,7 @@
 set -eu
 
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
-SHORTCUT_NAME="stickycake.desktop"
+SHORTCUT_NAME="StickyCake.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
 
@@ -82,7 +82,7 @@ remove_system_fallbacks() {
     fi
 
     if [ "$shortcut_name" = "$LEGACY_SHORTCUT_NAME" ] && \
-      grep -Fq 'Exec=/opt/OpenCorp-Base/opencorp-base' "$target" 2>/dev/null
+      grep -Fq 'Exec=/opt/StickyCake/年糕 %U' "$target" 2>/dev/null
     then
       rm -f "$target"
     fi

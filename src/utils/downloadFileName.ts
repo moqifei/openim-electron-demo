@@ -13,6 +13,9 @@ const MIME_EXTENSIONS: Record<string, string> = {
   "application/x-zip-compressed": "zip",
   "image/png": "png",
   "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/bmp": "bmp",
+  "image/webp": "webp",
   "application/pdf": "pdf",
 };
 
