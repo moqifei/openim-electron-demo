@@ -492,6 +492,13 @@ SHORTCUT_NAME="stickycake.desktop"
 ```
 
 Write `Name=年糕`, `Exec=/opt/stickycake/年糕 %U`, and the existing application ID. Use `DISPLAY_NAME` for visible text and `APP_NAME` for internal logs/markers. Keep legacy cleanup restricted to the existing managed marker or explicit old executable path; do not treat arbitrary user desktop files as removable. 3. In `linuxRemoveDesktopShortcut.sh`, remove `stickycake.desktop` only when it is the managed file, and retain guarded removal of the old `opencorp-base.desktop` only when its marker or explicit old `Exec` proves it belongs to this application. 4. In `afterPackBundledGlibc.cjs`, make the defaults `DEFAULT_EXECUTABLE_NAME = "年糕"` and `DEFAULT_LINUX_INSTALL_DIR = "/opt/stickycake"`; have `findExecutable` prefer `appInfo.executableName` and verify the real generated file before renaming it to `年糕.real`. The generated launcher must execute that real file and use `/opt/stickycake` in runtime patching. 5. In `build-linux-deb.sh`, use `PRODUCT_NAME="stickycake"`, package `stickycake`, internal output directory `release/stickycake/${VERSION}`, and the actual unpacked executable directory produced by Electron Builder. Do not alter the Windows build scripts or `release/StickyCake` Windows output convention.
+Write `Name=年糕`, `Exec=/opt/stickycake/年糕 %U`, and the existing application ID. Use `DISPLAY_NAME` for visible text and `APP_NAME` for internal logs/markers. Keep legacy cleanup restricted to the existing managed marker or explicit old executable path; do not treat arbitrary user desktop files as removable.
+
+3. In `linuxRemoveDesktopShortcut.sh`, remove `stickycake.desktop` only when it is the managed file, and retain guarded removal of the old `opencorp-base.desktop` only when its marker or explicit old `Exec` proves it belongs to this application.
+
+4. In `afterPackBundledGlibc.cjs`, make the defaults `DEFAULT_EXECUTABLE_NAME = "年糕"` and `DEFAULT_LINUX_INSTALL_DIR = "/opt/stickycake"`; have `findExecutable` prefer `appInfo.executableName` and verify the real generated file before renaming it to `年糕.real`. The generated launcher must execute that real file and use `/opt/stickycake` in runtime patching.
+
+5. In `build-linux-deb.sh`, use `PRODUCT_NAME="stickycake"`, package `stickycake`, internal output directory `release/stickycake/${VERSION}`, and the actual unpacked executable directory produced by Electron Builder. Do not alter the Windows build scripts or `release/StickyCake` Windows output convention.
 
 - [ ] **Step 4: Run the static contract test and a Linux packaging smoke check**
 
