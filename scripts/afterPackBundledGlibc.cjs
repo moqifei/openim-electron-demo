@@ -340,11 +340,7 @@ function getLinuxInstallDir(appInfo) {
     return process.env.BUNDLED_GLIBC_LINUX_INSTALL_DIR;
   }
 
-  const productDir =
-    (appInfo && (appInfo.productFilename || appInfo.productName || appInfo.name)) ||
-    path.posix.basename(DEFAULT_LINUX_INSTALL_DIR);
-
-  return path.posix.join("/opt", productDir);
+  return DEFAULT_LINUX_INSTALL_DIR;
 }
 
 function walkFiles(rootDir, predicate, collected = []) {
