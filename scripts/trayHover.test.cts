@@ -24,6 +24,14 @@ assert.ok(
   "tray panel mouse monitor should have hover bounds when only cursor position is available",
 );
 assert.ok(
+  source.includes("trayHoverFallbackTimer"),
+  "tray hover should have a fallback timer for UOS systems that miss tray hover events",
+);
+assert.ok(
+  source.includes("showTrayReminderPanel(latestTrayPanelAnchor);"),
+  "tray hover fallback should re-open the panel using the last known tray anchor",
+);
+assert.ok(
   source.includes("appTray.getBounds()"),
   "tray reminder panel should use the tray bounds as its fixed anchor",
 );

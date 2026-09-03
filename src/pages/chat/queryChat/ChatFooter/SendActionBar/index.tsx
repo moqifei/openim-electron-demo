@@ -14,6 +14,8 @@ import image from "@/assets/images/chatFooter/image.png";
 import { CKEditorRef } from "@/components/CKEditor";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store/conversation";
+import { useUserStore } from "@/store/user";
+import { formatScreenshotShortcut } from "@/utils/screenshotShortcut";
 import {
   buildShakeMessageData,
   canUseShake,
@@ -93,6 +95,9 @@ const SendActionBar = ({
     (state) => state.currentConversation,
   );
   const canSendShake = canUseShake(currentConversation);
+  const screenshotShortcut = useUserStore(
+    (state) => state.appSettings.screenshotShortcut,
+  );
 
   const fileHandle = (options: UploadRequestOption, _key: string) => {
     const file = options.file as File;
@@ -272,7 +277,9 @@ const SendActionBar = ({
                     src={cutIcon}
                     width={20}
                     alt={t("placeholder.screenshot")}
-                    title="截图（Ctrl+Shift+X）"
+                    title={`${t("placeholder.screenshot")}（${formatScreenshotShortcut(
+                      screenshotShortcut,
+                    )}）`}
                     onClick={handleScreenshotClick}
                   />
                 </div>

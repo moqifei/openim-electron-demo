@@ -2,7 +2,7 @@
 set -eu
 
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
-SHORTCUT_NAME="StickyCake.desktop"
+SHORTCUT_NAME="年糕.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
 

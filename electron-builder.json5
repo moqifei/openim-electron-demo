@@ -3,7 +3,7 @@
  */
 {
   appId: "io.opencorp.desktop.base",
-  productName: "年糕",
+  productName: "StickyCake",
   asar: true,
   asarUnpack: ["**/*.node"],
   extends: null,

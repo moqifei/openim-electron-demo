@@ -16,12 +16,11 @@ import i18n from "@/i18n";
 import { useUserStore } from "@/store";
 import { LocaleString } from "@/store/type";
 import { feedbackToast } from "@/utils/common";
+import { formatScreenshotShortcut } from "@/utils/screenshotShortcut";
 
 import { OverlayVisibleHandle, useOverlayVisible } from "../../hooks/useOverlayVisible";
 import { IMSDK } from "../MainContentWrap";
 import BlackList from "./BlackList";
-
-const DEFAULT_SCREENSHOT_SHORTCUT = "CommandOrControl+Shift+X";
 
 const isModifierKey = (key: string) =>
   ["Control", "Meta", "Alt", "Shift"].includes(key);
@@ -63,15 +62,6 @@ const buildScreenshotShortcut = (event: KeyboardEvent<HTMLInputElement>) => {
   return `${modifiers.join("+")}+${mainKey}`;
 };
 
-const formatScreenshotShortcut = (shortcut: string) =>
-  shortcut
-    .split("+")
-    .map((part) => {
-      if (["CommandOrControl", "CmdOrCtrl"].includes(part)) return "Ctrl";
-      return part;
-    })
-    .join(" + ");
-
 const PersonalSettings: ForwardRefRenderFunction<OverlayVisibleHandle, unknown> = (
   _,
   ref,
@@ -111,10 +101,10 @@ export const PersonalSettingsContent = ({
 }) => {
   const localeStr = useUserStore((state) => state.appSettings.locale);
   const closeAction = useUserStore((state) => state.appSettings.closeAction);
-  const updateAppSettings = useUserStore((state) => state.updateAppSettings);
-  const [screenshotShortcut, setScreenshotShortcut] = useState(
-    DEFAULT_SCREENSHOT_SHORTCUT,
+  const screenshotShortcut = useUserStore(
+    (state) => state.appSettings.screenshotShortcut,
   );
+  const updateAppSettings = useUserStore((state) => state.updateAppSettings);
   const [downloadPath, setDownloadPath] = useState("");
 
   const backListRef = useRef<OverlayVisibleHandle>(null);
@@ -142,14 +132,6 @@ export const PersonalSettingsContent = ({
 
   useEffect(() => {
     if (!window.electronAPI) return;
-
-    window.electronAPI
-      .ipcInvoke<unknown>("getKeyStore", { key: "screenshotShortcut" })
-      .then((storedShortcut) => {
-        if (typeof storedShortcut === "string" && storedShortcut.trim()) {
-          setScreenshotShortcut(storedShortcut.trim());
-        }
-      });
 
     window.electronAPI
       .ipcInvoke<unknown>("getKeyStore", { key: "downloadPath" })
@@ -204,7 +186,9 @@ export const PersonalSettingsContent = ({
         return;
       }
 
-      setScreenshotShortcut(result.shortcut ?? nextShortcut);
+      updateAppSettings({
+        screenshotShortcut: result.shortcut ?? nextShortcut,
+      });
       feedbackToast({ msg: t("toast.screenshotShortcutSaved") });
     } catch (error) {
       feedbackToast({ error, msg: t("toast.screenshotShortcutConflict") });

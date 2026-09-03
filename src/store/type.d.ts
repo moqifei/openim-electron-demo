@@ -36,6 +36,7 @@ export interface UserStore {
 export interface AppSettings {
   locale: LocaleString;
   closeAction: "miniSize" | "quit";
+  screenshotShortcut: string;
 }
 
 export type LocaleString = "zh-CN" | "en-US";

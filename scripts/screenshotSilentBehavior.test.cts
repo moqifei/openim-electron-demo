@@ -17,6 +17,11 @@ const triggerBody = windowSource
   .split("// utils")[0];
 assert.doesNotMatch(triggerBody, /\.show\(\)|\.restore\(\)|\.focus\(\)/);
 assert.match(ipcSource, /IpcRenderToMain\.startScreenshot, async \(\)/);
+assert.match(
+  ipcSource,
+  /const win = BrowserWindow\.getFocusedWindow\(\);[\s\S]*?screen\.getDisplayNearestPoint\(screen\.getCursorScreenPoint\(\)\)[\s\S]*?screen\.getPrimaryDisplay\(\)/,
+);
+assert.doesNotMatch(ipcSource, /throw new Error\(["']No active window["']\)/);
 assert.doesNotMatch(ipcSource, /hideWindow/);
 assert.match(preloadSource, /const startScreenshot = \(\): Promise/);
 assert.match(typeSource, /startScreenshot: \(\) =>/);

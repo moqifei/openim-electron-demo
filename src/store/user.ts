@@ -6,6 +6,7 @@ import { getADDepartmentList, searchADMembers } from "@/api/organization";
 import { IMSDK } from "@/layout/MainContentWrap";
 import router from "@/routes";
 import { feedbackToast } from "@/utils/common";
+import { DEFAULT_SCREENSHOT_SHORTCUT } from "@/utils/screenshotShortcut";
 import {
   clearIMProfile,
   getLocale,
@@ -42,6 +43,7 @@ export const useUserStore = create<UserStore>()((set, get) => ({
   appSettings: {
     locale: getLocale(),
     closeAction: "miniSize",
+    screenshotShortcut: DEFAULT_SCREENSHOT_SHORTCUT,
   },
   updateSyncState: (syncState: IMConnectState) => {
     set({ syncState });

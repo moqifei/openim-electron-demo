@@ -3,6 +3,13 @@ import fs from "node:fs";
 
 import { getPngDimensions } from "../electron/utils/pngDimensions";
 import { uint8ArrayToDataUrl } from "../electron/utils/screenshotData";
+import { formatScreenshotShortcut } from "../src/utils/screenshotShortcut";
+
+test("formats a configured screenshot shortcut for display", () => {
+  expect(formatScreenshotShortcut("CommandOrControl+Alt+S")).toBe(
+    "Ctrl + Alt + S",
+  );
+});
 
 test("encodes screenshot bytes as a valid base64 data URL", () => {
   const dataUrl = uint8ArrayToDataUrl(
@@ -74,5 +81,11 @@ test("shows the global shortcut in the screenshot button hover text", () => {
     "utf8",
   );
 
-  expect(actionBarSource).toContain('title="截图（Ctrl+Shift+X）"');
+  expect(actionBarSource).toMatch(
+    /const screenshotShortcut = useUserStore\(\s*\(state\) => state\.appSettings\.screenshotShortcut,?\s*\);/,
+  );
+  expect(actionBarSource).toMatch(
+    /formatScreenshotShortcut\(\s*screenshotShortcut,?\s*\)/,
+  );
+  expect(actionBarSource).not.toContain('title="截图（Ctrl+Shift+X）"');
 });

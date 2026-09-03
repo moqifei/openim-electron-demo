@@ -27,6 +27,7 @@ let trayFlashVisible = true;
 let trayAttentionConversations: ReminderConversation[] = [];
 let latestTrayPanelAnchor: TrayPanelAnchor | undefined;
 let latestTrayHoverBounds: Electron.Rectangle | undefined;
+let trayHoverFallbackTimer: NodeJS.Timeout | null = null;
 
 const isRectangleAnchor = (anchor: TrayPanelAnchor): anchor is Electron.Rectangle =>
   "width" in anchor && "height" in anchor;
@@ -51,6 +52,10 @@ const hideTrayReminderPanel = () => {
   if (trayPanelMouseTimer) {
     clearInterval(trayPanelMouseTimer);
     trayPanelMouseTimer = null;
+  }
+  if (trayHoverFallbackTimer) {
+    clearTimeout(trayHoverFallbackTimer);
+    trayHoverFallbackTimer = null;
   }
   if (trayPanelWindow && !trayPanelWindow.isDestroyed()) {
     trayPanelWindow.hide();
@@ -238,6 +243,25 @@ const showTrayReminderPanel = (anchor?: TrayPanelAnchor) => {
   }
   panel.showInactive();
   startTrayPanelMouseMonitor(panelBounds);
+  if (trayHoverFallbackTimer) {
+    clearTimeout(trayHoverFallbackTimer);
+  }
+  trayHoverFallbackTimer = setTimeout(() => {
+    trayHoverFallbackTimer = null;
+    if (!trayAttentionConversations.length) return;
+    if (
+      trayPanelWindow &&
+      !trayPanelWindow.isDestroyed() &&
+      trayPanelWindow.isVisible()
+    ) {
+      return;
+    }
+    const pointer = screen.getCursorScreenPoint();
+    const bounds = latestTrayHoverBounds;
+    if (bounds && isPointInBounds(pointer, bounds)) {
+      showTrayReminderPanel(latestTrayPanelAnchor);
+    }
+  }, 150);
 };
 
 const handleTrayHover = (position: Electron.Point) => {
@@ -372,6 +396,10 @@ export const destroyTray = () => {
   if (trayPanelWindow && !trayPanelWindow.isDestroyed()) {
     trayPanelWindow.destroy();
     trayPanelWindow = null;
+  }
+  if (trayHoverFallbackTimer) {
+    clearTimeout(trayHoverFallbackTimer);
+    trayHoverFallbackTimer = null;
   }
   if (!appTray || appTray.isDestroyed()) return;
   appTray.destroy();

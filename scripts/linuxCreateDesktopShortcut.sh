@@ -7,7 +7,7 @@ EXECUTABLE_NAME="年糕"
 APP_ID="io.opencorp.desktop.base"
 APP_DIR="/opt/StickyCake"
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
-SHORTCUT_NAME="StickyCake.desktop"
+SHORTCUT_NAME="年糕.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
 POSTINST_LOG="/tmp/StickyCake-postinst.log"
@@ -75,7 +75,7 @@ Name=$DISPLAY_NAME
 Exec=/opt/StickyCake/年糕 %U
 Terminal=false
 Type=Application
-Icon=$APP_NAME
+Icon=/opt/StickyCake/resources/dist/icons/icon-new.png
 StartupWMClass=$APP_NAME
 Categories=Utility;
 $MANAGED_MARKER
@@ -188,6 +188,12 @@ install_shortcut_to_desktop_dir() {
     sed -i "s|^Exec=.*|Exec=/opt/StickyCake/年糕 %U|" "$target"
   else
     sed -i "/^\[Desktop Entry\]/a Exec=/opt/StickyCake/年糕 %U" "$target" 2>/dev/null || true
+  fi
+
+  if grep -q '^Icon=' "$target" 2>/dev/null; then
+    sed -i "s|^Icon=.*|Icon=/opt/StickyCake/resources/dist/icons/icon-new.png|" "$target"
+  else
+    sed -i "/^\[Desktop Entry\]/a Icon=/opt/StickyCake/resources/dist/icons/icon-new.png" "$target" 2>/dev/null || true
   fi
 
   if ! grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then

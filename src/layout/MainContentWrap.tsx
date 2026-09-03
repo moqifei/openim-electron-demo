@@ -5,6 +5,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 
 import { useConversationStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
+import { DEFAULT_SCREENSHOT_SHORTCUT } from "@/utils/screenshotShortcut";
 import {
   clearIMProfile,
   clearManualLogout,
@@ -71,11 +72,20 @@ export const MainContentWrap = () => {
   useEffect(() => {
     const initSettingStore = async () => {
       if (!window.electronAPI) return;
+      const storedScreenshotShortcut = await window.electronAPI.ipcInvoke<unknown>(
+        "getKeyStore",
+        { key: "screenshotShortcut" },
+      );
       updateAppSettings({
         closeAction:
           (await window.electronAPI?.ipcInvoke("getKeyStore", {
             key: "closeAction",
           })) || "miniSize",
+        screenshotShortcut:
+          typeof storedScreenshotShortcut === "string" &&
+          storedScreenshotShortcut.trim()
+            ? storedScreenshotShortcut.trim()
+            : DEFAULT_SCREENSHOT_SHORTCUT,
       });
       window.electronAPI?.ipcInvoke("main-win-ready");
     };
