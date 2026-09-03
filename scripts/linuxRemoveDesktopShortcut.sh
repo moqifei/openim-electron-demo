@@ -1,10 +1,20 @@
 #!/bin/sh
 set -eu
 
+APP_DIR="/opt/StickyCake"
+EXECUTABLE_NAME="年糕"
+SYSTEM_BIN_DIR="/usr/bin"
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
 SHORTCUT_NAME="年糕.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
 MANAGED_MARKER="X-OpenCorp-Base-Managed-Desktop-Shortcut=true"
+
+remove_application_symlink() {
+  target="$SYSTEM_BIN_DIR/$EXECUTABLE_NAME"
+  if [ -L "$target" ] && [ "$(readlink "$target" 2>/dev/null || true)" = "$APP_DIR/$EXECUTABLE_NAME" ]; then
+    rm -f "$target"
+  fi
+}
 
 append_unique_line() {
   value="$1"
@@ -104,6 +114,7 @@ while IFS=: read -r user home_dir; do
   remove_shortcut_for_user "$user" "$home_dir"
 done
 
+remove_application_symlink
 remove_shortcuts_from_home_desktops
 remove_system_fallbacks
 

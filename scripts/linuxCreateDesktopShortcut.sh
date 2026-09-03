@@ -6,6 +6,7 @@ DISPLAY_NAME="年糕"
 EXECUTABLE_NAME="年糕"
 APP_ID="io.opencorp.desktop.base"
 APP_DIR="/opt/StickyCake"
+SYSTEM_BIN_DIR="/usr/bin"
 SYSTEM_APPLICATIONS_DIR="/usr/share/applications"
 SHORTCUT_NAME="年糕.desktop"
 LEGACY_SHORTCUT_NAME="opencorp-base.desktop"
@@ -27,6 +28,35 @@ configure_chrome_sandbox() {
   chown root:root "$sandbox_path" 2>/dev/null || true
   chmod 4755 "$sandbox_path" 2>/dev/null || true
   log "configured chrome-sandbox: $(ls -l "$sandbox_path" 2>/dev/null || true)"
+}
+
+ensure_application_symlink() {
+  target="$SYSTEM_BIN_DIR/$EXECUTABLE_NAME"
+  mkdir -p "$SYSTEM_BIN_DIR"
+  ln -sfn "$APP_DIR/$EXECUTABLE_NAME" "$target"
+  log "updated application symlink: $target -> $(readlink "$target" 2>/dev/null || true)"
+}
+
+normalize_desktop_file() {
+  target="$1"
+
+  if grep -q '^Name' "$target" 2>/dev/null; then
+    sed -i "s/^Name\\(\\[[^]]*\\]\\)\\?=.*/Name\\1=$DISPLAY_NAME/" "$target"
+  else
+    sed -i "/^\[Desktop Entry\]/a Name=$DISPLAY_NAME" "$target" 2>/dev/null || true
+  fi
+
+  if grep -q '^Exec=' "$target" 2>/dev/null; then
+    sed -i "s|^Exec=.*|Exec=$APP_DIR/$EXECUTABLE_NAME %U|" "$target"
+  else
+    sed -i "/^\[Desktop Entry\]/a Exec=$APP_DIR/$EXECUTABLE_NAME %U" "$target" 2>/dev/null || true
+  fi
+
+  if grep -q '^Icon=' "$target" 2>/dev/null; then
+    sed -i "s|^Icon=.*|Icon=$APP_DIR/resources/dist/icons/icon-new.png|" "$target"
+  else
+    sed -i "/^\[Desktop Entry\]/a Icon=$APP_DIR/resources/dist/icons/icon-new.png" "$target" 2>/dev/null || true
+  fi
 }
 
 find_source_desktop() {
@@ -178,23 +208,7 @@ install_shortcut_to_desktop_dir() {
   fi
 
   cp "$source_desktop" "$target"
-  if grep -q '^Name' "$target" 2>/dev/null; then
-    sed -i "s/^Name\\(\\[[^]]*\\]\\)\\?=.*/Name\\1=$DISPLAY_NAME/" "$target"
-  else
-    sed -i "/^\[Desktop Entry\]/a Name=$DISPLAY_NAME" "$target" 2>/dev/null || true
-  fi
-
-  if grep -q '^Exec=' "$target" 2>/dev/null; then
-    sed -i "s|^Exec=.*|Exec=/opt/StickyCake/年糕 %U|" "$target"
-  else
-    sed -i "/^\[Desktop Entry\]/a Exec=/opt/StickyCake/年糕 %U" "$target" 2>/dev/null || true
-  fi
-
-  if grep -q '^Icon=' "$target" 2>/dev/null; then
-    sed -i "s|^Icon=.*|Icon=/opt/StickyCake/resources/dist/icons/icon-new.png|" "$target"
-  else
-    sed -i "/^\[Desktop Entry\]/a Icon=/opt/StickyCake/resources/dist/icons/icon-new.png" "$target" 2>/dev/null || true
-  fi
+  normalize_desktop_file "$target"
 
   if ! grep -q "^$MANAGED_MARKER$" "$target" 2>/dev/null; then
     printf '\n%s\n' "$MANAGED_MARKER" >> "$target"
@@ -330,9 +344,11 @@ install_shortcuts_for_existing_home_desktops() {
 
 log "postinst started as user $(id -u 2>/dev/null || true), SUDO_USER=${SUDO_USER:-}"
 configure_chrome_sandbox
+ensure_application_symlink
 remove_legacy_system_desktop
 
 source_desktop="$(find_source_desktop || create_fallback_desktop)"
+normalize_desktop_file "$source_desktop"
 log "source desktop file: $source_desktop"
 
 install_shortcuts_for_logged_in_users "$source_desktop"
