@@ -1,11 +1,10 @@
-import { dialog, app } from "electron";
+import { dialog, app, shell } from "electron";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { spawn } from "node:child_process";
 import type { IncomingMessage } from "node:http";
 import * as yaml from "js-yaml";
 
@@ -96,51 +95,24 @@ const downloadDeb = async (url: string, destination: string) => {
   }
 };
 
-const installDeb = (debPath: string) =>
-  new Promise<number>((resolve, reject) => {
-    const installer = spawn("/usr/bin/pkexec", ["/usr/bin/dpkg", "-i", debPath], {
-      stdio: "ignore",
-    });
-    installer.once("error", reject);
-    installer.once("exit", (code) => resolve(code ?? 1));
-  });
-
-const installDownloadedDeb = async (debPath: string, version: string) => {
-  const result = await dialog.showMessageBox({
-    type: "info",
-    buttons: ["立即安装并重启", "稍后"],
-    defaultId: 0,
-    cancelId: 1,
-    title: "发现新版本",
-    message: `新版本 ${version} 已下载完成`,
-    detail: "安装更新需要系统管理员授权。选择稍后不会安装本次更新。",
-  });
-
-  if (result.response !== 0) return;
-
+const openDownloadedDeb = async (debPath: string, version: string) => {
   try {
-    const exitCode = await installDeb(debPath);
-    if (exitCode !== 0) {
-      await dialog.showMessageBox({
-        type: "error",
-        title: "更新失败",
-        message: `系统安装器返回退出码 ${exitCode}`,
-        detail: "当前版本未被替换，请检查权限后重试。",
-      });
-      return;
+    const error = await shell.openPath(debPath);
+    if (error) {
+      throw new Error(error);
     }
 
-    fs.rmSync(debPath, { force: true });
-    app.relaunch();
-    app.exit(0);
+    logger.info("[deb-updater] opened update with system installer", version, debPath);
+    return true;
   } catch (error) {
-    logger.error("[deb-updater] install failed", error);
+    logger.error("[deb-updater] failed to open system installer", error);
     await dialog.showMessageBox({
       type: "error",
       title: "更新失败",
-      message: "无法启动系统安装器",
+      message: "无法打开系统安装器",
       detail: String(error),
     });
+    return false;
   }
 };
 
@@ -199,11 +171,13 @@ const runCheck = async (manual = false) => {
     const updateFile = getDebUpdateFile(manifest, process.arch);
     const updateUrl = new URL(updateFile.url, manifestUrl).toString();
     const fileName = basename(new URL(updateUrl).pathname);
-    debPath = join(tmpdir(), `${fileName}.${process.pid}.${Date.now()}.download`);
+    debPath = join(tmpdir(), `${fileName}.${process.pid}.${Date.now()}.deb`);
     logger.info("[deb-updater] downloading update", manifest.version, updateUrl);
 
     await downloadDeb(updateUrl, debPath);
-    await installDownloadedDeb(debPath, manifest.version);
+    if (await openDownloadedDeb(debPath, manifest.version)) {
+      debPath = null;
+    }
   } catch (error) {
     logger.error("[deb-updater] update failed", error);
   } finally {
