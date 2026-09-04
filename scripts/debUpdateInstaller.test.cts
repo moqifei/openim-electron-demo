@@ -9,13 +9,13 @@ const source = fs.readFileSync(
 
 assert.match(
   source,
-  /shell\.openPath\(debPath\)/,
-  "UOS updates should open the downloaded deb with the system default installer",
+  /execFile\(\s*"xdg-open",\s*\[debPath\]/s,
+  "UOS updates should open the downloaded deb with xdg-open",
 );
 assert.doesNotMatch(
   source,
-  /spawn\("\/usr\/bin\/pkexec"/,
-  "UOS updates should not run dpkg directly through pkexec",
+  /shell\.openPath\(debPath\)/,
+  "UOS updates should not use Electron shell.openPath for the deb installer",
 );
 assert.match(
   source,
@@ -24,8 +24,18 @@ assert.match(
 );
 assert.match(
   source,
-  /debPath = join\(tmpdir\(\), `\$\{fileName\}\.\$\{process\.pid\}\.\$\{Date\.now\(\)\}\.deb`\)/,
-  "the downloaded file must keep a .deb extension for desktop file association",
+  /const finalPath = join\(app\.getPath\("downloads"\), fileName\)/,
+  "the downloaded deb must be saved in the user's Downloads directory with the server filename",
+);
+assert.match(
+  source,
+  /fs\.renameSync\(downloadPath, finalPath\)/,
+  "the completed download should be atomically renamed to the server filename before opening",
+);
+assert.doesNotMatch(
+  source,
+  /tmpdir\(\)|process\.pid|Date\.now\(\)/,
+  "the downloaded deb path must not be renamed into a temporary filename",
 );
 
 console.log("debUpdateInstaller tests passed");

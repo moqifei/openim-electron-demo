@@ -1,9 +1,9 @@
-import { dialog, app, shell } from "electron";
+import { dialog, app } from "electron";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
+import { execFile } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
-import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { IncomingMessage } from "node:http";
 import * as yaml from "js-yaml";
@@ -96,24 +96,44 @@ const downloadDeb = async (url: string, destination: string) => {
 };
 
 const openDownloadedDeb = async (debPath: string, version: string) => {
-  try {
-    const error = await shell.openPath(debPath);
-    if (error) {
-      throw new Error(error);
-    }
+  const systemEnv = { ...process.env };
+  delete systemEnv.LD_LIBRARY_PATH;
+  delete systemEnv.GIO_MODULE_DIR;
+  delete systemEnv.GSETTINGS_SCHEMA_DIR;
 
-    logger.info("[deb-updater] opened update with system installer", version, debPath);
-    return true;
-  } catch (error) {
-    logger.error("[deb-updater] failed to open system installer", error);
-    await dialog.showMessageBox({
-      type: "error",
-      title: "更新失败",
-      message: "无法打开系统安装器",
-      detail: String(error),
-    });
-    return false;
-  }
+  return new Promise<boolean>((resolve) => {
+    execFile(
+      "xdg-open",
+      [debPath],
+      { env: systemEnv },
+      async (error, stdout, stderr) => {
+        if (!error) {
+          logger.info(
+            "[deb-updater] opened update with system installer",
+            version,
+            debPath,
+            { stdout, stderr },
+          );
+          resolve(true);
+          return;
+        }
+
+        logger.error("[deb-updater] failed to open system installer", {
+          error,
+          stdout,
+          stderr,
+          debPath,
+        });
+        await dialog.showMessageBox({
+          type: "error",
+          title: "更新失败",
+          message: "无法打开系统安装器",
+          detail: stderr || error.message,
+        });
+        resolve(false);
+      },
+    );
+  });
 };
 
 const showLatestVersionNotice = () =>
@@ -130,6 +150,7 @@ const runCheck = async (manual = false) => {
   checkInProgress = true;
   const config = readUpdateConfig();
   let debPath: string | null = null;
+  let downloadPath: string | null = null;
 
   try {
     const manifestUrl = getDebManifestUrl(config.url, DEB_MANIFEST_NAME);
@@ -171,10 +192,15 @@ const runCheck = async (manual = false) => {
     const updateFile = getDebUpdateFile(manifest, process.arch);
     const updateUrl = new URL(updateFile.url, manifestUrl).toString();
     const fileName = basename(new URL(updateUrl).pathname);
-    debPath = join(tmpdir(), `${fileName}.${process.pid}.${Date.now()}.deb`);
+    const finalPath = join(app.getPath("downloads"), fileName);
+    downloadPath = join(app.getPath("downloads"), `.${fileName}.download`);
+    fs.rmSync(downloadPath, { force: true });
     logger.info("[deb-updater] downloading update", manifest.version, updateUrl);
 
-    await downloadDeb(updateUrl, debPath);
+    await downloadDeb(updateUrl, downloadPath);
+    fs.renameSync(downloadPath, finalPath);
+    downloadPath = null;
+    debPath = finalPath;
     if (await openDownloadedDeb(debPath, manifest.version)) {
       debPath = null;
     }
@@ -184,6 +210,9 @@ const runCheck = async (manual = false) => {
     checkInProgress = false;
     if (debPath) {
       fs.rmSync(debPath, { force: true });
+    }
+    if (downloadPath) {
+      fs.rmSync(downloadPath, { force: true });
     }
   }
 };
