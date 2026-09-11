@@ -30,8 +30,8 @@
     {
       "key": "pro",
       "name": "生产环境",
-      "imHost": "10.150.1.148",
-      "chatHost": "10.150.1.147",
+      "imHost": "openimserver.oa.bx",
+      "chatHost": "openimchat.oa.bx",
       "plazaDirectMode": true,
       "plazaUrl": "http://llm-tools.oa.bx",
       "orangeUrl": "http://10.148.13.20:3000",
