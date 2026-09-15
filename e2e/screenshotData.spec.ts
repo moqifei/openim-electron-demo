@@ -67,12 +67,25 @@ test("wires the global screenshot event and final image to ChatFooter", () => {
   expect(chatFooterSource).toContain("croppedBase64");
 });
 
-test("does not read the removed screenshot hide-window setting", () => {
+test("restores the screenshot hide-window preference through the UI and footer", () => {
   const footerSource = fs.readFileSync(
     "src/pages/chat/queryChat/ChatFooter/index.tsx",
     "utf8",
   );
-  expect(footerSource).not.toContain("screenshotHideWindow");
+  const actionBarSource = fs.readFileSync(
+    "src/pages/chat/queryChat/ChatFooter/SendActionBar/index.tsx",
+    "utf8",
+  );
+
+  expect(actionBarSource).toContain("screenshotHideWindow");
+  expect(actionBarSource).toContain("localStorage.setItem");
+  expect(actionBarSource).toContain("截图时隐藏窗口");
+  expect(actionBarSource).toContain('viewBox="0 0 8 8"');
+  expect(actionBarSource).toContain("h-4 w-4");
+  expect(actionBarSource).not.toContain("<Checkbox");
+  expect(actionBarSource).not.toContain("DownOutlined");
+  expect(footerSource).toContain("screenshotHideWindow");
+  expect(footerSource).toContain("startScreenshot(hideWindow)");
 });
 
 test("shows the global shortcut in the screenshot button hover text", () => {

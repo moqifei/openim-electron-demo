@@ -372,39 +372,43 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     }
   }, []);
 
-  const startScreenshot = useCallback(async () => {
-    if (!window.electronAPI) {
-      message.warning(t("toast.accessFailed"));
-      return;
-    }
-    setScreenshotLoading(true);
-    try {
-      const result = await window.electronAPI.startScreenshot();
-      if (result?.dataUrl) {
-        await writeScreenshotToClipboard(result.dataUrl);
+  const startScreenshot = useCallback(
+    async (hideWindow: boolean) => {
+      if (!window.electronAPI) {
+        message.warning(t("toast.accessFailed"));
+        return;
       }
-      if (result?.isSelection) {
-        addPendingFiles([
-          dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
-        ]);
-      } else if (result?.dataUrl) {
-        setScreenshotSrc(result.dataUrl);
+      setScreenshotLoading(true);
+      try {
+        const result = await window.electronAPI.startScreenshot(hideWindow);
+        if (result?.dataUrl) {
+          await writeScreenshotToClipboard(result.dataUrl);
+        }
+        if (result?.isSelection) {
+          addPendingFiles([
+            dataUrlToImageFile(result.dataUrl, `screenshot-${Date.now()}.png`),
+          ]);
+        } else if (result?.dataUrl) {
+          setScreenshotSrc(result.dataUrl);
+        }
+      } catch (error: any) {
+        console.error("[ChatFooter] screenshot failed:", error);
+        if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
+          message.error(t("toast.screenshotPermissionDenied"));
+        } else {
+          message.error(t("toast.accessFailed"));
+        }
+      } finally {
+        setScreenshotLoading(false);
       }
-    } catch (error: any) {
-      console.error("[ChatFooter] screenshot failed:", error);
-      if (error?.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
-        message.error(t("toast.screenshotPermissionDenied"));
-      } else {
-        message.error(t("toast.accessFailed"));
-      }
-    } finally {
-      setScreenshotLoading(false);
-    }
-  }, [addPendingFiles, writeScreenshotToClipboard]);
+    },
+    [addPendingFiles, writeScreenshotToClipboard],
+  );
 
   useEffect(() => {
     const unsubscribe = window.electronAPI?.subscribe("triggerScreenshot", () => {
-      void startScreenshot();
+      const hideWindow = localStorage.getItem("screenshotHideWindow") !== "false";
+      void startScreenshot(hideWindow);
     });
     return () => unsubscribe?.();
   }, [startScreenshot]);
@@ -499,6 +503,14 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setAtPopupVisible(false);
     editorRef.current?.focus(true);
   }, []);
+
+  useEffect(() => {
+    atPopupRequestIdRef.current += 1;
+    atPopupLoadingRef.current = false;
+    atTriggerNeedsRemovalRef.current = false;
+    setGroupMemberList([]);
+    setAtPopupVisible(false);
+  }, [currentConversation?.conversationID]);
 
   const handleEditorChange = useCallback(
     (value: string) => {

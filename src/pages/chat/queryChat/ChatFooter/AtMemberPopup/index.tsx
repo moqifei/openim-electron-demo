@@ -33,6 +33,8 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<InputRef>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef(new Map<number, HTMLDivElement>());
 
   console.log(
     "[AtMemberPopup] render visible:",
@@ -64,6 +66,22 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!popupRef.current?.contains(event.target as Node)) onClose();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [onClose, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    itemRefs.current.get(activeIndex)?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, filtered, visible]);
 
   // Clamp active index
   useEffect(() => {
@@ -122,7 +140,7 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
   if (!visible) return null;
 
   return (
-    <div className={styles.popup} onKeyDown={handleKeyDown}>
+    <div ref={popupRef} className={styles.popup}>
       <div className={styles.inputWrap}>
         <Input
           ref={inputRef}
@@ -137,6 +155,10 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
       <div className={styles.list}>
         {/* @所有人 option */}
         <div
+          ref={(node) => {
+            if (node) itemRefs.current.set(0, node);
+            else itemRefs.current.delete(0);
+          }}
           className={clsx(styles.item, activeIndex === 0 && styles.active)}
           onClick={handleSelectAll}
           onMouseEnter={() => setActiveIndex(0)}
@@ -150,6 +172,10 @@ const AtMemberPopup: FC<AtMemberPopupProps> = ({
           return (
             <div
               key={member.userID}
+              ref={(node) => {
+                if (node) itemRefs.current.set(itemIdx, node);
+                else itemRefs.current.delete(itemIdx);
+              }}
               className={clsx(styles.item, activeIndex === itemIdx && styles.active)}
               onClick={() => handleSelect(member)}
               onMouseEnter={() => setActiveIndex(itemIdx)}

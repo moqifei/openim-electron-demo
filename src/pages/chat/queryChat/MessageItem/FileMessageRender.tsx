@@ -1,16 +1,23 @@
 import { DownloadOutlined, FileOutlined } from "@ant-design/icons";
-import { MessageStatus } from "@openim/wasm-client-sdk";
+import { MessageItem, MessageStatus } from "@openim/wasm-client-sdk";
 import { Progress } from "antd";
 import { t } from "i18next";
-import { FC, useCallback, useState } from "react";
+import { FC, useCallback, useEffect, useRef, useState } from "react";
 
 import { message as antdMessage } from "@/AntdGlobalComp";
 import { bytesToSize } from "@/utils/common";
-import { downloadFileWithProgress } from "@/utils/fileDownload";
+import {
+  downloadFileWithProgress,
+  isDownloadCancelledError,
+} from "@/utils/fileDownload";
 import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 
-import { IMessageItemProps } from ".";
 import styles from "./message-item.module.scss";
+
+interface FileMessageRenderProps {
+  message: MessageItem;
+  isSender: boolean;
+}
 
 interface FileActionButtonProps {
   label: string;
@@ -32,20 +39,28 @@ const FileActionButton: FC<FileActionButtonProps> = ({ label, onClick }) => (
 
 const downloadedFilePathCache = new Map<string, string>();
 
-const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
+const FileMessageRender: FC<FileMessageRenderProps> = ({ message, isSender }) => {
   const fileElem = message.fileElem;
   const sourceUrl = fileElem?.sourceUrl || "";
+  const downloadCacheKey = message.clientMsgID || message.serverMsgID || sourceUrl;
   const isSending = message.status === MessageStatus.Sending;
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [localFilePath, setLocalFilePath] = useState(
-    () => downloadedFilePathCache.get(sourceUrl) || "",
+    () => downloadedFilePathCache.get(downloadCacheKey) || "",
   );
+  const downloadAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    setLocalFilePath(downloadedFilePathCache.get(downloadCacheKey) || "");
+  }, [downloadCacheKey]);
 
   const downloadFile = useCallback(
     async (filePath?: string) => {
       if (!sourceUrl || isSending || isDownloading) return;
 
+      const controller = new AbortController();
+      downloadAbortControllerRef.current = controller;
       setIsDownloading(true);
       setDownloadProgress(0);
       try {
@@ -57,20 +72,37 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
           onProgress: setDownloadProgress,
           showProgressToast: true,
           progressTitle: t("toast.downloading"),
+          signal: controller.signal,
+          onCancel: () => controller.abort(),
         });
         if (savedPath) {
           setLocalFilePath(savedPath);
-          downloadedFilePathCache.set(sourceUrl, savedPath);
+          downloadedFilePathCache.set(downloadCacheKey, savedPath);
         }
       } catch (error) {
+        if (isDownloadCancelledError(error)) return;
         console.error("[FileMessageRender] download failed:", error);
         antdMessage.error(getFileTransferErrorMessage(error, "download"));
       } finally {
+        if (downloadAbortControllerRef.current === controller) {
+          downloadAbortControllerRef.current = null;
+        }
         setIsDownloading(false);
       }
     },
-    [fileElem?.fileName, fileElem?.fileSize, isDownloading, isSending, sourceUrl],
+    [
+      downloadCacheKey,
+      fileElem?.fileName,
+      fileElem?.fileSize,
+      isDownloading,
+      isSending,
+      sourceUrl,
+    ],
   );
+
+  const cancelDownload = useCallback(() => {
+    downloadAbortControllerRef.current?.abort();
+  }, []);
 
   const handleSaveAs = useCallback(async () => {
     if (!sourceUrl || isSending || isDownloading) return;
@@ -92,10 +124,10 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
     const openError = await window.electronAPI.openLocalPath(localFilePath);
     if (openError) {
       setLocalFilePath("");
-      downloadedFilePathCache.delete(sourceUrl);
+      downloadedFilePathCache.delete(downloadCacheKey);
       antdMessage.error(getFileTransferErrorMessage(openError, "download"));
     }
-  }, [localFilePath, sourceUrl]);
+  }, [downloadCacheKey, localFilePath, sourceUrl]);
 
   const handleOpenFolder = useCallback(async () => {
     if (!localFilePath || !window.electronAPI?.ipcInvoke) return;
@@ -105,10 +137,10 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
     );
     if (openError) {
       setLocalFilePath("");
-      downloadedFilePathCache.delete(sourceUrl);
+      downloadedFilePathCache.delete(downloadCacheKey);
       antdMessage.error(getFileTransferErrorMessage(openError, "download"));
     }
-  }, [localFilePath, sourceUrl]);
+  }, [downloadCacheKey, localFilePath, sourceUrl]);
 
   return (
     <div
@@ -125,8 +157,9 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
             {fileElem?.fileName}
           </div>
           {isDownloading ? (
-            <div className="mt-1 w-[180px]">
+            <div className="mt-1 flex w-[180px] items-center gap-2">
               <Progress percent={downloadProgress} size="small" showInfo />
+              <FileActionButton label={t("cancel")} onClick={cancelDownload} />
             </div>
           ) : (
             <div className="flex items-center gap-1 text-xs text-[var(--sub-text)]">
@@ -147,10 +180,17 @@ const FileMessageRender: FC<IMessageItemProps> = ({ message, isSender }) => {
         <div className="flex items-center gap-3 border-t border-[var(--border-color)] px-3 py-1.5">
           {localFilePath ? (
             <>
-              <FileActionButton label={t("placeholder.open")} onClick={handleOpen} />
+              <FileActionButton
+                label={t("placeholder.open")}
+                onClick={() => {
+                  void handleOpen();
+                }}
+              />
               <FileActionButton
                 label={t("placeholder.openFolder")}
-                onClick={handleOpenFolder}
+                onClick={() => {
+                  void handleOpenFolder();
+                }}
               />
               <FileActionButton
                 label={t("placeholder.redownload")}

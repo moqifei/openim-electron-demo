@@ -1,7 +1,14 @@
 import { CloseOutlined } from "@ant-design/icons";
 import { Button, Modal } from "antd";
 import { t } from "i18next";
-import { forwardRef, ForwardRefRenderFunction, memo, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  ForwardRefRenderFunction,
+  memo,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 
 import ChooseBox, { ChooseBoxHandle } from "@/pages/common/ChooseModal/ChooseBox";
 import { CheckListItem } from "@/pages/common/ChooseModal/ChooseBox/CheckItem";
@@ -17,7 +24,10 @@ export interface ForwardModalHandle {
   closeModal: () => void;
 }
 
-const ForwardModal: ForwardRefRenderFunction<ForwardModalHandle, unknown> = (_, ref) => {
+const ForwardModal: ForwardRefRenderFunction<ForwardModalHandle, unknown> = (
+  _,
+  ref,
+) => {
   const [isOpen, setIsOpen] = useState(false);
   const chooseBoxRef = useRef<ChooseBoxHandle>(null);
   const confirmCallbackRef = useRef<((targets: CheckListItem[]) => void) | null>(null);
@@ -75,7 +85,7 @@ const ForwardModal: ForwardRefRenderFunction<ForwardModalHandle, unknown> = (_, 
           onClick={handleCancel}
         />
       </div>
-      <ChooseBox className="!h-[60vh]" ref={chooseBoxRef} />
+      <ChooseBox className="!h-[60vh]" forwardSearch ref={chooseBoxRef} />
       <div className="flex justify-end px-9 py-6">
         <Button
           className="mr-6 border-0 bg-[var(--chat-bubble)] px-6"

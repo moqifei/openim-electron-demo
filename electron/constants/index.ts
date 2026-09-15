@@ -24,6 +24,8 @@ export const IpcRenderToMain = {
   openFileDialog: "openFileDialog",
   chooseDownloadPath: "chooseDownloadPath",
   saveDownloadedFile: "saveDownloadedFile",
+  downloadFileNative: "downloadFileNative",
+  cancelDownloadFileNative: "cancelDownloadFileNative",
   openLocalPath: "openLocalPath",
   openLocalFolder: "openLocalFolder",
   uploadObjectFileFromPath: "uploadObjectFileFromPath",

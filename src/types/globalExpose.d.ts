@@ -32,7 +32,7 @@ export interface IElectronAPI {
     filePath?: string;
   }) => Promise<string | false>;
   openLocalPath: (filePath: string) => Promise<string>;
-  startScreenshot: () => Promise<{
+  startScreenshot: (hideWindow: boolean) => Promise<{
     dataUrl: string;
     isSelection: boolean;
   } | null>;

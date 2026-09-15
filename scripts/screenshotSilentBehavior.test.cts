@@ -16,18 +16,32 @@ const triggerBody = windowSource
   .split("export const triggerScreenshot = () =>")[1]
   .split("// utils")[0];
 assert.doesNotMatch(triggerBody, /\.show\(\)|\.restore\(\)|\.focus\(\)/);
-assert.match(ipcSource, /IpcRenderToMain\.startScreenshot, async \(\)/);
+assert.match(
+  ipcSource,
+  /IpcRenderToMain\.startScreenshot, async \(_, hideWindow: boolean = true\) =>/,
+);
 assert.match(
   ipcSource,
   /const win = BrowserWindow\.getFocusedWindow\(\);[\s\S]*?screen\.getDisplayNearestPoint\(screen\.getCursorScreenPoint\(\)\)[\s\S]*?screen\.getPrimaryDisplay\(\)/,
 );
 assert.doesNotMatch(ipcSource, /throw new Error\(["']No active window["']\)/);
-assert.doesNotMatch(ipcSource, /hideWindow/);
-assert.match(preloadSource, /const startScreenshot = \(\): Promise/);
-assert.match(typeSource, /startScreenshot: \(\) =>/);
-assert.doesNotMatch(footerSource, /screenshotHideWindow/);
-assert.doesNotMatch(actionBarSource, /screenshotHideWindow|截图时隐藏窗口/);
-assert.match(footerSource, /startScreenshot\(\)/);
+assert.match(
+  ipcSource,
+  /const hiddenForCapture = Boolean\([\s\S]*?hideWindow[\s\S]*?win[\s\S]*?!win\.isDestroyed\(\)[\s\S]*?win\.isVisible\(\)/,
+);
+assert.match(ipcSource, /if \(hiddenForCapture\) \{[\s\S]*?win\.hide\(\)/);
+assert.match(
+  ipcSource,
+  /if \(hiddenForCapture && win && !win\.isDestroyed\(\)\) \{[\s\S]*?win\.show\(\);[\s\S]*?win\.focus\(\);/,
+);
+assert.match(preloadSource, /const startScreenshot = \(hideWindow: boolean\): Promise/);
+assert.match(typeSource, /startScreenshot: \(hideWindow: boolean\) =>/);
+assert.match(
+  footerSource,
+  /const hideWindow = localStorage\.getItem\("screenshotHideWindow"\) !== "false";/,
+);
+assert.match(actionBarSource, /screenshotHideWindow/);
+assert.match(footerSource, /startScreenshot\(hideWindow\)/);
 assert.ok(footerSource.includes("writeClipboardImage"));
 assert.ok(footerSource.includes("addPendingFiles"));
 

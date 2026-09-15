@@ -37,8 +37,16 @@ import { getPngDimensions } from "../utils/pngDimensions";
 import { getStore } from "./storeManage";
 import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { getDownloadFileFilters } from "../utils/downloadFileFilters";
+import {
+  downloadFileNative,
+  getNativeDownloadErrorDetails,
+} from "./nativeFileDownload";
 import { changeLanguage } from "../i18n";
 import { logger } from ".";
+import {
+  getObjectUploadErrorDetails,
+  getObjectUploadErrorMessage,
+} from "./objectUploadDiagnostics";
 import { updateScreenshotShortcut } from "./shortcutManage";
 import { checkForUpdates as checkForDebUpdates } from "./debUpdateManage";
 import { checkForUpdates as checkForWindowsUpdates } from "./updateManage";
@@ -52,6 +60,7 @@ const requireModule = createRequire(__filename);
 type NativeScreenshots = import("electron-screenshots").default;
 
 let nativeScreenshots: NativeScreenshots | null = null;
+const nativeDownloadAbortControllers = new Map<string, AbortController>();
 
 const getNativeScreenshots = async (): Promise<NativeScreenshots> => {
   if (nativeScreenshots) return nativeScreenshots;
@@ -478,6 +487,85 @@ export const setIpcMainListener = () => {
     },
   );
 
+  ipcMain.handle(
+    IpcRenderToMain.downloadFileNative,
+    async (
+      event,
+      {
+        url,
+        fileName,
+        filePath,
+        token,
+        requestId,
+      }: {
+        url: string;
+        fileName?: string;
+        filePath?: string;
+        token?: string | null;
+        requestId: string;
+      },
+    ) => {
+      const safeName = path.basename(fileName || "download") || "download";
+      const targetPath = filePath || path.join(getDownloadDirectory(), safeName);
+      const safeRequestId =
+        typeof requestId === "string" && /^[a-zA-Z0-9_-]{1,100}$/.test(requestId)
+          ? requestId
+          : randomUUID();
+      const progressChannel = `downloadFileNativeProgress:${safeRequestId}`;
+      const controller = new AbortController();
+      nativeDownloadAbortControllers.set(safeRequestId, controller);
+
+      try {
+        const savedPath = await downloadFileNative({
+          url,
+          targetPath,
+          token,
+          requestId: safeRequestId,
+          signal: controller.signal,
+          onProgress: (loaded, total) => {
+            try {
+              event.sender.send(progressChannel, { loaded, total });
+            } catch {
+              // The renderer may close while a download is still finishing.
+            }
+          },
+          logger,
+        });
+        return { ok: true, savedPath };
+      } catch (error) {
+        const errorDetails = getNativeDownloadErrorDetails(error);
+        let requestPath = "<empty-url>";
+        try {
+          requestPath = new URL(url).pathname;
+        } catch {
+          // Keep the original native error when the URL itself is invalid.
+        }
+        logger.error("[nativeFileDownload] failed", {
+          requestId: safeRequestId,
+          request: requestPath,
+          targetPath,
+          error: errorDetails,
+        });
+        return { ok: false, error: errorDetails };
+      } finally {
+        if (nativeDownloadAbortControllers.get(safeRequestId) === controller) {
+          nativeDownloadAbortControllers.delete(safeRequestId);
+        }
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IpcRenderToMain.cancelDownloadFileNative,
+    (_, { requestId }: { requestId?: string }) => {
+      if (!requestId) return false;
+      const controller = nativeDownloadAbortControllers.get(requestId);
+      if (!controller) return false;
+      controller.abort();
+      return true;
+    },
+  );
+
   ipcMain.handle(IpcRenderToMain.openLocalPath, async (_, filePath: string) => {
     if (!filePath || !path.isAbsolute(filePath)) return "Invalid file path";
     if (!fs.existsSync(filePath)) return "File does not exist";
@@ -543,28 +631,57 @@ export const setIpcMainListener = () => {
         fileSize: stat.size,
       });
 
-      const response = await axios.post(uploadUrl, form, {
-        headers: {
-          ...form.getHeaders(),
-          ...(token ? { token } : {}),
-          operationID: randomUUID(),
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        timeout: 10 * 60 * 1000,
-      });
+      const operationID = randomUUID();
+      try {
+        const response = await axios.post(uploadUrl, form, {
+          headers: {
+            ...form.getHeaders(),
+            ...(token ? { token } : {}),
+            operationID,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          timeout: 10 * 60 * 1000,
+        });
 
-      if (response.data?.errCode && response.data.errCode !== 0) {
-        throw response.data;
+        if (response.data?.errCode && response.data.errCode !== 0) {
+          throw response.data;
+        }
+
+        logger.info("[uploadObjectFileFromPath] success", {
+          uploadUrl,
+          filePath,
+          uploadName,
+          fileSize: stat.size,
+          operationID,
+        });
+        return response.data;
+      } catch (error) {
+        const errCode =
+          typeof (error as { errCode?: unknown }).errCode === "number"
+            ? (error as { errCode: number }).errCode
+            : -1;
+        logger.error("[uploadObjectFileFromPath] failed", {
+          uploadUrl,
+          filePath,
+          uploadName,
+          contentType,
+          cause,
+          fileSize: stat.size,
+          operationID,
+          proxyEnvironment: {
+            http: Boolean(process.env.HTTP_PROXY || process.env.http_proxy),
+            https: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy),
+            all: Boolean(process.env.ALL_PROXY || process.env.all_proxy),
+            noProxy: Boolean(process.env.NO_PROXY || process.env.no_proxy),
+          },
+          error: getObjectUploadErrorDetails(error),
+        });
+        return {
+          errCode,
+          errMsg: getObjectUploadErrorMessage(error),
+        };
       }
-
-      logger.info("[uploadObjectFileFromPath] success", {
-        uploadUrl,
-        filePath,
-        uploadName,
-        fileSize: stat.size,
-      });
-      return response.data;
     },
   );
 
@@ -614,21 +731,31 @@ export const setIpcMainListener = () => {
     },
   );
 
-  // Screenshot: capture the focused display at native resolution without changing window state.
-  ipcMain.handle(IpcRenderToMain.startScreenshot, async () => {
+  // Screenshot: capture the focused display at native resolution.
+  ipcMain.handle(IpcRenderToMain.startScreenshot, async (_, hideWindow: boolean = true) => {
     const win = BrowserWindow.getFocusedWindow();
+    const hiddenForCapture = Boolean(
+      hideWindow && win && !win.isDestroyed() && win.isVisible(),
+    );
     const display = win
       ? screen.getDisplayMatching(win.getBounds())
       : screen.getDisplayNearestPoint(screen.getCursorScreenPoint()) ||
         screen.getPrimaryDisplay();
 
-    logger.info("[screenshot] capture started", {
-      appIsPackaged: app.isPackaged,
-      resourcesPath: process.resourcesPath,
-      displayId: display.id,
-      displayBounds: display.bounds,
-      scaleFactor: display.scaleFactor,
-    });
+    if (hiddenForCapture) {
+      if (win) win.hide();
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    try {
+      logger.info("[screenshot] capture started", {
+        appIsPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        displayId: display.id,
+        displayBounds: display.bounds,
+        scaleFactor: display.scaleFactor,
+        hideWindow: hiddenForCapture,
+      });
     // Use the native overlay first. It captures the real display and lets the
     // user select the region directly on top of the current screen instead of
     // selecting from a renderer thumbnail.
@@ -837,7 +964,13 @@ export const setIpcMainListener = () => {
         actualSize: source.thumbnail.getSize(),
       });
 
-    return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
+      return { dataUrl: source.thumbnail.toDataURL(), isSelection: false };
+    } finally {
+      if (hiddenForCapture && win && !win.isDestroyed()) {
+        win.show();
+        win.focus();
+      }
+    }
   });
 
   // Save screenshot base64 to temp file, return file path

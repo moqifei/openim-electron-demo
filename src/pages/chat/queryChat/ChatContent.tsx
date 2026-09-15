@@ -331,18 +331,21 @@ const ChatContent = () => {
   const handleForward = useCallback(
     (messages: MessageItemType[], isMerge: boolean) => {
       if (!messages.length) return;
+      const mergeMessages = isMerge
+        ? (JSON.parse(JSON.stringify(messages)) as MessageItemType[])
+        : messages;
       forwardModalRef.current?.openModal(async (targets) => {
         for (const target of targets) {
           const recvID = target.userID || "";
           const groupID = target.groupID || "";
           try {
-            if (isMerge && messages.length > 1) {
+            if (isMerge && mergeMessages.length > 1) {
               const title = currentConversation?.groupID
                 ? t("placeholder.messageHistory")
                 : t("placeholder.whosMessageHistory", {
                     who: currentConversation?.showName || "",
                   });
-              const summaryList = messages.slice(0, 2).map((m) => {
+              const summaryList = mergeMessages.slice(0, 2).map((m) => {
                 const sender = m.senderNickname || "";
                 let content = "";
                 switch (m.contentType) {
@@ -395,7 +398,7 @@ const ChatContent = () => {
                 return `${sender}: ${content}`;
               });
               const { data: mergeMsg } = await IMSDK.createMergerMessage({
-                messageList: messages,
+                messageList: mergeMessages,
                 title,
                 summaryList,
               });
@@ -549,68 +552,71 @@ const ChatContent = () => {
           <Spin spinning />
         </div>
       ) : (
-        <Image.PreviewGroup
-          items={imagePreviewItems}
-          preview={{
-            visible: imagePreviewVisible,
-            current: imagePreviewIndex,
-            onVisibleChange: setImagePreviewVisible,
-            onChange: (index) => {
-              const message = imageMessages[index];
-              if (message) setImagePreviewMessageID(message.clientMsgID);
-            },
-            toolbarRender: (originalNode, { current }) => {
-              const message = imageMessages[current];
-              const originalUrl =
-                message?.pictureElem?.sourcePicture?.url ||
-                message?.pictureElem?.snapshotPicture?.url ||
-                "";
-              const fileName = inferDownloadFileName({ url: originalUrl });
-              return (
-                <div className="flex items-center gap-3">
-                  {originalNode}
-                  <DownloadOutlined
-                    title={t("placeholder.download")}
-                    className="cursor-pointer text-lg text-white"
-                    onClick={() => {
-                      if (!originalUrl) return;
-                      void downloadFileWithProgress({
-                        url: originalUrl,
-                        fileName,
-                        showProgressToast: true,
-                        progressTitle: t("toast.downloading"),
-                      }).catch((error) => {
-                        console.error("Download failed:", error);
-                      });
-                    }}
-                  />
-                  <SaveOutlined
-                    title={t("placeholder.saveAs")}
-                    className="cursor-pointer text-lg text-white"
-                    onClick={() => {
-                      if (!originalUrl || !window.electronAPI?.ipcInvoke) return;
-                      void (async () => {
-                        const selectedPath = await window.electronAPI.ipcInvoke<
-                          string | false
-                        >("chooseDownloadPath", { fileName });
-                        if (!selectedPath) return;
-                        await downloadFileWithProgress({
+        <>
+          <Image.PreviewGroup
+            items={imagePreviewItems}
+            preview={{
+              visible: imagePreviewVisible,
+              current: imagePreviewIndex,
+              onVisibleChange: setImagePreviewVisible,
+              onChange: (index) => {
+                const message = imageMessages[index];
+                if (message) setImagePreviewMessageID(message.clientMsgID);
+              },
+              toolbarRender: (originalNode, { current }) => {
+                const message = imageMessages[current];
+                const originalUrl =
+                  message?.pictureElem?.sourcePicture?.url ||
+                  message?.pictureElem?.snapshotPicture?.url ||
+                  "";
+                const fileName = inferDownloadFileName({ url: originalUrl });
+                return (
+                  <div className="flex items-center gap-3">
+                    {originalNode}
+                    <DownloadOutlined
+                      title={t("placeholder.download")}
+                      className="cursor-pointer text-lg text-white"
+                      onClick={() => {
+                        if (!originalUrl) return;
+                        void downloadFileWithProgress({
                           url: originalUrl,
                           fileName,
-                          filePath: selectedPath,
                           showProgressToast: true,
                           progressTitle: t("toast.downloading"),
+                        }).catch((error) => {
+                          console.error("Download failed:", error);
                         });
-                      })().catch((error) => {
-                        console.error("Save image as failed:", error);
-                      });
-                    }}
-                  />
-                </div>
-              );
-            },
-          }}
-        >
+                      }}
+                    />
+                    <SaveOutlined
+                      title={t("placeholder.saveAs")}
+                      className="cursor-pointer text-lg text-white"
+                      onClick={() => {
+                        const ipcInvoke = window.electronAPI?.ipcInvoke;
+                        if (!originalUrl || !ipcInvoke) return;
+                        void (async () => {
+                          const selectedPath = await ipcInvoke<string | false>(
+                            "chooseDownloadPath",
+                            { fileName },
+                          );
+                          if (!selectedPath) return;
+                          await downloadFileWithProgress({
+                            url: originalUrl,
+                            fileName,
+                            filePath: selectedPath,
+                            showProgressToast: true,
+                            progressTitle: t("toast.downloading"),
+                          });
+                        })().catch((error) => {
+                          console.error("Save image as failed:", error);
+                        });
+                      }}
+                    />
+                  </div>
+                );
+              },
+            }}
+          />
           <Virtuoso
             id="chat-list"
             className="w-full overflow-x-hidden"
@@ -716,7 +722,7 @@ const ChatContent = () => {
               );
             }}
           />
-        </Image.PreviewGroup>
+        </>
       )}
 
       {multiSelectState.isActive && (

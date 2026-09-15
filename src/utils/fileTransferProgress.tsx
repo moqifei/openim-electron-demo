@@ -10,6 +10,7 @@ type FileTransferProgressOptions = {
   title: string;
   percent: number;
   status?: FileTransferStatus;
+  onCancel?: () => void;
 };
 
 const clampPercent = (percent: number) => Math.min(100, Math.max(0, percent));
@@ -23,6 +24,7 @@ export const showFileTransferProgress = ({
   title,
   percent,
   status = "active",
+  onCancel,
 }: FileTransferProgressOptions) => {
   const safePercent = clampPercent(percent);
 
@@ -38,6 +40,7 @@ export const showFileTransferProgress = ({
       </div>
     ),
     duration: status === "active" ? 0 : 1.5,
+    onClose: status === "active" ? onCancel : undefined,
   });
 };
 

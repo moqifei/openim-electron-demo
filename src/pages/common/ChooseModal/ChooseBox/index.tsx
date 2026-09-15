@@ -1,4 +1,9 @@
-import { ApartmentOutlined, RightOutlined, RobotOutlined, SearchOutlined } from "@ant-design/icons";
+import {
+  ApartmentOutlined,
+  RightOutlined,
+  RobotOutlined,
+  SearchOutlined,
+} from "@ant-design/icons";
 import { SessionType } from "@openim/wasm-client-sdk";
 import { GroupMemberItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useDebounceFn, useLatest } from "ahooks";
@@ -18,9 +23,15 @@ import {
 } from "react";
 import { Virtuoso } from "react-virtuoso";
 
-import { getADDepartmentList, getADDepartmentMembers, searchADMembers } from "@/api/organization";
 import { AgentInfo, searchAgents } from "@/api/login";
-import { filterByFuzzyPinyin } from "@/utils/pinyin";
+import {
+  getADDepartmentList,
+  type GetADDepartmentListResp,
+  getADDepartmentMembers,
+  type GetADDepartmentMembersResp,
+  searchADMembers,
+  type SearchADMembersResp,
+} from "@/api/organization";
 import group from "@/assets/images/chooseModal/group.png";
 import { useCurrentMemberRole } from "@/hooks/useCurrentMemberRole";
 import useGroupMembers from "@/hooks/useGroupMembers";
@@ -29,8 +40,10 @@ import { useConversationStore } from "@/store";
 import { useContactStore } from "@/store/contact";
 import { isAgentUser, isDisplayableAgent } from "@/utils/agentRecommendations";
 import { feedbackToast } from "@/utils/common";
+import { filterByFuzzyPinyin } from "@/utils/pinyin";
 
 import CheckItem, { CheckListItem } from "./CheckItem";
+import ForwardSearchList from "./ForwardSearchList";
 import MenuItem from "./MenuItem";
 
 const menuList = [
@@ -51,6 +64,11 @@ const menuList = [
   },
 ];
 
+type ApiResponse<T> = T | { data: T };
+
+const unwrapApiResponse = <T extends object>(response: ApiResponse<T>): T =>
+  "data" in response ? response.data : response;
+
 i18n.on("languageChanged", () => {
   menuList[0].title = t("placeholder.enterpriseMember") || "企业成员";
   menuList[1].title = t("placeholder.myGroup");
@@ -65,6 +83,7 @@ interface IChooseBoxProps {
   showGroupMember?: boolean;
   chooseOneOnly?: boolean;
   checkMemberRole?: boolean;
+  forwardSearch?: boolean;
 }
 
 export interface ChooseBoxHandle {
@@ -77,8 +96,14 @@ const ChooseBox: ForwardRefRenderFunction<ChooseBoxHandle, IChooseBoxProps> = (
   props,
   ref,
 ) => {
-  const { className, isCheckInGroup, showGroupMember, chooseOneOnly, checkMemberRole } =
-    props;
+  const {
+    className,
+    isCheckInGroup,
+    showGroupMember,
+    chooseOneOnly,
+    checkMemberRole,
+    forwardSearch,
+  } = props;
 
   const [checkedList, setCheckedList] = useState<CheckListItem[]>([]);
   const latestCheckedList = useLatest(checkedList);
@@ -156,6 +181,7 @@ const ChooseBox: ForwardRefRenderFunction<ChooseBoxHandle, IChooseBoxProps> = (
             isCheckInGroup={isCheckInGroup!}
             isChecked={isChecked}
             checkClick={checkClick}
+            forwardSearch={Boolean(forwardSearch)}
           />
         )}
       </div>
@@ -184,12 +210,14 @@ interface ICommonLeftProps {
   isCheckInGroup: boolean;
   checkClick: (data: CheckListItem) => void;
   isChecked: (data: CheckListItem) => boolean;
+  forwardSearch: boolean;
 }
 
 const CommonLeft: FC<ICommonLeftProps> = ({
   isCheckInGroup,
   checkClick,
   isChecked,
+  forwardSearch,
 }) => {
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItemType[]>([]);
   const [checkList, setCheckList] = useState<CheckListItem[]>([]);
@@ -202,13 +230,22 @@ const CommonLeft: FC<ICommonLeftProps> = ({
   const [searchKeyword, setSearchKeyword] = useState("");
   const [adLoading, setAdLoading] = useState(false);
   // Navigation history: [{ deptId, deptName }, ...]
-  const [deptHistory, setDeptHistory] = useState<{ deptId: string; deptName: string }[]>([]);
+  const [deptHistory, setDeptHistory] = useState<
+    { deptId: string; deptName: string }[]
+  >([]);
 
   const resolveFaceURL = (m: ADMember): string => {
     const url = (m.faceURL || m.avatar || "").trim();
     // Reject common invalid values that cause broken image
     if (!url || url === "null" || url === "undefined") {
-      console.log("[resolveFaceURL] empty/invalid, userID:", m.userID, "faceURL:", m.faceURL, "avatar:", m.avatar);
+      console.log(
+        "[resolveFaceURL] empty/invalid, userID:",
+        m.userID,
+        "faceURL:",
+        m.faceURL,
+        "avatar:",
+        m.avatar,
+      );
       return "";
     }
     console.log("[resolveFaceURL] valid url:", url, "userID:", m.userID);
@@ -219,18 +256,37 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     // 1. Use departmentName if present
     const directName = (m.departmentName || "").trim();
     if (directName) {
-      console.log("[resolveDeptName] from departmentName:", directName, "userID:", m.userID);
+      console.log(
+        "[resolveDeptName] from departmentName:",
+        directName,
+        "userID:",
+        m.userID,
+      );
       return directName;
     }
     // 2. Try deptMap by departmentID
     const fromMap = deptMap[m.departmentID];
     if (fromMap) {
-      console.log("[resolveDeptName] from deptMap:", fromMap, "departmentID:", m.departmentID, "userID:", m.userID);
+      console.log(
+        "[resolveDeptName] from deptMap:",
+        fromMap,
+        "departmentID:",
+        m.departmentID,
+        "userID:",
+        m.userID,
+      );
       return fromMap;
     }
     // 3. Parse DN string: "ou=运维部,ou=中信百信银行,dc=qa,dc=bx" → "运维部"
     const parsed = parseDeptDN(m.departmentID);
-    console.log("[resolveDeptName] parsed from DN:", parsed, "raw departmentID:", m.departmentID, "userID:", m.userID);
+    console.log(
+      "[resolveDeptName] parsed from DN:",
+      parsed,
+      "raw departmentID:",
+      m.departmentID,
+      "userID:",
+      m.userID,
+    );
     return parsed;
   };
 
@@ -250,7 +306,14 @@ const CommonLeft: FC<ICommonLeftProps> = ({
 
   const checkInGroup = async (list: CheckListItem[]) => {
     const currentGroupID = useConversationStore.getState().currentConversation?.groupID;
-    console.log("[checkInGroup] isCheckInGroup:", isCheckInGroup, "currentGroupID:", currentGroupID, "list.length:", list.length);
+    console.log(
+      "[checkInGroup] isCheckInGroup:",
+      isCheckInGroup,
+      "currentGroupID:",
+      currentGroupID,
+      "list.length:",
+      list.length,
+    );
     if (!isCheckInGroup || !currentGroupID) {
       console.log("[checkInGroup] early return, list:", JSON.stringify(list));
       return list;
@@ -284,7 +347,12 @@ const CommonLeft: FC<ICommonLeftProps> = ({
       }
     };
     walk(depts);
-    console.log("[buildDeptMap] deptMap keys:", Object.keys(map).slice(0, 10), "total:", Object.keys(map).length);
+    console.log(
+      "[buildDeptMap] deptMap keys:",
+      Object.keys(map).slice(0, 10),
+      "total:",
+      Object.keys(map).length,
+    );
     return map;
   };
 
@@ -292,8 +360,8 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     setAdLoading(true);
     try {
       const resp = await getADDepartmentList();
-      const body = (resp && (resp as any).data) ? (resp as any).data : resp;
-      const depts = (body?.departments || []) as ADDepartment[];
+      const body = unwrapApiResponse<GetADDepartmentListResp>(resp);
+      const depts = body.departments as ADDepartment[];
       setAdAllDepartments(depts);
       setAdDepartments(depts.filter((d: ADDepartment) => d.level === 0));
       setDeptMap(buildDeptMap(depts));
@@ -312,8 +380,15 @@ const CommonLeft: FC<ICommonLeftProps> = ({
         departmentID: deptId,
         pagination: { pageNumber: 1, showNumber: 1000 },
       });
-      const body = (resp && (resp as any).data) ? (resp as any).data : resp;
-      console.log("[loadADMembers] response total:", body?.total, "members count:", body?.members?.length, "first:", JSON.stringify(body?.members?.[0]));
+      const body = unwrapApiResponse<GetADDepartmentMembersResp>(resp);
+      console.log(
+        "[loadADMembers] response total:",
+        body?.total,
+        "members count:",
+        body?.members?.length,
+        "first:",
+        JSON.stringify(body?.members?.[0]),
+      );
       const members = (body?.members || []).map((m: ADMember) => ({
         userID: m.userID || m.username,
         nickname: m.nickname || m.displayName || m.username,
@@ -321,7 +396,12 @@ const CommonLeft: FC<ICommonLeftProps> = ({
         departmentName: resolveDeptName(m),
         position: (m.position || "").trim(),
       }));
-      console.log("[loadADMembers] mapped members count:", members.length, "first:", JSON.stringify(members[0]));
+      console.log(
+        "[loadADMembers] mapped members count:",
+        members.length,
+        "first:",
+        JSON.stringify(members[0]),
+      );
       setCheckList(await checkInGroup(members));
     } catch (error) {
       feedbackToast({ error });
@@ -333,7 +413,12 @@ const CommonLeft: FC<ICommonLeftProps> = ({
   const searchAD = useCallback(
     async (keyword: string) => {
       const trimmed = keyword.trim();
-      console.log("[searchAD] called, keyword:", JSON.stringify(trimmed), "currentDeptId:", currentDeptId);
+      console.log(
+        "[searchAD] called, keyword:",
+        JSON.stringify(trimmed),
+        "currentDeptId:",
+        currentDeptId,
+      );
       if (!trimmed) {
         console.log("[searchAD] empty keyword, clearing search");
         if (currentDeptId) {
@@ -350,8 +435,11 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           keyword: trimmed,
           pagination: { pageNumber: 1, showNumber: 1000 },
         });
-        let body = (resp && (resp as any).data) ? (resp as any).data : resp;
-        console.log("[searchAD] primary response:", JSON.stringify({ total: body?.total, memberCount: body?.members?.length }));
+        let body = unwrapApiResponse<SearchADMembersResp>(resp);
+        console.log(
+          "[searchAD] primary response:",
+          JSON.stringify({ total: body?.total, memberCount: body?.members?.length }),
+        );
         let members = (body?.members || []).map((m: ADMember) => ({
           userID: m.userID || m.username,
           nickname: m.nickname || m.displayName || m.username,
@@ -359,10 +447,18 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           departmentName: resolveDeptName(m),
           position: (m.position || "").trim(),
         }));
-        console.log("[searchAD] mapped members count:", members.length, "first:", JSON.stringify(members[0]));
+        console.log(
+          "[searchAD] mapped members count:",
+          members.length,
+          "first:",
+          JSON.stringify(members[0]),
+        );
 
         let filtered = filterByFuzzyPinyin(members, trimmed);
-        console.log("[searchAD] after filterByFuzzyPinyin, filtered count:", filtered.length);
+        console.log(
+          "[searchAD] after filterByFuzzyPinyin, filtered count:",
+          filtered.length,
+        );
 
         // Fallback: if no results and keyword looks like pinyin/ascii, fetch all and filter client-side
         if (filtered.length === 0 && /^[a-zA-Z0-9]+$/.test(trimmed)) {
@@ -371,8 +467,11 @@ const CommonLeft: FC<ICommonLeftProps> = ({
             keyword: "",
             pagination: { pageNumber: 1, showNumber: 1000 },
           });
-          body = (resp && (resp as any).data) ? (resp as any).data : resp;
-          console.log("[searchAD] fallback response:", JSON.stringify({ total: body?.total, memberCount: body?.members?.length }));
+          body = unwrapApiResponse<SearchADMembersResp>(resp);
+          console.log(
+            "[searchAD] fallback response:",
+            JSON.stringify({ total: body?.total, memberCount: body?.members?.length }),
+          );
           members = (body?.members || []).map((m: ADMember) => ({
             userID: m.userID || m.username,
             nickname: m.nickname || m.displayName || m.username,
@@ -380,13 +479,26 @@ const CommonLeft: FC<ICommonLeftProps> = ({
             departmentName: resolveDeptName(m),
             position: (m.position || "").trim(),
           }));
-          console.log("[searchAD] fallback mapped members count:", members.length, "first:", JSON.stringify(members[0]));
+          console.log(
+            "[searchAD] fallback mapped members count:",
+            members.length,
+            "first:",
+            JSON.stringify(members[0]),
+          );
           filtered = filterByFuzzyPinyin(members, trimmed);
-          console.log("[searchAD] fallback after filterByFuzzyPinyin, filtered count:", filtered.length);
+          console.log(
+            "[searchAD] fallback after filterByFuzzyPinyin, filtered count:",
+            filtered.length,
+          );
         }
 
         const checked = await checkInGroup(filtered);
-        console.log("[searchAD] final checkList count:", checked.length, "first item:", JSON.stringify(checked[0]));
+        console.log(
+          "[searchAD] final checkList count:",
+          checked.length,
+          "first item:",
+          JSON.stringify(checked[0]),
+        );
         setCheckList(checked);
       } catch (error) {
         console.error("[searchAD] error:", error);
@@ -417,7 +529,9 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     // Build breadcrumb: replace or append based on whether switching siblings
     setBreadcrumb((state) => {
       const last = state[state.length - 1];
-      const currentFull = adAllDepartments.find((d) => d.departmentID === dept.departmentID);
+      const currentFull = adAllDepartments.find(
+        (d) => d.departmentID === dept.departmentID,
+      );
       const lastDept = last
         ? adAllDepartments.find(
             (d) => d.name === (typeof last.title === "string" ? last.title : ""),
@@ -443,12 +557,22 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     // Update navigation history
     setDeptHistory((prev) => {
       const last = prev[prev.length - 1];
-      const currentFull = adAllDepartments.find((d) => d.departmentID === dept.departmentID);
+      const currentFull = adAllDepartments.find(
+        (d) => d.departmentID === dept.departmentID,
+      );
       const lastDeptInHist = last
         ? adAllDepartments.find((d) => d.departmentID === last.deptId)
         : undefined;
-      if (last && currentFull && lastDeptInHist && lastDeptInHist.parentID === currentFull.parentID) {
-        return [...prev.slice(0, -1), { deptId: dept.departmentID, deptName: dept.name }];
+      if (
+        last &&
+        currentFull &&
+        lastDeptInHist &&
+        lastDeptInHist.parentID === currentFull.parentID
+      ) {
+        return [
+          ...prev.slice(0, -1),
+          { deptId: dept.departmentID, deptName: dept.name },
+        ];
       }
       return [...prev, { deptId: dept.departmentID, deptName: dept.name }];
     });
@@ -467,10 +591,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
         departmentID: dept.departmentID,
         pagination: { pageNumber: 1, showNumber: 1000 },
       });
-      const memberBody =
-        (memberRes && (memberRes as any).data)
-          ? (memberRes as any).data
-          : memberRes;
+      const memberBody = unwrapApiResponse<GetADDepartmentMembersResp>(memberRes);
       const members = (memberBody?.members || []).map((m: ADMember) => ({
         userID: m.userID || m.username,
         nickname: m.nickname || m.displayName || m.username,
@@ -510,9 +631,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     try {
       const targetDept = adAllDepartments.find((d) => d.departmentID === target.deptId);
       if (targetDept && targetDept.subDepartmentCount > 0) {
-        setAdDepartments(
-          adAllDepartments.filter((d) => d.parentID === target.deptId),
-        );
+        setAdDepartments(adAllDepartments.filter((d) => d.parentID === target.deptId));
       } else {
         setAdDepartments([]);
       }
@@ -520,10 +639,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
         departmentID: target.deptId,
         pagination: { pageNumber: 1, showNumber: 1000 },
       });
-      const memberBody =
-        (memberRes && (memberRes as any).data)
-          ? (memberRes as any).data
-          : memberRes;
+      const memberBody = unwrapApiResponse<GetADDepartmentMembersResp>(memberRes);
       const members = (memberBody?.members || []).map((m: ADMember) => ({
         userID: m.userID || m.username,
         nickname: m.nickname || m.displayName || m.username,
@@ -547,7 +663,6 @@ const CommonLeft: FC<ICommonLeftProps> = ({
       const pushItem: BreadcrumbItemType = {
         title: "",
         className: "text-xs text-[var(--primary)]",
-        onClick: () => {},
       };
       switch (idx) {
         case 0:
@@ -613,7 +728,11 @@ const CommonLeft: FC<ICommonLeftProps> = ({
     [checkInGroup],
   );
 
-  if (breadcrumb.length < 1) {
+  if (forwardSearch) {
+    return <ForwardSearchList checkClick={checkClick} isChecked={isChecked} />;
+  }
+
+  if (!forwardSearch && breadcrumb.length < 1) {
     return (
       <div className="flex-1 overflow-auto">
         {menuList.map((menu) => (
@@ -656,7 +775,9 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           ...breadcrumb.map((item, idx) => ({
             key: `bc-${idx}`,
             title: item.title,
-            className: `${item.className || "text-xs text-[var(--primary)]"} cursor-pointer`,
+            className: `${
+              item.className || "text-xs text-[var(--primary)]"
+            } cursor-pointer`,
             onClick: (e: React.MouseEvent) => {
               e.preventDefault();
               navigateToBreadcrumbIndex(idx);
@@ -679,7 +800,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
           />
         </div>
       )}
-      <div className="relative mb-3 flex-1 min-h-0 overflow-y-auto">
+      <div className="relative mb-3 min-h-0 flex-1 overflow-y-auto">
         {adLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
             <Spin />
@@ -710,7 +831,11 @@ const CommonLeft: FC<ICommonLeftProps> = ({
         )}
         {checkList.length > 0 && (
           <div className={showDeptList ? "max-h-[50%]" : "h-full"}>
-            {showDeptList && <div className="mx-3.5 mb-1 mt-3 text-xs text-[var(--sub-text)]">人员</div>}
+            {showDeptList && (
+              <div className="mx-3.5 mb-1 mt-3 text-xs text-[var(--sub-text)]">
+                人员
+              </div>
+            )}
             <Virtuoso
               className="h-full"
               data={checkList}
@@ -731,11 +856,7 @@ const CommonLeft: FC<ICommonLeftProps> = ({
             className="mt-[20%]"
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description={
-              searchKeyword.trim()
-                ? "未找到匹配人员"
-                : currentDeptId
-                  ? "暂无人员"
-                  : ""
+              searchKeyword.trim() ? "未找到匹配人员" : currentDeptId ? "暂无人员" : ""
             }
           />
         )}

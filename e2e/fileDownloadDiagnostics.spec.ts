@@ -62,3 +62,15 @@ test("preserves native disk error codes for save failures", () => {
     code: "ENOSPC",
   });
 });
+
+test("preserves the user cancellation code", () => {
+  const error = Object.assign(new Error("Download cancelled"), {
+    code: "ERR_DOWNLOAD_CANCELLED",
+  });
+
+  expect(getDownloadErrorDiagnostics(error)).toEqual({
+    name: "Error",
+    message: "Download cancelled",
+    code: "ERR_DOWNLOAD_CANCELLED",
+  });
+});

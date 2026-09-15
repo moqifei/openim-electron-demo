@@ -162,6 +162,9 @@ export const uploadObjectFile = async (
       baseURL: request.defaults.baseURL ?? "",
       token: await getIMToken(),
     });
+    if (nativeResponse.errCode && nativeResponse.errCode !== 0) {
+      throw nativeResponse;
+    }
     options?.onProgress?.(100);
     return nativeResponse;
   }
