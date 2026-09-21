@@ -39,6 +39,30 @@ const getResponseHeaders = (value: unknown) => {
   return Object.keys(headers).length ? headers : undefined;
 };
 
+export const getObjectUploadStreamDiagnostics = ({
+  expectedMultipartLength,
+  readStreamBytes,
+  multipartBytes,
+  readStreamEnded,
+  formEnded,
+}: {
+  expectedMultipartLength?: number;
+  readStreamBytes: number;
+  multipartBytes: number;
+  readStreamEnded: boolean;
+  formEnded: boolean;
+}) => ({
+  ...(expectedMultipartLength === undefined ? {} : { expectedMultipartLength }),
+  readStreamBytes,
+  multipartBytes,
+  multipartComplete:
+    expectedMultipartLength !== undefined &&
+    multipartBytes === expectedMultipartLength &&
+    formEnded,
+  readStreamEnded,
+  formEnded,
+});
+
 export const getObjectUploadErrorDetails = (error: unknown) => {
   const record = isRecord(error) ? error : {};
   const response = isRecord(record.response) ? record.response : {};

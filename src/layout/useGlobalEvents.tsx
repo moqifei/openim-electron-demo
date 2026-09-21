@@ -158,7 +158,7 @@ export function useGlobalEvent() {
     const IMToken = (await getIMToken()) as string;
     const IMUserID = (await getIMUserID()) as string;
     if (!IMToken || !IMUserID) {
-      clearIMProfile();
+      await clearIMProfile();
       navigate("/login");
       return;
     }
@@ -776,18 +776,5 @@ export function useGlobalEvent() {
         window.electronAPI?.ipcSend("trayConversationOpened", { conversationID });
       },
     );
-
-    // 主进程在退出软件前请求执行 OpenIM 退出登录（清理登录态，防止下次自动登录）
-    window.electronAPI?.subscribe("requestLogoutBeforeQuit", async () => {
-      try {
-        // force=true: 直接清理本地登录态（token/locale），不再依赖 SDK 在线登出
-        await userLogout(true);
-      } catch (e) {
-        console.error("[logout] before quit failed:", e);
-      } finally {
-        // 无论成功与否，通知主进程可以继续退出
-        window.electronAPI?.ipcSend("requestLogoutBeforeQuit:done");
-      }
-    });
   };
 }

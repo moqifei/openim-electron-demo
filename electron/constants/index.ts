@@ -4,8 +4,6 @@ export const IpcMainToRender = {
   triggerScreenshot: "triggerScreenshot",
   openConversationFromTray: "openConversationFromTray",
   shakeMainWindowEffect: "shakeMainWindowEffect",
-  // 主进程在退出前请求渲染进程执行 OpenIM 退出登录（清理登录态）
-  requestLogoutBeforeQuit: "requestLogoutBeforeQuit",
 };
 
 export const IpcRenderToMain = {

@@ -5,6 +5,7 @@ const { AxiosHeaders } = require("axios");
 const {
   getObjectUploadErrorDetails,
   getObjectUploadErrorMessage,
+  getObjectUploadStreamDiagnostics,
 } = require("../electron/main/objectUploadDiagnostics");
 
 const details = getObjectUploadErrorDetails({
@@ -66,6 +67,42 @@ assert.equal(
 assert.equal(
   getObjectUploadErrorMessage({ response: { data: "gateway rejected upload" } }),
   "gateway rejected upload",
+);
+
+assert.deepEqual(
+  getObjectUploadStreamDiagnostics({
+    expectedMultipartLength: 100,
+    readStreamBytes: 80,
+    multipartBytes: 100,
+    readStreamEnded: true,
+    formEnded: true,
+  }),
+  {
+    expectedMultipartLength: 100,
+    readStreamBytes: 80,
+    multipartBytes: 100,
+    multipartComplete: true,
+    readStreamEnded: true,
+    formEnded: true,
+  },
+);
+
+assert.deepEqual(
+  getObjectUploadStreamDiagnostics({
+    expectedMultipartLength: 100,
+    readStreamBytes: 79,
+    multipartBytes: 99,
+    readStreamEnded: false,
+    formEnded: false,
+  }),
+  {
+    expectedMultipartLength: 100,
+    readStreamBytes: 79,
+    multipartBytes: 99,
+    multipartComplete: false,
+    readStreamEnded: false,
+    formEnded: false,
+  },
 );
 
 console.log("objectUploadDiagnostics tests passed");

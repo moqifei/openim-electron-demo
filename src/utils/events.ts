@@ -1,11 +1,15 @@
 import { ChooseModalState } from "@/pages/common/ChooseModal";
 import { CheckListItem } from "@/pages/common/ChooseModal/ChooseBox/CheckItem";
 import mitt from "mitt";
-import {
-  GroupItem,
-  MessageItem,
-} from "@openim/wasm-client-sdk/lib/types/entity";
+import { GroupItem, MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { InviteData } from "@/pages/common/RtcCallModal/data";
+
+export type ChatFooterMentionMember = {
+  userID: string;
+  nickname: string;
+  faceURL: string;
+  groupNickname: string;
+};
 
 type EmitterEvents = {
   OPEN_USER_CARD: OpenUserCardParams;
@@ -13,11 +17,14 @@ type EmitterEvents = {
   OPEN_CHOOSE_MODAL: ChooseModalState;
   CHAT_LIST_SCROLL_TO_BOTTOM: void;
   CHAT_LIST_STICK_TO_BOTTOM: void;
+  TOGGLE_CONVERSATION_HISTORY: void;
+  LOCATE_CONVERSATION_HISTORY_MESSAGE: MessageItem;
   OPEN_RTC_MODAL: InviteData;
   // message store
   PUSH_NEW_MSG: MessageItem;
   UPDATE_ONE_MSG: MessageItem;
   RELOAD_CHAT_MESSAGES: void;
+  CHAT_FOOTER_MENTION_MEMBER: ChatFooterMentionMember;
 
   SELECT_USER: SelectUserParams;
 };

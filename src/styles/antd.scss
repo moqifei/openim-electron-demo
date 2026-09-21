@@ -72,7 +72,26 @@
 .chat-drawer {
   margin-top: var(--searchbar-height);
 
-  .ant-drawer-content-wrapper {
+  &.conversation-history-drawer {
+    margin-top: 0;
+
+    .ant-drawer-content {
+      position: relative;
+
+      &::before {
+        content: "";
+        position: absolute;
+        z-index: 1;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 12px;
+        cursor: col-resize;
+      }
+    }
+  }
+
+  &:not(.conversation-history-drawer) .ant-drawer-content-wrapper {
     box-shadow: -7px 0px 7px 1px rgba(30, 116, 222, 0.05);
     min-width: 460px;
   }

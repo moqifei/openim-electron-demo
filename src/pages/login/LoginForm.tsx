@@ -48,7 +48,7 @@ const LoginForm = () => {
           password: params.password,
         });
         const { chatToken, imToken, userID } = data.data;
-        setIMProfile({ chatToken, imToken, userID });
+        await setIMProfile({ chatToken, imToken, userID });
         saveRememberedAdLogin(
           params.username,
           params.password,

@@ -1,4 +1,4 @@
-import { ThunderboltOutlined } from "@ant-design/icons";
+import { HistoryOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import type { MessageItem } from "@openim/wasm-client-sdk/lib/types/entity";
 import { Popover, Slider, Upload } from "antd";
 import i18n, { t } from "i18next";
@@ -15,6 +15,7 @@ import { CKEditorRef } from "@/components/CKEditor";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store/conversation";
 import { useUserStore } from "@/store/user";
+import emitter from "@/utils/events";
 import { formatScreenshotShortcut } from "@/utils/screenshotShortcut";
 import {
   buildShakeMessageData,
@@ -361,6 +362,16 @@ const SendActionBar = ({
             </ActionWrap>
           );
         })}
+
+        <button
+          type="button"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-secondary)]"
+          title="聊天记录"
+          aria-label="聊天记录"
+          onClick={() => emitter.emit("TOGGLE_CONVERSATION_HISTORY")}
+        >
+          <HistoryOutlined />
+        </button>
       </div>
       <ShareCardModal
         open={cardModalOpen}

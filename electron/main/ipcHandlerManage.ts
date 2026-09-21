@@ -46,6 +46,7 @@ import { logger } from ".";
 import {
   getObjectUploadErrorDetails,
   getObjectUploadErrorMessage,
+  getObjectUploadStreamDiagnostics,
 } from "./objectUploadDiagnostics";
 import { updateScreenshotShortcut } from "./shortcutManage";
 import { checkForUpdates as checkForDebUpdates } from "./debUpdateManage";
@@ -235,11 +236,6 @@ const probeEnvironment = async (
 export const setIpcMainListener = () => {
   ipcMain.handle(IpcRenderToMain.clearSession, () => {
     clearCache();
-  });
-
-  // 渲染进程完成退出登录后，回传信号给主进程
-  ipcMain.on(IpcMainToRender.requestLogoutBeforeQuit + ":done", () => {
-    // 仅作为信号标记，实际退出逻辑在 appManage 的 before-quit 中 await
   });
 
   // window manage
@@ -612,14 +608,48 @@ export const setIpcMainListener = () => {
       const axiosModule = requireModule("axios") as any;
       const axios = axiosModule.default ?? axiosModule;
       const FormData = requireModule("form-data") as any;
+      const readStream = fs.createReadStream(filePath);
       const form = new FormData();
-      form.append("file", fs.createReadStream(filePath), {
+      let multipartBytes = 0;
+      let readStreamEnded = false;
+      let formEnded = false;
+      let expectedMultipartLength: number | undefined;
+
+      readStream.on("end", () => {
+        readStreamEnded = true;
+      });
+      form.on("data", (chunk) => {
+        multipartBytes += Buffer.byteLength(chunk);
+      });
+      form.on("end", () => {
+        formEnded = true;
+      });
+
+      form.append("file", readStream, {
         filename: uploadName,
         contentType,
       });
       form.append("name", uploadName);
       form.append("contentType", contentType);
       form.append("cause", cause);
+
+      try {
+        expectedMultipartLength = await new Promise<number>((resolve, reject) => {
+          form.getLength((error: Error | null, length: number) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(length);
+          });
+        });
+      } catch (error) {
+        logger.warn("[uploadObjectFileFromPath] unable to calculate multipart length", {
+          filePath,
+          uploadName,
+          error: getObjectUploadErrorDetails(error),
+        });
+      }
 
       const uploadUrl = new URL("/object/upload", `${baseURL}/`).toString();
       logger.info("[uploadObjectFileFromPath] start", {
@@ -629,6 +659,7 @@ export const setIpcMainListener = () => {
         contentType,
         cause,
         fileSize: stat.size,
+        expectedMultipartLength,
       });
 
       const operationID = randomUUID();
@@ -654,6 +685,13 @@ export const setIpcMainListener = () => {
           uploadName,
           fileSize: stat.size,
           operationID,
+          stream: getObjectUploadStreamDiagnostics({
+            expectedMultipartLength,
+            readStreamBytes: readStream.bytesRead,
+            multipartBytes,
+            readStreamEnded,
+            formEnded,
+          }),
         });
         return response.data;
       } catch (error) {
@@ -675,6 +713,13 @@ export const setIpcMainListener = () => {
             all: Boolean(process.env.ALL_PROXY || process.env.all_proxy),
             noProxy: Boolean(process.env.NO_PROXY || process.env.no_proxy),
           },
+          stream: getObjectUploadStreamDiagnostics({
+            expectedMultipartLength,
+            readStreamBytes: readStream.bytesRead,
+            multipartBytes,
+            readStreamEnded,
+            formEnded,
+          }),
           error: getObjectUploadErrorDetails(error),
         });
         return {

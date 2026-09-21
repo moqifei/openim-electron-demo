@@ -10,6 +10,7 @@ import {
   ForwardRefRenderFunction,
   type KeyboardEvent as ReactKeyboardEvent,
   memo,
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useRef,
@@ -26,6 +27,7 @@ import { isAgentConversation } from "@/utils/agentConversation";
 import { dataUrlToImageFile, hasImageClipboardData } from "@/utils/chatAttachment";
 import { shouldDeletePendingAttachmentOnBackspace } from "@/utils/chatInput";
 import { canSendImageTypeList } from "@/utils/common";
+import emitter, { ChatFooterMentionMember } from "@/utils/events";
 import { getFileTransferErrorMessage } from "@/utils/fileTransferError";
 import {
   createFileTransferProgressKey,
@@ -102,6 +104,13 @@ interface PendingFileItem {
   previewUrl: string;
 }
 
+type InputContextMenu = {
+  x: number;
+  y: number;
+  canCopy: boolean;
+  canSelectAll: boolean;
+};
+
 type FileSendTarget = Pick<SendMessageParams, "recvID" | "groupID">;
 
 let pendingIdCounter = 0;
@@ -111,6 +120,9 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
   const [screenshotSrc, setScreenshotSrc] = useState<string | null>(null);
   const [screenshotLoading, setScreenshotLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [inputContextMenu, setInputContextMenu] = useState<InputContextMenu | null>(
+    null,
+  );
   const [pendingFilesByConversation, setPendingFilesByConversation] = useState<
     Record<string, PendingFileItem[]>
   >({});
@@ -339,6 +351,65 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     },
     [addPendingFiles],
   );
+
+  const handleEditorContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const editor = editorRef.current;
+      if (!editor) return;
+
+      setInputContextMenu({
+        x: Math.max(8, Math.min(event.clientX, window.innerWidth - 168)),
+        y: Math.max(8, Math.min(event.clientY, window.innerHeight - 160)),
+        canCopy: editor.hasSelection(),
+        canSelectAll: editor.hasContent(),
+      });
+    },
+    [],
+  );
+
+  const handleInputContextMenuAction = useCallback(
+    async (action: "copy" | "paste" | "selectAll" | "cut") => {
+      const editor = editorRef.current;
+      setInputContextMenu(null);
+      if (!editor) return;
+
+      if (action === "copy") {
+        editor.copySelection();
+        return;
+      }
+      if (action === "cut") {
+        editor.cutSelection();
+        return;
+      }
+      if (action === "selectAll") {
+        editor.selectAll();
+        return;
+      }
+
+      try {
+        const text = await navigator.clipboard.readText();
+        editor.pasteText(text);
+      } catch (error) {
+        console.warn("[ChatFooter] clipboard text read failed", error);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const closeContextMenu = () => setInputContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeContextMenu();
+    };
+
+    document.addEventListener("mousedown", closeContextMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeContextMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -608,6 +679,24 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
     setAtPopupVisible(false);
   }, []);
 
+  const insertAvatarMention = useCallback((member: ChatFooterMentionMember) => {
+    const replacement = `@${member.nickname} `;
+    atMembersRef.current.set(member.userID, {
+      nickname: member.nickname,
+      groupNickname: member.groupNickname || member.nickname,
+    });
+    editorRef.current?.insertText(replacement);
+  }, []);
+
+  useEffect(() => {
+    const handleAvatarMention = (member: ChatFooterMentionMember) => {
+      if (isGroupChat) insertAvatarMention(member);
+    };
+
+    emitter.on("CHAT_FOOTER_MENTION_MEMBER", handleAvatarMention);
+    return () => emitter.off("CHAT_FOOTER_MENTION_MEMBER", handleAvatarMention);
+  }, [insertAvatarMention, isGroupChat]);
+
   const enterToSend = useCallback(async () => {
     const sendText =
       editorRef.current?.getText() ?? getCleanText(latestHtml.current ?? "");
@@ -866,19 +955,21 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               ))}
             </div>
           )}
-          <CKEditor
-            key={`${currentConversation?.conversationID ?? "empty"}-${
-              isAgentChat ? "agent" : "normal"
-            }`}
-            ref={editorRef}
-            value={html}
-            placeholder={isAgentChat ? "给智能体发消息..." : ""}
-            onEnter={enterToSend}
-            onChange={handleEditorChange}
-            onPasteFile={addPendingFiles}
-            onKeydown={handleEditorKeydown}
-            fontSize={chatFontSize}
-          />
+          <div onContextMenu={handleEditorContextMenu}>
+            <CKEditor
+              key={`${currentConversation?.conversationID ?? "empty"}-${
+                isAgentChat ? "agent" : "normal"
+              }`}
+              ref={editorRef}
+              value={html}
+              placeholder={isAgentChat ? "给智能体发消息..." : ""}
+              onEnter={enterToSend}
+              onChange={handleEditorChange}
+              onPasteFile={addPendingFiles}
+              onKeydown={handleEditorKeydown}
+              fontSize={chatFontSize}
+            />
+          </div>
           <div className="flex justify-end px-3 py-1.5">
             <div className="flex flex-col items-end gap-1">
               <Button
@@ -929,6 +1020,55 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               onSelect={handleAtSelect}
               onClose={handleAtClose}
             />
+          </div>,
+          document.body,
+        )}
+      {inputContextMenu &&
+        createPortal(
+          <div
+            className="fixed z-[1200] w-40 overflow-hidden rounded-md border border-[var(--border-color)] bg-[var(--bg-base)] py-1 shadow-lg"
+            data-testid="chat-input-context-menu"
+            role="menu"
+            style={{ left: inputContextMenu.x, top: inputContextMenu.y }}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            {[
+              {
+                action: "copy" as const,
+                disabled: !inputContextMenu.canCopy,
+                label: t("placeholder.copy"),
+              },
+              {
+                action: "paste" as const,
+                disabled: false,
+                label: t("placeholder.paste"),
+              },
+              {
+                action: "selectAll" as const,
+                disabled: !inputContextMenu.canSelectAll,
+                label: t("placeholder.selectAll"),
+              },
+              {
+                action: "cut" as const,
+                disabled: !inputContextMenu.canCopy,
+                label: t("placeholder.cut"),
+              },
+            ].map(({ action, disabled, label }) => (
+              <button
+                className="block w-full px-3 py-1.5 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--text-quaternary)] disabled:hover:bg-transparent"
+                data-testid={`chat-input-context-menu-${action}`}
+                disabled={disabled}
+                key={action}
+                role="menuitem"
+                type="button"
+                onClick={() => void handleInputContextMenuAction(action)}
+              >
+                {label}
+              </button>
+            ))}
           </div>,
           document.body,
         )}

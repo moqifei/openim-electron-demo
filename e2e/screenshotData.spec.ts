@@ -102,3 +102,10 @@ test("shows the global shortcut in the screenshot button hover text", () => {
   );
   expect(actionBarSource).not.toContain('title="截图（Ctrl+Shift+X）"');
 });
+
+test("uses the native selection overlay on the current display", () => {
+  const ipcSource = fs.readFileSync("electron/main/ipcHandlerManage.ts", "utf8");
+  expect(ipcSource).toContain('requireModule("electron-screenshots")');
+  expect(ipcSource).toContain("getNativeScreenshots");
+  expect(ipcSource).toContain("screenshots.startCapture");
+});

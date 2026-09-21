@@ -44,5 +44,8 @@ assert.match(actionBarSource, /screenshotHideWindow/);
 assert.match(footerSource, /startScreenshot\(hideWindow\)/);
 assert.ok(footerSource.includes("writeClipboardImage"));
 assert.ok(footerSource.includes("addPendingFiles"));
+assert.match(ipcSource, /electron-screenshots/);
+assert.match(ipcSource, /getNativeScreenshots/);
+assert.match(ipcSource, /screenshots\.startCapture\(\)/);
 
 console.log("screenshotSilentBehavior tests passed");

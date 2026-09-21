@@ -5,6 +5,8 @@ import { resolveFileContentType } from "@/utils/fileMimeType";
 import { normalizeMojibakeString } from "@/utils/mojibake";
 import {
   buildObjectUploadName,
+  isObjectUploadFileSizeAllowed,
+  shouldFallbackFromNativeObjectUpload,
   shouldUseNativeObjectUpload,
 } from "@/utils/objectUpload";
 import { getApiAxios, getChatAxios } from "@/utils/request";
@@ -117,6 +119,10 @@ export const uploadObjectFile = async (
     );
   }
 
+  if (!isObjectUploadFileSizeAllowed(file.size)) {
+    throw new Error("File size exceeds 200 MiB");
+  }
+
   const currentUserID = useUserStore.getState()?.selfInfo?.userID;
   // Backend requires non-admin users to prefix file name with their userID
   const uploadName = buildObjectUploadName(currentUserID, rawName);
@@ -148,6 +154,7 @@ export const uploadObjectFile = async (
 
   console.info("[uploadObjectFile] start", stringifyLogMeta(uploadMeta));
 
+  let nativeMultipartFallback = false;
   if (shouldUseNativeObjectUpload(filePath)) {
     options?.onProgress?.(0);
     const nativeResponse = await window.electronAPI!.ipcInvoke<{
@@ -163,13 +170,25 @@ export const uploadObjectFile = async (
       token: await getIMToken(),
     });
     if (nativeResponse.errCode && nativeResponse.errCode !== 0) {
-      throw nativeResponse;
+      if (!shouldFallbackFromNativeObjectUpload(nativeResponse)) {
+        throw nativeResponse;
+      }
+      nativeMultipartFallback = true;
+      console.warn(
+        "[uploadObjectFile] native multipart EOF; falling back to renderer upload",
+        stringifyLogMeta({
+          ...uploadMeta,
+          nativeError: nativeResponse.errMsg,
+        }),
+      );
+    } else {
+      options?.onProgress?.(100);
+      return nativeResponse;
     }
-    options?.onProgress?.(100);
-    return nativeResponse;
   }
 
-  for (let attempt = 0; attempt <= uploadRetryDelays.length; attempt += 1) {
+  const maxBrowserAttempts = nativeMultipartFallback ? 0 : uploadRetryDelays.length;
+  for (let attempt = 0; attempt <= maxBrowserAttempts; attempt += 1) {
     try {
       options?.onProgress?.(0);
       const response = await request.post<ObjectUploadResp>(
@@ -209,8 +228,7 @@ export const uploadObjectFile = async (
           timeout?: number;
         };
       };
-      const canRetry =
-        attempt < uploadRetryDelays.length && isRetriableUploadError(error);
+      const canRetry = attempt < maxBrowserAttempts && isRetriableUploadError(error);
       const errorMeta = {
         ...uploadMeta,
         attempt: attempt + 1,

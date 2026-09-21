@@ -1,17 +1,12 @@
 import { getWithRenderProcess } from "@openim/electron-client-sdk/lib/render";
 import { AllowType } from "@openim/wasm-client-sdk";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 
 import { useConversationStore, useUserStore } from "@/store";
 import { emit } from "@/utils/events";
 import { DEFAULT_SCREENSHOT_SHORTCUT } from "@/utils/screenshotShortcut";
-import {
-  clearIMProfile,
-  clearManualLogout,
-  getIMToken,
-  getIMUserID,
-} from "@/utils/storage";
+import { clearIMProfile, clearManualLogout } from "@/utils/storage";
 
 // const isElectronProd = import.meta.env.MODE !== "development" && window.electronAPI;
 
@@ -29,24 +24,30 @@ export const MainContentWrap = () => {
   const updateAppSettings = useUserStore((state) => state.updateAppSettings);
 
   const navigate = useNavigate();
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
     clearManualLogout();
+    let cancelled = false;
 
-    const loginCheck = async () => {
+    const resetSessionAtStartup = async () => {
       // 启动时强制清除持久化的登录态, 确保每次启动客户端(包括系统重启后)
       // 都需要重新登录, 避免关机前未主动退出登录导致 token 残留、重启后免登录的安全风险。
-      clearIMProfile();
-      const IMToken = await getIMToken();
-      const IMUserID = await getIMUserID();
-      if (!IMToken || !IMUserID) {
-        navigate("/login");
-        return;
+      try {
+        await clearIMProfile();
+      } catch (error) {
+        console.error("[startup] clear login profile failed", error);
       }
+      if (cancelled) return;
+      navigate("/login", { replace: true });
+      setSessionReady(true);
     };
 
-    loginCheck();
-  }, []);
+    void resetSessionAtStartup();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     window.userClick = (userID?: string, groupID?: string) => {
@@ -93,5 +94,5 @@ export const MainContentWrap = () => {
     initSettingStore();
   }, []);
 
-  return <Outlet />;
+  return sessionReady ? <Outlet /> : null;
 };

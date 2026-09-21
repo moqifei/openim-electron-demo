@@ -27,6 +27,12 @@ export type CKEditorRef = {
   replaceTextBeforeSelection: (length: number, text: string) => void;
   setText: (text: string) => void;
   getText: () => string;
+  hasSelection: () => boolean;
+  hasContent: () => boolean;
+  copySelection: () => void;
+  cutSelection: () => void;
+  selectAll: () => void;
+  pasteText: (text: string) => void;
   getEditor: () => ClassicEditor | null;
 };
 
@@ -159,6 +165,48 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
           .join("");
       })
       .join("\n");
+  };
+
+  const hasSelection = () => {
+    const editor = ckEditor.current;
+    if (!editor) return false;
+    return !editor.model.getSelectedContent(editor.model.document.selection).isEmpty;
+  };
+
+  const hasContent = () => Boolean(getText());
+
+  const copySelection = () => {
+    if (!hasSelection()) return;
+    focus();
+    document.execCommand("copy");
+  };
+
+  const cutSelection = () => {
+    if (!hasSelection()) return;
+    focus();
+    document.execCommand("cut");
+  };
+
+  const selectAll = () => {
+    const editor = ckEditor.current;
+    if (!editor || !hasContent()) return;
+    editor.editing.view.focus();
+    editor.execute("selectAll");
+  };
+
+  const pasteText = (text: string) => {
+    const editor = ckEditor.current;
+    if (!editor || !text) return;
+
+    const viewFragment = editor.data.htmlProcessor.toView(
+      `<p>${escapeChatPasteText(text).replace(/\n/g, "<br>")}</p>`,
+    );
+    const modelFragment = editor.data.toModel(viewFragment);
+    editor.model.change(() => {
+      editor.model.insertContent(modelFragment, editor.model.document.selection);
+    });
+    editor.editing.view.focus();
+    onChange?.(editor.getData());
   };
 
   const listenKeydown = (editor: ClassicEditor) => {
@@ -324,6 +372,12 @@ const Index: ForwardRefRenderFunction<CKEditorRef, CKEditorProps> = (
       replaceTextBeforeSelection,
       setText,
       getText,
+      hasSelection,
+      hasContent,
+      copySelection,
+      cutSelection,
+      selectAll,
+      pasteText,
       getEditor: () => ckEditor.current,
     }),
     [],

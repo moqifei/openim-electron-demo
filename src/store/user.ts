@@ -205,7 +205,7 @@ export const useUserStore = create<UserStore>()((set, get) => ({
       }
     }
     if (manual) markManualLogout();
-    clearIMProfile();
+    await clearIMProfile();
     set({ selfInfo: {} as BusinessUserInfo, progress: 0 });
     useContactStore.getState().clearContactStore();
     useConversationStore.getState().clearConversationStore();

@@ -7,13 +7,11 @@ import { useUserStore } from "@/store";
 import { getChatToken, getIMToken } from "./storage";
 import { feedbackToast } from "./common";
 import { getIMHost, getChatHost } from "./config";
-import {
-  getPlazaUrl,
-  getOrangeUrl,
-  getOrangeToken,
-} from "./config";
+import { getPlazaUrl, getOrangeUrl, getOrangeToken } from "./config";
 
 const tokenErrorCodeList = [1501, 1503, 1504, 1505];
+const isLoginRequest = (url?: string) =>
+  url === "/account/login" || url === "/account/login/ad";
 
 const createAxiosInstance = (baseURL: string, imToken = true) => {
   const serves = axios.create({
@@ -23,8 +21,10 @@ const createAxiosInstance = (baseURL: string, imToken = true) => {
 
   serves.interceptors.request.use(
     async (config) => {
-      const token = imToken ? await getIMToken() : await getChatToken();
-      config.headers.token = config.headers.token ?? token;
+      if (!isLoginRequest(config.url)) {
+        const token = imToken ? await getIMToken() : await getChatToken();
+        config.headers.token = config.headers.token ?? token;
+      }
       config.headers.operationID = uuidv4();
       return config;
     },
@@ -33,7 +33,10 @@ const createAxiosInstance = (baseURL: string, imToken = true) => {
 
   serves.interceptors.response.use(
     (res) => {
-      if (tokenErrorCodeList.includes(res.data.errCode)) {
+      if (
+        !isLoginRequest(res.config.url) &&
+        tokenErrorCodeList.includes(res.data.errCode)
+      ) {
         feedbackToast({
           msg: t("toast.loginExpiration"),
           error: t("toast.loginExpiration"),

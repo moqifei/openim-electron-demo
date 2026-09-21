@@ -11,6 +11,9 @@ const readText = (value: unknown) => {
   return text.length > 300 ? `${text.slice(0, 300)}...` : text;
 };
 
+export const isFileSizeExceededError = (error: unknown) =>
+  getFileTransferErrorReason(error) === "File size exceeds 200 MiB";
+
 const readRecordMessage = (value: unknown) => {
   if (!isRecord(value)) return "";
 
@@ -54,6 +57,9 @@ export const getFileTransferErrorMessage = (
   error: unknown,
   type: "upload" | "download",
 ) => {
+  if (type === "upload" && isFileSizeExceededError(error)) {
+    return t("toast.fileSizeExceedsLimit");
+  }
   const reason = getFileTransferErrorReason(error);
   if (!reason) return t(`toast.${type}Failed`);
 

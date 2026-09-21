@@ -8,7 +8,7 @@ import { MessageItem as MessageItemType, MessageType } from "@openim/wasm-client
 import { Checkbox, Tooltip } from "antd";
 import clsx from "clsx";
 import { t } from "i18next";
-import { FC, memo, useRef, useState } from "react";
+import { FC, memo, useEffect, useRef, useState } from "react";
 
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore } from "@/store";
@@ -54,6 +54,7 @@ export interface IMessageItemProps {
   onMultiSelect?: (message: MessageItemType) => void;
   onRevoke?: (message: MessageItemType) => void;
   onAvatarClick?: (message: MessageItemType) => void;
+  onAvatarMention?: (message: MessageItemType) => void;
   onQuoteMessage?: (message: MessageItemType) => void | Promise<void>;
   imagePreviewIndex?: number;
   onImagePreview?: (index: number) => void;
@@ -74,6 +75,7 @@ const MessageItem: FC<IMessageItemProps> = ({
   disabled,
   isSender,
   conversationID,
+  isGroupChat,
   isMultiSelectActive,
   isSelected,
   onToggleSelect,
@@ -82,12 +84,15 @@ const MessageItem: FC<IMessageItemProps> = ({
   onMultiSelect,
   onRevoke,
   onAvatarClick,
+  onAvatarMention,
   onQuoteMessage,
   imagePreviewIndex,
   onImagePreview,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
-  const [hovered, setHovered] = useState(false);
+  const [mentionHovered, setMentionHovered] = useState(false);
+  const mentionHoverTimer = useRef<number>();
+  const [contentHovered, setContentHovered] = useState(false);
   const isDigitalTwin = isDigitalTwinMessage(message);
   const isAgentStream = isAgentStreamMessage(message);
   const MessageRenderComponent = isAgentStream
@@ -102,7 +107,29 @@ const MessageItem: FC<IMessageItemProps> = ({
     return friend?.remark || friend?.nickname || message.senderNickname;
   });
 
-  const showActions = !disabled && !isMultiSelectActive && hovered;
+  const showActions = !disabled && !isMultiSelectActive && contentHovered;
+  const showAvatarMention =
+    Boolean(isGroupChat) &&
+    !isSender &&
+    !disabled &&
+    !isMultiSelectActive &&
+    mentionHovered;
+
+  const handleMentionMouseEnter = () => {
+    if (mentionHoverTimer.current) window.clearTimeout(mentionHoverTimer.current);
+    setMentionHovered(true);
+  };
+
+  const handleMentionMouseLeave = () => {
+    mentionHoverTimer.current = window.setTimeout(() => setMentionHovered(false), 160);
+  };
+
+  useEffect(
+    () => () => {
+      if (mentionHoverTimer.current) window.clearTimeout(mentionHoverTimer.current);
+    },
+    [],
+  );
   const isTextMessage =
     message.contentType === MessageType.TextMessage || isDigitalTwin || isAgentStream;
   const isImageMessage = message.contentType === MessageType.PictureMessage;
@@ -217,8 +244,6 @@ const MessageItem: FC<IMessageItemProps> = ({
             onToggleSelect(message.clientMsgID);
           }
         }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
       >
         {isMultiSelectActive && (
           <div className="flex items-center pr-3">
@@ -235,19 +260,49 @@ const MessageItem: FC<IMessageItemProps> = ({
             isSender && styles["message-container-sender"],
           )}
         >
-          <OIMAvatar
-            size={36}
-            src={message.senderFaceUrl}
-            text={senderName}
-            className="cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              onAvatarClick?.(message);
-            }}
-          />
+          <div
+            className={styles.avatarWrap}
+            onMouseEnter={handleMentionMouseEnter}
+            onMouseLeave={handleMentionMouseLeave}
+          >
+            <OIMAvatar
+              size={36}
+              src={message.senderFaceUrl}
+              text={senderName}
+              className="cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAvatarClick?.(message);
+              }}
+            />
+          </div>
 
           <div className={styles["message-wrap"]} ref={messageWrapRef}>
-            <div className={styles["message-profile"]}>
+            <div
+              className={clsx(
+                styles["message-profile"],
+                !isSender && isGroupChat && styles.profileWithMention,
+                showAvatarMention && styles.profileMentionVisible,
+              )}
+              onMouseEnter={handleMentionMouseEnter}
+              onMouseLeave={handleMentionMouseLeave}
+            >
+              {!isSender && isGroupChat && (
+                <Tooltip title={t("placeholder.mention")} placement="top">
+                  <button
+                    type="button"
+                    aria-label={t("placeholder.mention")}
+                    className={styles.avatarMentionButton}
+                    tabIndex={showAvatarMention ? 0 : -1}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAvatarMention?.(message);
+                    }}
+                  >
+                    <span aria-hidden>@</span>
+                  </button>
+                </Tooltip>
+              )}
               <div
                 title={senderName}
                 className={clsx(
@@ -259,7 +314,11 @@ const MessageItem: FC<IMessageItemProps> = ({
               </div>
             </div>
 
-            <div className={styles["menu-wrap"]}>
+            <div
+              className={styles["menu-wrap"]}
+              onMouseEnter={() => setContentHovered(true)}
+              onMouseLeave={() => setContentHovered(false)}
+            >
               <MessageItemErrorBoundary message={message}>
                 <MessageRenderComponent
                   message={message}

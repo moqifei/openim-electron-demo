@@ -80,7 +80,7 @@ export const setTMToken = (token: string) => localForage.setItem("IM_TOKEN", tok
 export const setChatToken = (token: string) =>
   localForage.setItem("IM_CHAT_TOKEN", token);
 export const setTMUserID = (userID: string) => localForage.setItem("IM_USERID", userID);
-export const setIMProfile = ({
+export const setIMProfile = async ({
   chatToken,
   imToken,
   userID,
@@ -89,17 +89,21 @@ export const setIMProfile = ({
   imToken: string;
   userID: string;
 }) => {
-  setTMToken(imToken);
-  setChatToken(chatToken);
-  setTMUserID(userID);
+  await Promise.all([
+    setTMToken(imToken),
+    setChatToken(chatToken),
+    setTMUserID(userID),
+  ]);
 };
 
 export const setLocale = (locale: string) => localStorage.setItem("IM_LOCALE", locale);
 
-export const clearIMProfile = () => {
-  localForage.removeItem("IM_TOKEN");
-  localForage.removeItem("IM_CHAT_TOKEN");
-  localForage.removeItem("IM_USERID");
+export const clearIMProfile = async () => {
+  await Promise.all([
+    localForage.removeItem("IM_TOKEN"),
+    localForage.removeItem("IM_CHAT_TOKEN"),
+    localForage.removeItem("IM_USERID"),
+  ]);
 };
 
 export const getAreaCode = () => localStorage.getItem("IM_AREA_CODE");

@@ -255,9 +255,11 @@ const ChatContent = () => {
   useEffect(() => {
     emitter.on("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
     emitter.on("CHAT_LIST_STICK_TO_BOTTOM", stickToBottomIfNeeded);
+    emitter.on("LOCATE_CONVERSATION_HISTORY_MESSAGE", jumpToMessage);
     return () => {
       emitter.off("CHAT_LIST_SCROLL_TO_BOTTOM", scrollToBottom);
       emitter.off("CHAT_LIST_STICK_TO_BOTTOM", stickToBottomIfNeeded);
+      emitter.off("LOCATE_CONVERSATION_HISTORY_MESSAGE", jumpToMessage);
       if (stickyScrollFrame.current) {
         window.cancelAnimationFrame(stickyScrollFrame.current);
       }
@@ -268,7 +270,7 @@ const ChatContent = () => {
         window.clearTimeout(historyJumpUnlockTimer.current);
       }
     };
-  }, []);
+  }, [jumpToMessage]);
 
   // Clear multi-select when conversation changes
   useEffect(() => {
@@ -542,6 +544,16 @@ const ChatContent = () => {
     emitter.emit("OPEN_USER_CARD", { userID: msg.sendID });
   }, []);
 
+  const isGroupChat = currentConversation?.conversationType === SessionType.Group;
+  const handleAvatarMention = useCallback((msg: MessageItemType) => {
+    emitter.emit("CHAT_FOOTER_MENTION_MEMBER", {
+      userID: msg.sendID,
+      nickname: msg.senderNickname,
+      faceURL: msg.senderFaceUrl,
+      groupNickname: msg.senderNickname,
+    });
+  }, []);
+
   return (
     <Layout.Content
       className="relative flex h-full overflow-hidden !bg-[var(--bg-body)]"
@@ -706,6 +718,7 @@ const ChatContent = () => {
                     message={message}
                     messageUpdateFlag={message.senderNickname + message.senderFaceUrl}
                     isSender={isSender}
+                    isGroupChat={isGroupChat}
                     imagePreviewIndex={imageIndex >= 0 ? imageIndex : undefined}
                     onImagePreview={handleImagePreview}
                     isMultiSelectActive={multiSelectState.isActive}
@@ -716,6 +729,7 @@ const ChatContent = () => {
                     onMultiSelect={handleMultiSelect}
                     onRevoke={handleRevoke}
                     onAvatarClick={handleAvatarClick}
+                    onAvatarMention={handleAvatarMention}
                     onQuoteMessage={jumpToMessage}
                   />
                 </>
