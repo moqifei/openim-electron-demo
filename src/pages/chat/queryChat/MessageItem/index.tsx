@@ -90,9 +90,9 @@ const MessageItem: FC<IMessageItemProps> = ({
   onImagePreview,
 }) => {
   const messageWrapRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
   const [mentionHovered, setMentionHovered] = useState(false);
   const mentionHoverTimer = useRef<number>();
-  const [contentHovered, setContentHovered] = useState(false);
   const isDigitalTwin = isDigitalTwinMessage(message);
   const isAgentStream = isAgentStreamMessage(message);
   const MessageRenderComponent = isAgentStream
@@ -107,7 +107,7 @@ const MessageItem: FC<IMessageItemProps> = ({
     return friend?.remark || friend?.nickname || message.senderNickname;
   });
 
-  const showActions = !disabled && !isMultiSelectActive && contentHovered;
+  const showActions = !disabled && !isMultiSelectActive && hovered;
   const showAvatarMention =
     Boolean(isGroupChat) &&
     !isSender &&
@@ -239,6 +239,8 @@ const MessageItem: FC<IMessageItemProps> = ({
           "relative flex select-text px-5 py-3",
           isMultiSelectActive && "cursor-pointer",
         )}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onClick={() => {
           if (isMultiSelectActive && onToggleSelect) {
             onToggleSelect(message.clientMsgID);
@@ -314,11 +316,7 @@ const MessageItem: FC<IMessageItemProps> = ({
               </div>
             </div>
 
-            <div
-              className={styles["menu-wrap"]}
-              onMouseEnter={() => setContentHovered(true)}
-              onMouseLeave={() => setContentHovered(false)}
-            >
+            <div className={styles["menu-wrap"]}>
               <MessageItemErrorBoundary message={message}>
                 <MessageRenderComponent
                   message={message}

@@ -3,7 +3,7 @@ import fs from "node:fs";
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
-test("separates avatar mention and message action hover states", () => {
+test("keeps message actions independent from avatar mention hover", () => {
   const events = read("src/utils/events.ts");
   const content = read("src/pages/chat/queryChat/ChatContent.tsx");
   const footer = read("src/pages/chat/queryChat/ChatFooter/index.tsx");
@@ -18,8 +18,13 @@ test("separates avatar mention and message action hover states", () => {
   expect(item).toContain("showAvatarMention");
   expect(item).toContain("onMouseEnter={handleMentionMouseEnter}");
   expect(item).toContain("onMouseLeave={handleMentionMouseLeave}");
+  expect(item).toContain("window.setTimeout(() => setMentionHovered(false), 160)");
   expect(item).toContain("profileWithMention");
-  expect(item).toContain("onMouseEnter={() => setContentHovered(true)}");
+  expect(item).toContain("const [hovered, setHovered] = useState(false);");
+  expect(item).toContain("const showActions = !disabled && !isMultiSelectActive && hovered;");
+  expect(item).toContain("onMouseEnter={() => setHovered(true)}");
+  expect(item).toContain("onMouseLeave={() => setHovered(false)}");
+  expect(item).not.toContain("setContentHovered");
   expect(item).toContain('aria-label={t("placeholder.mention")}');
   expect(styles).toContain(".avatarMentionButton");
   expect(styles).toContain(".profileWithMention");
