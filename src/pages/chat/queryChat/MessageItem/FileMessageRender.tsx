@@ -79,6 +79,7 @@ const FileMessageRender: FC<FileMessageRenderProps> = ({ message, isSender }) =>
           setLocalFilePath(savedPath);
           downloadedFilePathCache.set(downloadCacheKey, savedPath);
         }
+        return savedPath;
       } catch (error) {
         if (isDownloadCancelledError(error)) return;
         console.error("[FileMessageRender] download failed:", error);
@@ -119,15 +120,28 @@ const FileMessageRender: FC<FileMessageRenderProps> = ({ message, isSender }) =>
     await downloadFile(selectedPath);
   }, [downloadFile, fileElem?.fileName, isDownloading, isSending, sourceUrl]);
 
-  const handleOpen = useCallback(async () => {
-    if (!localFilePath || !window.electronAPI?.openLocalPath) return;
-    const openError = await window.electronAPI.openLocalPath(localFilePath);
-    if (openError) {
-      setLocalFilePath("");
-      downloadedFilePathCache.delete(downloadCacheKey);
-      antdMessage.error(getFileTransferErrorMessage(openError, "download"));
-    }
-  }, [downloadCacheKey, localFilePath, sourceUrl]);
+  const openDownloadedFile = useCallback(
+    async (filePath: string) => {
+      if (!filePath || !window.electronAPI?.openLocalPath) return;
+      const openError = await window.electronAPI.openLocalPath(filePath);
+      if (openError) {
+        setLocalFilePath("");
+        downloadedFilePathCache.delete(downloadCacheKey);
+        antdMessage.error(getFileTransferErrorMessage(openError, "download"));
+      }
+    },
+    [downloadCacheKey],
+  );
+
+  const handleOpen = useCallback(
+    () => openDownloadedFile(localFilePath),
+    [localFilePath, openDownloadedFile],
+  );
+
+  const handleDownloadAndOpen = useCallback(async () => {
+    const savedPath = await downloadFile();
+    if (savedPath) await openDownloadedFile(savedPath);
+  }, [downloadFile, openDownloadedFile]);
 
   const handleOpenFolder = useCallback(async () => {
     if (!localFilePath || !window.electronAPI?.ipcInvoke) return;
@@ -193,12 +207,16 @@ const FileMessageRender: FC<FileMessageRenderProps> = ({ message, isSender }) =>
                 }}
               />
               <FileActionButton
-                label={t("placeholder.redownload")}
-                onClick={() => void downloadFile()}
+                label={t("placeholder.saveAs")}
+                onClick={() => void handleSaveAs()}
               />
             </>
           ) : (
             <>
+              <FileActionButton
+                label={t("placeholder.open")}
+                onClick={() => void handleDownloadAndOpen()}
+              />
               <FileActionButton
                 label={t("placeholder.save")}
                 onClick={() => void downloadFile()}
