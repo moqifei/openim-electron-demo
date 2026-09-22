@@ -16,6 +16,14 @@ test("shows a focused editing menu for the chat input", () => {
   expect(footer).toContain("navigator.clipboard.readText()");
 });
 
+test("keeps the send action anchored to the input panel bottom", () => {
+  const footer = read("src/pages/chat/queryChat/ChatFooter/index.tsx");
+
+  expect(footer).toMatch(
+    /<div\s+onContextMenu=\{handleEditorContextMenu\}\s+className="flex min-h-0 flex-1 flex-col"/,
+  );
+});
+
 test("exposes CKEditor operations used by the input editing menu", () => {
   const editor = read("src/components/CKEditor/index.tsx");
 

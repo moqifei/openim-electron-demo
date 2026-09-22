@@ -231,6 +231,9 @@ const ConversationHistoryDrawer = ({
             visible: imagePreviewVisible,
             current: imagePreviewIndex,
             onVisibleChange: setImagePreviewVisible,
+            onChange: (index) => {
+              setImagePreviewIndex(index);
+            },
             toolbarRender: (originalNode, { current }) => {
               const originalUrl = historyImages[current]?.previewUrl || "";
               const fileName = inferDownloadFileName({ url: originalUrl });

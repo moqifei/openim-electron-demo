@@ -955,7 +955,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
               ))}
             </div>
           )}
-          <div onContextMenu={handleEditorContextMenu}>
+          <div
+            onContextMenu={handleEditorContextMenu}
+            className="flex min-h-0 flex-1 flex-col"
+          >
             <CKEditor
               key={`${currentConversation?.conversationID ?? "empty"}-${
                 isAgentChat ? "agent" : "normal"

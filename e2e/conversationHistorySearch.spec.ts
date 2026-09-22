@@ -139,6 +139,20 @@ test("allows saving and saving-as history preview images", () => {
   expect(drawerSource).toContain('title={t("placeholder.saveAs")}');
 });
 
+test("updates the controlled history preview index when navigating images", () => {
+  const drawerSource = readFileSync(
+    resolve(
+      __dirname,
+      "../src/pages/chat/queryChat/ConversationHistoryDrawer/index.tsx",
+    ),
+    "utf8",
+  );
+
+  expect(drawerSource).toMatch(
+    /onChange:\s*\(index\)\s*=>\s*\{\s*setImagePreviewIndex\(index\);\s*\}/,
+  );
+});
+
 test("uses an exact-count history pager with the newest page scrolled into view", () => {
   const drawerSource = readFileSync(
     resolve(
