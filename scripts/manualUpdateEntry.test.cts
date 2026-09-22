@@ -2,13 +2,15 @@ import assert = require("assert");
 import fs = require("fs");
 import path = require("path");
 
-const read = (filePath: string) => fs.readFileSync(path.join(process.cwd(), filePath), "utf8");
+const read = (filePath: string) =>
+  fs.readFileSync(path.join(process.cwd(), filePath), "utf8");
 
 const constants = read("electron/constants/index.ts");
 const leftNav = read("src/layout/LeftNavBar/index.tsx");
 const ipc = read("electron/main/ipcHandlerManage.ts");
 const updateManage = read("electron/main/updateManage.ts");
 const debUpdateManage = read("electron/main/debUpdateManage.ts");
+const updateVersion = read("electron/main/updateVersion.ts");
 
 assert.ok(
   constants.includes('checkForUpdates: "checkForUpdates"'),
@@ -34,6 +36,47 @@ assert.ok(
   debUpdateManage.includes("export const checkForUpdates") &&
     debUpdateManage.includes("await runCheck(manual)"),
   "deb updater path should expose a manual check",
+);
+assert.ok(
+  updateVersion.includes("isForceUpdateRequired") &&
+    updateManage.includes("isForceUpdateRequired") &&
+    debUpdateManage.includes("isForceUpdateRequired"),
+  "both platform updaters should share the patch-gap force-update rule",
+);
+assert.match(
+  updateManage,
+  /forceUpdateVersion|force update|强制升级/,
+  "Windows updater should block skipping a required update",
+);
+assert.match(
+  debUpdateManage,
+  /forceUpdateVersion|force update|强制升级/,
+  "Deb updater should block skipping a required update",
+);
+assert.match(
+  updateManage,
+  /buttons: \["立即升级"\][\s\S]*downloadUpdate\(\)/,
+  "Windows forced updates should start downloading after the only available action",
+);
+assert.match(
+  debUpdateManage,
+  /buttons: \["立即升级"\][\s\S]*setMainWindowEnabled\(false\)/,
+  "Deb forced updates should disable the client after the only available action",
+);
+assert.match(
+  updateManage,
+  /buttons: forceUpdate \? \["立即重启更新"\] : \["立即重启更新", "稍后"\]/,
+  "Windows forced update completion should not offer a skip action",
+);
+assert.ok(
+  updateManage.indexOf("if (isSandboxNow)") <
+    updateManage.indexOf("const forceUpdate = isForceUpdateRequired"),
+  "Windows sandbox interception should run before force-update handling",
+);
+assert.ok(
+  debUpdateManage.indexOf("if (await isSandboxEnvironment())") <
+    debUpdateManage.indexOf("const forceUpdate = isForceUpdateRequired"),
+  "Deb sandbox interception should run before force-update handling",
 );
 assert.match(
   ipc,

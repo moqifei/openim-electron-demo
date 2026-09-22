@@ -1,14 +1,12 @@
-import { app, dialog } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import fs from "fs";
 import { join } from "node:path";
 
 import { isProd } from "../utils";
 import { logger } from ".";
-import {
-  isSandboxEnvironment,
-  SANDBOX_UPDATE_MESSAGE,
-} from "./updateEnvironment";
+import { isSandboxEnvironment, SANDBOX_UPDATE_MESSAGE } from "./updateEnvironment";
+import { isForceUpdateRequired } from "./updateVersion";
 
 export type UpdateConfig = {
   enabled?: boolean;
@@ -38,6 +36,13 @@ let manualCheckRequested = false;
 let sandboxNoticePromise: Promise<void> | null = null;
 let sandboxUpdateBlockedVersion: string | null = null;
 let sandboxEnvironmentDetected = false;
+let forceUpdateVersion: string | null = null;
+
+const setMainWindowEnabled = (enabled: boolean) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.setEnabled(enabled);
+  }
+};
 
 const showSandboxUpdateNotice = () => {
   if (sandboxNoticePromise) return sandboxNoticePromise;
@@ -110,9 +115,7 @@ export const initAutoUpdater = async () => {
   const isSandbox = await isSandboxEnvironment();
   sandboxEnvironmentDetected = isSandbox;
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = isSandbox
-    ? false
-    : config.autoInstallOnAppQuit;
+  autoUpdater.autoInstallOnAppQuit = isSandbox ? false : config.autoInstallOnAppQuit;
   autoUpdater.allowPrerelease = config.allowPrerelease;
   autoUpdater.setFeedURL({
     provider: "generic",
@@ -130,6 +133,7 @@ export const initAutoUpdater = async () => {
     const isSandboxNow = await isSandboxEnvironment();
     if (isSandboxNow) {
       sandboxUpdateBlockedVersion = info.version;
+      forceUpdateVersion = null;
     }
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = isSandboxNow
@@ -137,6 +141,21 @@ export const initAutoUpdater = async () => {
       : config.autoInstallOnAppQuit;
     if (isSandboxNow) {
       void showSandboxUpdateNotice();
+      return;
+    }
+    const forceUpdate = isForceUpdateRequired(app.getVersion(), info.version);
+    forceUpdateVersion = forceUpdate ? info.version : null;
+    if (forceUpdate) {
+      await dialog.showMessageBox({
+        type: "warning",
+        buttons: ["立即升级"],
+        defaultId: 0,
+        title: "必须升级",
+        message: `当前版本已过期，请升级到 ${info.version} 后继续使用。`,
+        detail: "本次升级不能跳过。",
+      });
+      setMainWindowEnabled(false);
+      await autoUpdater.downloadUpdate();
       return;
     }
     if (isManualCheck) {
@@ -191,13 +210,16 @@ export const initAutoUpdater = async () => {
       await showSandboxUpdateNotice();
       return;
     }
+    const forceUpdate = forceUpdateVersion === info.version;
     const result = await dialog.showMessageBox({
       type: "info",
-      buttons: ["立即重启更新", "稍后"],
+      buttons: forceUpdate ? ["立即重启更新"] : ["立即重启更新", "稍后"],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: forceUpdate ? undefined : 1,
       title: "发现新版本",
-      message: `新版本 ${info.version} 已下载完成`,
+      message: forceUpdate
+        ? `强制升级包 ${info.version} 已下载完成`
+        : `新版本 ${info.version} 已下载完成`,
       detail: config.autoInstallOnAppQuit
         ? "可以立即重启完成更新；选择稍后时，客户端退出后会自动安装。"
         : "可以立即重启完成更新。",
@@ -214,6 +236,17 @@ export const initAutoUpdater = async () => {
 
   autoUpdater.on("error", (error) => {
     logger.error("[updater] update failed", error);
+    if (forceUpdateVersion) {
+      void dialog
+        .showMessageBox({
+          type: "error",
+          buttons: ["退出客户端"],
+          title: "升级失败",
+          message: "客户端升级失败，无法继续使用。",
+          detail: "请重新启动客户端后重试升级。",
+        })
+        .then(() => app.quit());
+    }
   });
 
   const runCheck = async () => {
@@ -238,7 +271,9 @@ export const initAutoUpdater = async () => {
   logger.info("[updater] periodic check scheduled every", `${intervalMs}ms`);
 };
 
-export const checkForUpdates = async ({ manual = false }: { manual?: boolean } = {}) => {
+export const checkForUpdates = async ({
+  manual = false,
+}: { manual?: boolean } = {}) => {
   if (!updaterInitialized) {
     await initAutoUpdater();
   }

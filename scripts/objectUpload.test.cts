@@ -6,8 +6,6 @@ const {
   buildObjectUploadName,
   isObjectUploadFileSizeAllowed,
   MAX_OBJECT_UPLOAD_FILE_SIZE,
-  shouldFallbackFromNativeObjectUpload,
-  shouldUseNativeObjectUpload,
 } = require("../src/utils/objectUpload");
 
 assert.equal(buildObjectUploadName("user-1", "file.log"), "user-1/file.log");
@@ -19,29 +17,15 @@ const zhResources = JSON.parse(
   fs.readFileSync(path.join(process.cwd(), "src/i18n/resources/zh.json"), "utf8"),
 );
 assert.equal(zhResources.toast.fileSizeExceedsLimit, "上传文件大小不得超过200M");
-assert.equal(shouldUseNativeObjectUpload("D:\\logs\\OpenIM.log", true), true);
-assert.equal(shouldUseNativeObjectUpload("D:\\logs\\OpenIM.log", false), false);
-assert.equal(shouldUseNativeObjectUpload("", true), false);
-assert.equal(
-  shouldFallbackFromNativeObjectUpload({
-    errCode: -1,
-    errMsg: "parse multipart form failed: unexpected EOF",
-  }),
-  true,
+const objectUploadApi = fs.readFileSync(
+  path.join(process.cwd(), "src/api/imApi.ts"),
+  "utf8",
 );
-assert.equal(
-  shouldFallbackFromNativeObjectUpload({
-    errCode: -1,
-    errMsg: "Request failed with status code 400",
-  }),
-  false,
+const ipcHandlers = fs.readFileSync(
+  path.join(process.cwd(), "electron/main/ipcHandlerManage.ts"),
+  "utf8",
 );
-assert.equal(
-  shouldFallbackFromNativeObjectUpload({
-    errCode: 1001,
-    errMsg: "parse multipart form failed: unexpected EOF",
-  }),
-  false,
-);
+assert.equal(objectUploadApi.includes("uploadObjectFileFromPath"), false);
+assert.equal(ipcHandlers.includes("uploadObjectFileFromPath"), false);
 
 console.log("objectUpload tests passed");

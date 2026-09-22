@@ -26,7 +26,6 @@ export const IpcRenderToMain = {
   cancelDownloadFileNative: "cancelDownloadFileNative",
   openLocalPath: "openLocalPath",
   openLocalFolder: "openLocalFolder",
-  uploadObjectFileFromPath: "uploadObjectFileFromPath",
   writeClipboardImage: "writeClipboardImage",
   writeClipboardImageFile: "writeClipboardImageFile",
   copyLocalFileToClipboard: "copyLocalFileToClipboard",

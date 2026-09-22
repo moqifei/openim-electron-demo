@@ -1,4 +1,4 @@
-import { dialog, app } from "electron";
+import { app, BrowserWindow, dialog } from "electron";
 import fs from "node:fs";
 import { createWriteStream } from "node:fs";
 import { execFile } from "node:child_process";
@@ -17,10 +17,8 @@ import {
   getDebUpdateFile,
   isNewerVersion,
 } from "./debUpdateUtils";
-import {
-  isSandboxEnvironment,
-  SANDBOX_UPDATE_MESSAGE,
-} from "./updateEnvironment";
+import { isSandboxEnvironment, SANDBOX_UPDATE_MESSAGE } from "./updateEnvironment";
+import { isForceUpdateRequired } from "./updateVersion";
 
 const MAX_REDIRECTS = 5;
 const DEB_MANIFEST_NAME = "latest-linux.yml";
@@ -35,6 +33,13 @@ const showSandboxUpdateNotice = () =>
 let updaterInitialized = false;
 let periodicCheckTimer: NodeJS.Timeout | null = null;
 let checkInProgress = false;
+let forceUpdateVersion: string | null = null;
+
+const setMainWindowEnabled = (enabled: boolean) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.setEnabled(enabled);
+  }
+};
 
 const requestUrl = (url: string, redirectCount = 0): Promise<IncomingMessage> =>
   new Promise((resolve, reject) => {
@@ -155,11 +160,15 @@ const runCheck = async (manual = false) => {
   try {
     const manifestUrl = getDebManifestUrl(config.url, DEB_MANIFEST_NAME);
     const manifestResponse = await requestUrl(manifestUrl);
-    const manifest = yaml.load(
-      await readResponseText(manifestResponse),
-    ) as DebUpdateManifest | undefined;
+    const manifest = yaml.load(await readResponseText(manifestResponse)) as
+      | DebUpdateManifest
+      | undefined;
 
-    if (!manifest || typeof manifest !== "object" || typeof manifest.version !== "string") {
+    if (
+      !manifest ||
+      typeof manifest !== "object" ||
+      typeof manifest.version !== "string"
+    ) {
       throw new Error("Invalid deb update manifest");
     }
 
@@ -172,11 +181,24 @@ const runCheck = async (manual = false) => {
     }
 
     if (await isSandboxEnvironment()) {
+      forceUpdateVersion = null;
       await showSandboxUpdateNotice();
       return;
     }
 
-    if (manual) {
+    const forceUpdate = isForceUpdateRequired(app.getVersion(), manifest.version);
+    forceUpdateVersion = forceUpdate ? manifest.version : null;
+    if (forceUpdate) {
+      await dialog.showMessageBox({
+        type: "warning",
+        buttons: ["立即升级"],
+        defaultId: 0,
+        title: "必须升级",
+        message: `当前版本已过期，请升级到 ${manifest.version} 后继续使用。`,
+        detail: "本次升级不能跳过。",
+      });
+      setMainWindowEnabled(false);
+    } else if (manual) {
       const result = await dialog.showMessageBox({
         type: "info",
         buttons: ["立即下载", "稍后"],
@@ -203,9 +225,21 @@ const runCheck = async (manual = false) => {
     debPath = finalPath;
     if (await openDownloadedDeb(debPath, manifest.version)) {
       debPath = null;
+    } else if (forceUpdate) {
+      app.quit();
     }
   } catch (error) {
     logger.error("[deb-updater] update failed", error);
+    if (forceUpdateVersion) {
+      await dialog.showMessageBox({
+        type: "error",
+        buttons: ["退出客户端"],
+        title: "升级失败",
+        message: "客户端升级失败，无法继续使用。",
+        detail: "请重新启动客户端后重试升级。",
+      });
+      app.quit();
+    }
   } finally {
     checkInProgress = false;
     if (debPath) {
@@ -248,7 +282,9 @@ export const initDebAutoUpdater = () => {
   );
 };
 
-export const checkForUpdates = async ({ manual = false }: { manual?: boolean } = {}) => {
+export const checkForUpdates = async ({
+  manual = false,
+}: { manual?: boolean } = {}) => {
   if (!isProd || !app.isPackaged) return;
 
   const config = readUpdateConfig();

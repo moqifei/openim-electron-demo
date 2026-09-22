@@ -6,11 +6,9 @@ import { normalizeMojibakeString } from "@/utils/mojibake";
 import {
   buildObjectUploadName,
   isObjectUploadFileSizeAllowed,
-  shouldFallbackFromNativeObjectUpload,
-  shouldUseNativeObjectUpload,
 } from "@/utils/objectUpload";
 import { getApiAxios, getChatAxios } from "@/utils/request";
-import { getChatToken, getIMToken } from "@/utils/storage";
+import { getChatToken } from "@/utils/storage";
 
 const getRequest = () => getChatAxios();
 const uploadRetryDelays = [800, 1600];
@@ -154,40 +152,7 @@ export const uploadObjectFile = async (
 
   console.info("[uploadObjectFile] start", stringifyLogMeta(uploadMeta));
 
-  let nativeMultipartFallback = false;
-  if (shouldUseNativeObjectUpload(filePath)) {
-    options?.onProgress?.(0);
-    const nativeResponse = await window.electronAPI!.ipcInvoke<{
-      errCode?: number;
-      errMsg?: string;
-      data?: ObjectUploadResp;
-    }>("uploadObjectFileFromPath", {
-      filePath,
-      uploadName,
-      contentType: fileContentType,
-      cause: options?.cause ?? "chat",
-      baseURL: request.defaults.baseURL ?? "",
-      token: await getIMToken(),
-    });
-    if (nativeResponse.errCode && nativeResponse.errCode !== 0) {
-      if (!shouldFallbackFromNativeObjectUpload(nativeResponse)) {
-        throw nativeResponse;
-      }
-      nativeMultipartFallback = true;
-      console.warn(
-        "[uploadObjectFile] native multipart EOF; falling back to renderer upload",
-        stringifyLogMeta({
-          ...uploadMeta,
-          nativeError: nativeResponse.errMsg,
-        }),
-      );
-    } else {
-      options?.onProgress?.(100);
-      return nativeResponse;
-    }
-  }
-
-  const maxBrowserAttempts = nativeMultipartFallback ? 0 : uploadRetryDelays.length;
+  const maxBrowserAttempts = uploadRetryDelays.length;
   for (let attempt = 0; attempt <= maxBrowserAttempts; attempt += 1) {
     try {
       options?.onProgress?.(0);
