@@ -24,6 +24,12 @@ export const makeUniqueUploadFileName = (fileName: string, suffix: string) => {
   return `${baseName}-${cleanSuffix}${extension}`;
 };
 
+// These characters alter an unescaped object URL instead of remaining in its path.
+const unsupportedUploadFileNameCharacter = /[%#?\\\t\r\n]/;
+
+export const isUploadFileNameAllowed = (fileName: string) =>
+  Boolean(fileName) && !unsupportedUploadFileNameCharacter.test(fileName);
+
 export const hasImageClipboardData = (
   items: Array<{ kind: string; type: string }>,
   fileCount: number,

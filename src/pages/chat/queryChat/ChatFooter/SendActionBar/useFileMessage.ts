@@ -1,8 +1,12 @@
+import { t } from "i18next";
 import { v4 as uuidV4 } from "uuid";
 
 import { ObjectUploadProgressHandler, uploadObjectFile } from "@/api/imApi";
 import { IMSDK } from "@/layout/MainContentWrap";
-import { makeUniqueUploadFileName } from "@/utils/chatAttachment";
+import {
+  isUploadFileNameAllowed,
+  makeUniqueUploadFileName,
+} from "@/utils/chatAttachment";
 import { normalizeMojibakeString } from "@/utils/mojibake";
 
 export interface FileWithPath extends File {
@@ -10,6 +14,12 @@ export interface FileWithPath extends File {
 }
 
 const isInvalidSelectedFile = (file: FileWithPath) => !file.name || file.size === 0;
+
+const assertUploadFileNameAllowed = (fileName: string) => {
+  if (!isUploadFileNameAllowed(fileName)) {
+    throw new Error(t("toast.fileNameContainsUnsupportedCharacters"));
+  }
+};
 
 const normalizeFileMetadata = (file: FileWithPath) => {
   const normalizedName = normalizeMojibakeString(file.name);
@@ -34,8 +44,9 @@ const normalizeFileMetadata = (file: FileWithPath) => {
 
 const getUsableFile = async (file: FileWithPath) => {
   file = normalizeFileMetadata(file);
+  const shouldReloadFromPath = Boolean(file.path && window.electronAPI?.getFileByPath);
 
-  if (!isInvalidSelectedFile(file)) {
+  if (!shouldReloadFromPath && !isInvalidSelectedFile(file)) {
     return file;
   }
 
@@ -51,6 +62,13 @@ const getUsableFile = async (file: FileWithPath) => {
   if (!fileFromPath || !fileFromPath.name) {
     throw new Error(`Failed to read selected file from path: ${file.path}`);
   }
+
+  console.info("[useFileMessage] refreshed file from local path", {
+    filePath: file.path,
+    originalSize: file.size,
+    refreshedSize: fileFromPath.size,
+    fileName: fileFromPath.name,
+  });
 
   const normalizedFile = normalizeFileMetadata(
     fileFromPath.type
@@ -78,6 +96,7 @@ export function useFileMessage() {
     messageConfig?: FileMessageOptions,
   ) => {
     file = await getUsableFile(file);
+    assertUploadFileNameAllowed(file.name);
     const uploadName = makeUniqueUploadFileName(file.name, uuidV4());
     const { width, height } = await getPicInfo(file);
     const { data: uploaded } = await uploadObjectFile(file, {
@@ -135,6 +154,7 @@ export function useFileMessage() {
     messageConfig?: FileMessageOptions,
   ) => {
     file = await getUsableFile(file);
+    assertUploadFileNameAllowed(file.name);
     const uploadName = makeUniqueUploadFileName(file.name, uuidV4());
     const { data: uploaded } = await uploadObjectFile(file, {
       name: uploadName,

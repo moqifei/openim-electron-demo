@@ -5,6 +5,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
+import { copyFileWithoutOverwrite } from "../utils/nonDestructiveFileSave";
+
 const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -260,15 +262,14 @@ const streamResponseToFile = (
       settled = true;
       cleanupAbortListener();
       try {
-        if (fs.existsSync(targetPath))
-          await fs.promises.rm(targetPath, { force: true });
-        await fs.promises.rename(partialPath, targetPath);
+        const savedPath = await copyFileWithoutOverwrite(partialPath, targetPath);
+        await fs.promises.unlink(partialPath).catch(() => undefined);
         logger.info("[nativeFileDownload] saved", {
-          targetPath,
+          targetPath: savedPath,
           downloaded,
           total,
         });
-        resolve(targetPath);
+        resolve(savedPath);
       } catch (error) {
         const nativeError =
           error instanceof Error

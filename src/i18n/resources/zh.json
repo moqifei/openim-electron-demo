@@ -116,6 +116,7 @@
     "uploadFailed": "上传失败！",
     "uploadFailedWithReason": "上传失败：{{reason}}",
     "fileSizeExceedsLimit": "上传文件大小不得超过200M",
+    "fileNameContainsUnsupportedCharacters": "文件名不能包含 #、%、?、反斜杠或制表/换行字符，请修改后再上传",
     "somethingError": "似乎出现了一点问题~",
     "getLogFailed": "获取日志文件失败！",
     "publishFailed": "发布失败！",

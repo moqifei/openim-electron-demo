@@ -4,7 +4,7 @@ const http = require("http");
 const os = require("os");
 const path = require("path");
 
-const { downloadFileNative } = require("../electron/main/nativeFileDownload.ts");
+const { downloadFileNative } = require("../dist-electron/main/nativeFileDownload.js");
 
 const logger = {
   info: () => undefined,
@@ -65,6 +65,17 @@ const run = async () => {
     });
     assert.equal(savedPath, successPath);
     assert.deepEqual(fs.readFileSync(successPath), payload);
+
+    fs.writeFileSync(successPath, "existing");
+    const collisionPath = await downloadFileNative({
+      url: `http://127.0.0.1:${port}/ok`,
+      targetPath: successPath,
+      requestId: "collision",
+      logger,
+    });
+    assert.equal(collisionPath, path.join(tempDir, "success (1).bin"));
+    assert.equal(fs.readFileSync(successPath, "utf8"), "existing");
+    assert.deepEqual(fs.readFileSync(collisionPath), payload);
 
     await assert.rejects(
       downloadFileNative({

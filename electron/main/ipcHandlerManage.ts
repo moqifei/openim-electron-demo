@@ -37,6 +37,7 @@ import { getPngDimensions } from "../utils/pngDimensions";
 import { getStore } from "./storeManage";
 import { uint8ArrayToDataUrl } from "../utils/screenshotData";
 import { getDownloadFileFilters } from "../utils/downloadFileFilters";
+import { writeFileWithoutOverwrite } from "../utils/nonDestructiveFileSave";
 import {
   downloadFileNative,
   getNativeDownloadErrorDetails,
@@ -473,8 +474,7 @@ export const setIpcMainListener = () => {
       const safeName = path.basename(fileName) || "download";
       const targetPath = filePath || path.join(getDownloadDirectory(), safeName);
       if (!path.isAbsolute(targetPath)) return false;
-      await fs.promises.writeFile(targetPath, Buffer.from(data));
-      return targetPath;
+      return writeFileWithoutOverwrite(targetPath, Buffer.from(data));
     },
   );
 

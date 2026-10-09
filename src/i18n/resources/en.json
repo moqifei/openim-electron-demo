@@ -116,6 +116,7 @@
     "uploadFailed": "Upload failed!",
     "uploadFailedWithReason": "Upload failed: {{reason}}",
     "fileSizeExceedsLimit": "File size cannot exceed 200 MB!",
+    "fileNameContainsUnsupportedCharacters": "File names cannot contain #, %, ?, backslashes, tabs, or line breaks. Please rename the file and try again.",
     "somethingError": "Seems like there was a small issue~",
     "getLogFailed": "Failed to retrieve the log file!",
     "publishFailed": "Failed to publish!",

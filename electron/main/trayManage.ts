@@ -1,4 +1,5 @@
-import { app, BrowserWindow, Menu, screen, Tray } from "electron";
+import fs from "node:fs";
+import { app, BrowserWindow, Menu, nativeImage, screen, Tray } from "electron";
 import { t } from "i18next";
 
 import { IpcMainToRender } from "../constants";
@@ -9,6 +10,7 @@ import {
 } from "./messageReminderState";
 import type { ReminderConversation } from "./messageReminderState";
 import { hideWindow, sendEvent, showWindow } from "./windowManage";
+import { logger } from ".";
 
 const PANEL_WIDTH = 256;
 const PANEL_MARGIN = 8;
@@ -16,6 +18,21 @@ const PANEL_HIDE_DELAY_MS = 200;
 const TRAY_HOVER_HITBOX_SIZE = 36;
 
 type TrayPanelAnchor = Electron.Rectangle | Electron.Point;
+
+type TrayImageDiagnostics = {
+  trigger: string;
+  iconPath: string;
+  resourcesPath: string;
+  appVersion: string;
+  electronVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+  exists: boolean;
+  isFile?: boolean;
+  fileSize?: number;
+  imageEmpty?: boolean;
+  imageSize?: Electron.Size;
+};
 
 let appTray: Tray | null = null;
 let trayFlashTimer: NodeJS.Timeout | null = null;
@@ -320,15 +337,94 @@ const updateTrayContextMenu = () => {
   appTray.setContextMenu(buildTrayMenu());
 };
 
+const getErrorDetails = (error: unknown) =>
+  error instanceof Error
+    ? { name: error.name, message: error.message, stack: error.stack }
+    : { value: String(error) };
+
+const loadTrayImage = (iconPath: string, trigger: string) => {
+  const diagnostics: TrayImageDiagnostics = {
+    trigger,
+    iconPath,
+    resourcesPath: process.resourcesPath,
+    appVersion: app.getVersion(),
+    electronVersion: process.versions.electron,
+    platform: process.platform,
+    arch: process.arch,
+    exists: false,
+  };
+
+  try {
+    diagnostics.exists = fs.existsSync(iconPath);
+    if (diagnostics.exists) {
+      const stat = fs.statSync(iconPath);
+      diagnostics.isFile = stat.isFile();
+      diagnostics.fileSize = stat.size;
+    }
+
+    const image = nativeImage.createFromPath(iconPath);
+    diagnostics.imageEmpty = image.isEmpty();
+    if (!diagnostics.imageEmpty) {
+      diagnostics.imageSize = image.getSize();
+    }
+    return { diagnostics, image };
+  } catch (error) {
+    logger.error("[tray] image diagnostics failed", {
+      diagnostics,
+      error: getErrorDetails(error),
+    });
+    return { diagnostics, image: null };
+  }
+};
+
+const setTrayImage = (iconPath: string, trigger: string) => {
+  if (!appTray || appTray.isDestroyed()) return false;
+
+  const { diagnostics, image } = loadTrayImage(iconPath, trigger);
+  if (!image || image.isEmpty()) {
+    logger.error("[tray] image load failed", diagnostics);
+    return false;
+  }
+
+  try {
+    appTray.setImage(image);
+    if (trigger !== "attention-flash") {
+      logger.info("[tray] image set", diagnostics);
+    }
+    return true;
+  } catch (error) {
+    logger.error("[tray] image set failed", {
+      diagnostics,
+      error: getErrorDetails(error),
+    });
+    return false;
+  }
+};
+
 const restoreTray = () => {
   if (!appTray || appTray.isDestroyed()) return;
-  appTray.setImage(global.pathConfig.trayIcon);
+  setTrayImage(global.pathConfig.trayIcon, "restore");
   appTray.setToolTip(app.getName());
   updateTrayContextMenu();
 };
 
 export const createTray = () => {
-  appTray = new Tray(global.pathConfig.trayIcon);
+  const { diagnostics, image } = loadTrayImage(global.pathConfig.trayIcon, "create");
+  if (!image || image.isEmpty()) {
+    logger.error("[tray] image load failed", diagnostics);
+    return;
+  }
+
+  try {
+    appTray = new Tray(image);
+    logger.info("[tray] created", diagnostics);
+  } catch (error) {
+    logger.error("[tray] create failed", {
+      diagnostics,
+      error: getErrorDetails(error),
+    });
+    return;
+  }
   appTray.setToolTip(app.getName());
   appTray.setIgnoreDoubleClickEvents(true);
   appTray.on("click", (_event, bounds) => {
@@ -378,8 +474,9 @@ export const setTrayAttention = (conversations: ReminderConversation[]) => {
   trayFlashTimer = setInterval(() => {
     if (!appTray || appTray.isDestroyed()) return;
     trayFlashVisible = !trayFlashVisible;
-    appTray.setImage(
+    setTrayImage(
       trayFlashVisible ? global.pathConfig.trayIcon : global.pathConfig.emptyTrayIcon,
+      "attention-flash",
     );
   }, 500);
 };

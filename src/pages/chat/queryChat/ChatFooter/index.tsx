@@ -24,7 +24,11 @@ import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
-import { dataUrlToImageFile, hasImageClipboardData } from "@/utils/chatAttachment";
+import {
+  dataUrlToImageFile,
+  hasImageClipboardData,
+  isUploadFileNameAllowed,
+} from "@/utils/chatAttachment";
 import { shouldDeletePendingAttachmentOnBackspace } from "@/utils/chatInput";
 import { canSendImageTypeList } from "@/utils/common";
 import emitter, { ChatFooterMentionMember } from "@/utils/events";
@@ -225,6 +229,10 @@ const ChatFooter: ForwardRefRenderFunction<unknown, unknown> = (_, ref) => {
       const newItems: PendingFileItem[] = [];
       for (const file of Array.from(files)) {
         const normalizedFile = normalizePendingFile(file);
+        if (!isUploadFileNameAllowed(normalizedFile.name)) {
+          message.error(t("toast.fileNameContainsUnsupportedCharacters"));
+          continue;
+        }
         newItems.push({
           id: `pending-${++pendingIdCounter}`,
           file: normalizedFile,
