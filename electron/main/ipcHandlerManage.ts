@@ -234,6 +234,10 @@ export const setIpcMainListener = () => {
     clearCache();
   });
 
+  ipcMain.on("fileReadDiagnostics", (_, diagnostics: unknown) => {
+    logger.info("[fileRead] diagnostics", diagnostics);
+  });
+
   // window manage
   ipcMain.handle("changeLanguage", (_, locale) => {
     store.set("language", locale);

@@ -92,8 +92,20 @@ const recoverMojibakePath = (filePath: string) => {
 
 const readFileAsBrowserFile = async (filePath: string) => {
   const filename = path.basename(filePath);
+  const before = await fs.promises.stat(filePath);
   const data = await fs.promises.readFile(filePath);
-  return new File([data], filename, { type: getFileMimeType(filename) });
+  const after = await fs.promises.stat(filePath);
+  const file = new File([data], filename, { type: getFileMimeType(filename) });
+  ipcRenderer.send("fileReadDiagnostics", {
+    filePath,
+    statSizeBefore: before.size,
+    bytesRead: data.byteLength,
+    fileSize: file.size,
+    statSizeAfter: after.size,
+    mtimeBeforeMs: before.mtimeMs,
+    mtimeAfterMs: after.mtimeMs,
+  });
+  return file;
 };
 
 const getFileByPath = async (filePath: string) => {
