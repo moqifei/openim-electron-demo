@@ -30,5 +30,6 @@ assert.equal(
 );
 assert.equal(preload.includes('ipcRenderer.send("fileReadDiagnostics",'), true);
 assert.equal(ipcHandler.includes('ipcMain.on("fileReadDiagnostics",'), true);
+assert.equal(ipcHandler.includes('execFile("/usr/bin/wc", ["-c", "--", filePath]'), true);
 
 console.log("file upload path tests passed");

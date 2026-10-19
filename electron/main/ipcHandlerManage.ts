@@ -236,6 +236,32 @@ export const setIpcMainListener = () => {
 
   ipcMain.on("fileReadDiagnostics", (_, diagnostics: unknown) => {
     logger.info("[fileRead] diagnostics", diagnostics);
+
+    const filePath = (diagnostics as { filePath?: unknown })?.filePath;
+    if (process.platform !== "linux" || typeof filePath !== "string" || !path.isAbsolute(filePath)) {
+      return;
+    }
+
+    const systemEnv = { ...process.env };
+    delete systemEnv.LD_LIBRARY_PATH;
+    delete systemEnv.GIO_MODULE_DIR;
+    delete systemEnv.GSETTINGS_SCHEMA_DIR;
+    execFile("/usr/bin/wc", ["-c", "--", filePath], { env: systemEnv }, (error, stdout, stderr) => {
+      if (error) {
+        logger.warn("[fileRead] system byte count failed", {
+          filePath,
+          error: error.message,
+          stderr: stderr.trim(),
+        });
+        return;
+      }
+
+      const bytes = Number(stdout.trim().split(/\s+/, 1)[0]);
+      logger.info("[fileRead] system byte count", {
+        filePath,
+        bytes: Number.isFinite(bytes) ? bytes : null,
+      });
+    });
   });
 
   // window manage
