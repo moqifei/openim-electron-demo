@@ -15,6 +15,7 @@ import { getCleanText } from "@/components/CKEditor/utils";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useContactStore, useConversationStore } from "@/store";
 import { isAgentConversation } from "@/utils/agentConversation";
+import { formatPlainTextAsHtml } from "@/utils/common";
 import { isConversationDoNotDisturb } from "@/utils/conversationNotification";
 import { isDigitalTwinMessage } from "@/utils/digitalTwinMessage";
 import emitter from "@/utils/events";
@@ -89,6 +90,11 @@ const ConversationItem = ({
       return t("messageDescription.catchMessage");
     }
   }, [latestMessage]);
+
+  const latestMessageHtml = useMemo(
+    () => formatPlainTextAsHtml(latestMessageContent),
+    [latestMessageContent],
+  );
 
   const draftPreview = useMemo(() => {
     if (!draftText) return null;
@@ -210,7 +216,7 @@ const ConversationItem = ({
                 <div
                   className="truncate text-xs text-[var(--text-tertiary)]"
                   dangerouslySetInnerHTML={{
-                    __html: latestMessageContent,
+                    __html: latestMessageHtml,
                   }}
                 ></div>
               </>

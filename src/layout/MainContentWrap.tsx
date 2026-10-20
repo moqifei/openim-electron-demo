@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 
 import { useConversationStore, useUserStore } from "@/store";
+import { resetServerEnvironmentForStartup } from "@/utils/config";
 import { emit } from "@/utils/events";
 import { DEFAULT_SCREENSHOT_SHORTCUT } from "@/utils/screenshotShortcut";
 import { clearIMProfile, clearManualLogout } from "@/utils/storage";
@@ -31,6 +32,7 @@ export const MainContentWrap = () => {
     let cancelled = false;
 
     const resetSessionAtStartup = async () => {
+      resetServerEnvironmentForStartup();
       // 启动时强制清除持久化的登录态, 确保每次启动客户端(包括系统重启后)
       // 都需要重新登录, 避免关机前未主动退出登录导致 token 残留、重启后免登录的安全风险。
       try {

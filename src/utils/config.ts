@@ -13,12 +13,10 @@ const ORANGE_TOKEN_KEY = "openim_orange_token";
 const DIGITAL_TWIN_TOKEN_KEY = "openim_digital_twin_token";
 
 export const getDefaultIMHost = () =>
-  ((import.meta.env.VITE_IM_HOST ??
-    import.meta.env.VITE_BASE_HOST) as string) ?? "";
+  ((import.meta.env.VITE_IM_HOST ?? import.meta.env.VITE_BASE_HOST) as string) ?? "";
 
 export const getDefaultChatHost = () =>
-  ((import.meta.env.VITE_CHAT_HOST ??
-    import.meta.env.VITE_BASE_HOST) as string) ?? "";
+  ((import.meta.env.VITE_CHAT_HOST ?? import.meta.env.VITE_BASE_HOST) as string) ?? "";
 
 /** Get the configured IM server host, with .env fallback */
 export function getIMHost(): string {
@@ -88,6 +86,13 @@ export function hasManualServerHosts(): boolean {
   return localStorage.getItem(MANUAL_SERVER_HOST_KEY) === "1";
 }
 
+export function resetServerEnvironmentForStartup(): void {
+  localStorage.removeItem(MANUAL_SERVER_HOST_KEY);
+  localStorage.removeItem(IM_HOST_KEY);
+  localStorage.removeItem(CHAT_HOST_KEY);
+  localStorage.removeItem(SELECTED_SERVER_ENVIRONMENT_KEY);
+}
+
 /** Backward-compatible alias */
 export function getServerHost(): string {
   return getIMHost();
@@ -124,7 +129,11 @@ type ServerEnvEntry = {
 };
 
 function normalizeHost(h: string): string {
-  return h.replace(/^https?:\/\//, "").replace(/:\d+$/, "").trim().toLowerCase();
+  return h
+    .replace(/^https?:\/\//, "")
+    .replace(/:\d+$/, "")
+    .trim()
+    .toLowerCase();
 }
 
 function getEnvList(): ServerEnvEntry[] {
@@ -165,12 +174,9 @@ function getDefaultPlazaConfig(): PlazaDirectConfig {
     plazaDirectMode: Boolean(env?.plazaDirectMode ?? root.plazaDirectMode),
     plazaUrl: (env?.plazaUrl as string) ?? (root.plazaUrl as string) ?? "",
     orangeUrl: (env?.orangeUrl as string) ?? (root.orangeUrl as string) ?? "",
-    orangeToken:
-      (env?.orangeToken as string) ?? (root.orangeToken as string) ?? "",
+    orangeToken: (env?.orangeToken as string) ?? (root.orangeToken as string) ?? "",
     digitalTwinToken:
-      (env?.digitalTwinToken as string) ??
-      (root.digitalTwinToken as string) ??
-      "",
+      (env?.digitalTwinToken as string) ?? (root.digitalTwinToken as string) ?? "",
   };
 }
 

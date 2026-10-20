@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { FC, memo, useEffect, useMemo, useState } from "react";
 
 import { getAgentStreamPayload } from "@/utils/agentStreamMessage";
-import { formatBr } from "@/utils/common";
+import { formatPlainTextAsHtml } from "@/utils/common";
 import { emit } from "@/utils/events";
 import { publicAsset } from "@/utils/publicAsset";
 
@@ -82,7 +82,8 @@ const AgentStreamMessageRender: FC<IMessageItemProps> = ({ message, isSender }) 
       if (reasoning.startsWith(current)) return current;
       // 非前缀变化(如模型修正):保留最长公共前缀,不回退到空。
       let i = 0;
-      while (i < current.length && i < reasoning.length && current[i] === reasoning[i]) i++;
+      while (i < current.length && i < reasoning.length && current[i] === reasoning[i])
+        i++;
       return reasoning.slice(0, Math.max(i, current.length));
     });
     const timer = window.setInterval(() => {
@@ -101,8 +102,14 @@ const AgentStreamMessageRender: FC<IMessageItemProps> = ({ message, isSender }) 
     return () => window.clearInterval(timer);
   }, [reasoning, shouldAnimate]);
 
-  const answerHtml = useMemo(() => formatBr(displayAnswer || " "), [displayAnswer]);
-  const reasoningHtml = useMemo(() => formatBr(displayReasoning), [displayReasoning]);
+  const answerHtml = useMemo(
+    () => formatPlainTextAsHtml(displayAnswer || " "),
+    [displayAnswer],
+  );
+  const reasoningHtml = useMemo(
+    () => formatPlainTextAsHtml(displayReasoning),
+    [displayReasoning],
+  );
   const visualDone =
     isDone && displayAnswer === answer && displayReasoning === reasoning;
 

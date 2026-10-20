@@ -121,6 +121,15 @@ export const fileToBase64 = (file: File): Promise<string> =>
 
 export const formatBr = (str: string) => str.replace(/\n/g, "<br>");
 
+export const formatPlainTextAsHtml = (text: string) =>
+  text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;")
+    .replace(/\r\n?|\n/g, "<br>");
+
 /**
  * Format an @-mention message text (OpenIM AtTextElem.text) into HTML.
  *
