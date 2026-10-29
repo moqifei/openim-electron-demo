@@ -1,7 +1,7 @@
 import { t } from "i18next";
 import { create } from "zustand";
 
-import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
+import { BusinessUserInfo, getBusinessUserInfo, logoutSession } from "@/api/login";
 import { getADDepartmentList, searchADMembers } from "@/api/organization";
 import { IMSDK } from "@/layout/MainContentWrap";
 import router from "@/routes";
@@ -195,14 +195,12 @@ export const useUserStore = create<UserStore>()((set, get) => ({
   },
   userLogout: async (force?: boolean, manual?: boolean) => {
     if (!force) {
-      try {
-        await IMSDK.logout();
-      } catch (error) {
+      await logoutSession();
+      void IMSDK.logout().catch((error) => {
         if (!isIgnorableLogoutError(error)) {
-          throw error;
+          console.warn("logout sdk error", error);
         }
-        console.warn("ignore logout sdk error", error);
-      }
+      });
     }
     if (manual) markManualLogout();
     await clearIMProfile();

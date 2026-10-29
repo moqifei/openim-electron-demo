@@ -11,7 +11,9 @@ import { getPlazaUrl, getOrangeUrl, getOrangeToken } from "./config";
 
 const tokenErrorCodeList = [1501, 1503, 1504, 1505];
 const isLoginRequest = (url?: string) =>
-  url === "/account/login" || url === "/account/login/ad";
+  url === "/account/login" ||
+  url === "/account/login/ad" ||
+  url === "/account/login/ad/challenge";
 
 const createAxiosInstance = (baseURL: string, imToken = true) => {
   const serves = axios.create({

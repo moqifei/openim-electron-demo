@@ -1,12 +1,16 @@
-import { searchAgents, type AgentInfo } from "@/api/login";
+import { type AgentInfo, searchAgents } from "@/api/login";
 
 // Register type constants matching the backend
 export const REGISTER_TYPE_PHONE = 0; // Phone registration
 export const REGISTER_TYPE_EMAIL = 1; // Email registration
 export const REGISTER_TYPE_ADMIN = 2; // Admin/notification account (our agents)
 export const REGISTER_TYPE_AD = 3; // AD synchronized users
+export const REGISTER_TYPE_DIGITAL_EMPLOYEE = 4; // Digital employee users
 
-export type AgentRecommendation = Pick<AgentInfo, "userID" | "nickname" | "faceURL" | "registerType">;
+export type AgentRecommendation = Pick<
+  AgentInfo,
+  "userID" | "nickname" | "faceURL" | "registerType"
+>;
 export type AgentSearchPage = {
   total?: number;
   users?: AgentInfo[];
@@ -26,7 +30,7 @@ export const isAgentUser = (user: { registerType?: number; userID?: string }) =>
 };
 
 export const isDisplayableAgent = (agent: AgentInfo) =>
-  Boolean(agent.userID) && agent.registerType !== REGISTER_TYPE_AD;
+  Boolean(agent.userID) && agent.registerType === REGISTER_TYPE_ADMIN;
 
 export const getVisibleAgentRecommendations = (
   agents: AgentInfo[],

@@ -3,6 +3,10 @@ import { useMutation } from "react-query";
 import { v4 as uuidv4 } from "uuid";
 
 import { useUserStore } from "@/store";
+import {
+  type ADLoginChallenge,
+  createEncryptedADLoginCredential,
+} from "@/utils/adLoginCrypto";
 import { getBotAxios, getChatAxios } from "@/utils/request";
 import { getChatToken } from "@/utils/storage";
 
@@ -147,22 +151,33 @@ export const useLogin = () => {
 // AD login
 export const useADLogin = () => {
   return useMutation(
-    (params: API.Login.AdLoginParams) =>
-      getChatAxios().post<{ chatToken: string; imToken: string; userID: string }>(
-        "/account/login/ad",
-        {
-          ...params,
-          platform,
-        },
-        {
-          headers: {
-            operationID: uuidv4(),
-          },
-        },
-      ),
+    async (params: API.Login.AdLoginParams) => {
+      const challenge = await getChatAxios().get<ADLoginChallenge>(
+        "/account/login/ad/challenge",
+        { headers: { operationID: uuidv4() } },
+      );
+      const credential = await createEncryptedADLoginCredential(challenge.data, {
+        ...params,
+        platform,
+      });
+      return getChatAxios().post<{
+        chatToken: string;
+        imToken: string;
+        userID: string;
+      }>("/account/login/ad", { credential }, { headers: { operationID: uuidv4() } });
+    },
     {
       onError: errorHandle,
     },
+  );
+};
+
+export const logoutSession = async () => {
+  const token = (await getChatToken()) as string;
+  return getChatAxios().post(
+    "/account/logout",
+    {},
+    { headers: { token, operationID: uuidv4() } },
   );
 };
 
@@ -239,10 +254,10 @@ export interface AgentInfo {
 }
 
 // Register type constants matching the backend
-const REGISTER_TYPE_PHONE = 0;      // Phone registration
-const REGISTER_TYPE_EMAIL = 1;      // Email registration  
-const REGISTER_TYPE_ADMIN = 2;      // Admin/notification account (our agents)
-const REGISTER_TYPE_AD = 3;         // AD synchronized users
+const REGISTER_TYPE_PHONE = 0; // Phone registration
+const REGISTER_TYPE_EMAIL = 1; // Email registration
+const REGISTER_TYPE_ADMIN = 2; // Admin/notification account (our agents)
+const REGISTER_TYPE_AD = 3; // AD synchronized users
 
 export const searchAgents = async (
   keyword: string,
@@ -268,19 +283,20 @@ export const searchAgents = async (
       total: number;
       users: AgentInfo[];
     };
-  }>(
-    "/user/search/full",
-    requestBody,
-    {
-      headers: {
-        operationID: uuidv4(),
-        token,
-      },
+  }>("/user/search/full", requestBody, {
+    headers: {
+      operationID: uuidv4(),
+      token,
     },
-  );
+  });
   // Backend now filters by registerTypes, so we don't need to filter here anymore
-  const responseData = (response as unknown as { data: { total: number; users: AgentInfo[] } }).data;
-  console.log("[searchAgents] Response:", { total: responseData?.total, usersCount: responseData?.users?.length });
+  const responseData = (
+    response as unknown as { data: { total: number; users: AgentInfo[] } }
+  ).data;
+  console.log("[searchAgents] Response:", {
+    total: responseData?.total,
+    usersCount: responseData?.users?.length,
+  });
   return {
     data: {
       total: responseData?.total || 0,
