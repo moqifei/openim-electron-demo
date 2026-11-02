@@ -196,11 +196,20 @@ export const useUserStore = create<UserStore>()((set, get) => ({
   userLogout: async (force?: boolean, manual?: boolean) => {
     if (!force) {
       await logoutSession();
-      void IMSDK.logout().catch((error) => {
+      try {
+        await IMSDK.logout();
+      } catch (error) {
         if (!isIgnorableLogoutError(error)) {
           console.warn("logout sdk error", error);
         }
-      });
+      }
+    }
+    if (window.electronAPI) {
+      try {
+        await IMSDK.unInitSDK();
+      } catch (error) {
+        console.warn("uninit sdk error", error);
+      }
     }
     if (manual) markManualLogout();
     await clearIMProfile();

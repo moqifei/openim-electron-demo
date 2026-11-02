@@ -1,6 +1,6 @@
 import { ReloadOutlined, UserOutlined } from "@ant-design/icons";
 import { useRequest } from "ahooks";
-import { Avatar, Button, Empty, message, Spin, Tree } from "antd";
+import { Empty, message, Spin, Tree } from "antd";
 import clsx from "clsx";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -96,11 +96,15 @@ export const Organization = () => {
   });
 
   const { data: memberResp, loading: memberLoading } = useRequest(
-    () =>
-      getADDepartmentMembers({
-        departmentID: selectedDept!.departmentID,
+    () => {
+      if (!selectedDept) {
+        return Promise.resolve({ data: { members: [], total: 0 } });
+      }
+      return getADDepartmentMembers({
+        departmentID: selectedDept.departmentID,
         pagination: { pageNumber: 1, showNumber: 1000 },
-      }),
+      });
+    },
     {
       ready: Boolean(selectedDept),
       refreshDeps: [selectedDept],
@@ -123,15 +127,17 @@ export const Organization = () => {
   const { run: runSync, loading: syncLoading } = useRequest(syncADOrganization, {
     manual: true,
     onSuccess: () => {
-      message.success("同步成功");
-      refreshDepts();
+      message.info("同步任务已启动，请稍后刷新组织架构");
+      window.setTimeout(() => {
+        refreshDepts();
+      }, 2000);
     },
     onError: () => {
       message.error("同步失败");
     },
   });
 
-  const departments = deptResp?.data?.departments ?? [];
+  const departments = useMemo(() => deptResp?.data?.departments ?? [], [deptResp]);
 
   // Filter to only allowed OUs for both tree and member display.
   const allowedDepts = useMemo(
@@ -159,36 +165,19 @@ export const Organization = () => {
     for (const d of allowedDepts) {
       const ou = extractTopOU(d.departmentID);
       if (ou && ouGroups.has(ou)) {
-        ouGroups.get(ou)!.push(d);
+        const group = ouGroups.get(ou);
+        if (group) {
+          group.push(d);
+        }
       }
     }
-
-    // Build the real department sub-tree using parentID.
-    const deptMap = new Map<string, ADDepartmentInfo>();
-    allowedDepts.forEach((d: ADDepartmentInfo) => deptMap.set(d.departmentID, d));
-
-    const buildSubTree = (parentID: string): TreeNode[] => {
-      return allowedDepts
-        .filter((d: ADDepartmentInfo) => d.parentID === parentID)
-        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
-          a.name.localeCompare(b.name, "zh-CN"),
-        )
-        .map((d: ADDepartmentInfo) => ({
-          key: d.departmentID,
-          title: d.name,
-          department: d,
-          children: buildSubTree(d.departmentID),
-        }));
-    };
 
     /**
      * Sort helper for ZXBXUsers root departments:
      * - Pinned departments (ZXBX_PINNED_DEPTS) appear first in order
      * - Remaining departments sorted by name (zh-CN locale)
      */
-    const sortZXBXRoots = (
-      depts: ADDepartmentInfo[],
-    ): ADDepartmentInfo[] => {
+    const sortZXBXRoots = (depts: ADDepartmentInfo[]): ADDepartmentInfo[] => {
       const pinnedSet = new Set(ZXBX_PINNED_DEPTS);
       const pinned: ADDepartmentInfo[] = [];
       const rest: ADDepartmentInfo[] = [];
@@ -203,30 +192,9 @@ export const Organization = () => {
       rest.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
       // 按 pinned 列表顺序排列已匹配的部门
       pinned.sort(
-        (a, b) =>
-          ZXBX_PINNED_DEPTS.indexOf(a.name) -
-          ZXBX_PINNED_DEPTS.indexOf(b.name),
+        (a, b) => ZXBX_PINNED_DEPTS.indexOf(a.name) - ZXBX_PINNED_DEPTS.indexOf(b.name),
       );
       return [...pinned, ...rest];
-    };
-
-    // For each OU group, find root-level departments (those whose parent is not in allowedDepts).
-    const buildOUGroupChildren = (ou: string): TreeNode[] => {
-      const groupDepts = ouGroups.get(ou) ?? [];
-      // Roots within this group: parent not in deptMap or parent is outside allowed OUs
-      const roots = groupDepts.filter(
-        (d: ADDepartmentInfo) => !d.parentID || !deptMap.has(d.parentID),
-      );
-      return roots
-        .sort((a: ADDepartmentInfo, b: ADDepartmentInfo) =>
-          a.name.localeCompare(b.name, "zh-CN"),
-        )
-        .map((d: ADDepartmentInfo) => ({
-          key: d.departmentID,
-          title: d.name,
-          department: d,
-          children: buildSubTree(d.departmentID),
-        }));
     };
 
     // ── ZXBXUsers: 拉平（不展示"百信行员"中间层）──
@@ -326,8 +294,6 @@ export const Organization = () => {
       return 320;
     }
   });
-  const [isResizing, setIsResizing] = useState(false);
-
   const handleSelect = useCallback((_: React.Key[], { node }: { node: TreeNode }) => {
     setSearchKeyword("");
     if (node.department) {
@@ -348,21 +314,24 @@ export const Organization = () => {
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      setIsResizing(true);
       const startX = e.clientX;
       const startWidth = treeWidth;
 
       const onMouseMove = (ev: MouseEvent) => {
         const delta = ev.clientX - startX;
-        const newWidth = Math.min(MAX_TREE_WIDTH, Math.max(MIN_TREE_WIDTH, startWidth + delta));
+        const newWidth = Math.min(
+          MAX_TREE_WIDTH,
+          Math.max(MIN_TREE_WIDTH, startWidth + delta),
+        );
         setTreeWidth(newWidth);
         try {
           localStorage.setItem("org_tree_width", String(newWidth));
-        } catch {}
+        } catch {
+          // Ignore storage failures; resizing remains available for this session.
+        }
       };
 
       const onMouseUp = () => {
-        setIsResizing(false);
         window.removeEventListener("mousemove", onMouseMove);
         window.removeEventListener("mouseup", onMouseUp);
       };
@@ -373,14 +342,14 @@ export const Organization = () => {
   );
 
   // Filter members to only show those under allowed OUs.
-  const rawMembers = searchKeyword
-    ? searchResp?.data?.members ?? []
-    : memberResp?.data?.members ?? [];
-  const members = useMemo(
-    () =>
-      rawMembers.filter((m: ADDepartmentMemberInfo) => isAllowedDept(m.departmentID)),
-    [rawMembers],
-  );
+  const members = useMemo(() => {
+    const rawMembers = searchKeyword
+      ? searchResp?.data?.members ?? []
+      : memberResp?.data?.members ?? [];
+    return rawMembers.filter((m: ADDepartmentMemberInfo) =>
+      isAllowedDept(m.departmentID),
+    );
+  }, [memberResp, searchKeyword, searchResp]);
 
   const isSearching = searchKeyword.length > 0;
   const listTitle = isSearching

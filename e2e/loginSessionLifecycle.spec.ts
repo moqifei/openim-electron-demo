@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
+import ts from "typescript";
 
 const read = (file: string) => fs.readFileSync(file, "utf8");
 
@@ -30,4 +31,93 @@ test("does not send a previous server token with an anonymous login request", ()
 
   expect(request).toContain("const isLoginRequest =");
   expect(request).toContain("if (!isLoginRequest(config.url))");
+});
+
+test("finishes and releases the previous SDK session before returning to login", async () => {
+  const calls: string[] = [];
+  let finishSdkLogout!: () => void;
+  let finishSdkUninit!: () => void;
+  const sdkLogout = new Promise<void>((resolve) => (finishSdkLogout = resolve));
+  const sdkUninit = new Promise<void>((resolve) => (finishSdkUninit = resolve));
+  const state = {
+    getState: () => ({ clearContactStore: () => calls.push("clear contacts") }),
+  };
+  const modules: Record<string, unknown> = {
+    i18next: { t: (key: string) => key },
+    zustand: {
+      create: () => (initialize: Function) => {
+        let store: Record<string, unknown> = {};
+        const set = (update: unknown) => {
+          Object.assign(store, typeof update === "function" ? update(store) : update);
+        };
+        store = initialize(set, () => store);
+        return { getState: () => store };
+      },
+    },
+    "@/api/login": {
+      logoutSession: async () => calls.push("server logout"),
+    },
+    "@/api/organization": {},
+    "@/layout/MainContentWrap": {
+      IMSDK: {
+        logout: () => {
+          calls.push("sdk logout");
+          return sdkLogout;
+        },
+        unInitSDK: () => {
+          calls.push("sdk uninit");
+          return sdkUninit;
+        },
+      },
+    },
+    "@/routes": { default: { navigate: () => calls.push("navigate") } },
+    "@/utils/common": { feedbackToast: () => undefined },
+    "@/utils/screenshotShortcut": { DEFAULT_SCREENSHOT_SHORTCUT: "" },
+    "@/utils/storage": {
+      getLocale: () => "en-US",
+      markManualLogout: () => calls.push("manual logout"),
+      clearIMProfile: async () => calls.push("clear profile"),
+    },
+    "./contact": { useContactStore: state },
+    "./conversation": {
+      useConversationStore: {
+        getState: () => ({
+          clearConversationStore: () => calls.push("clear conversations"),
+        }),
+      },
+    },
+  };
+  const source = ts.transpileModule(read("src/store/user.ts"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const exports: Record<string, unknown> = {};
+  new Function("require", "exports", "window", source)(
+    (name: string) => modules[name],
+    exports,
+    { electronAPI: {} },
+  );
+  const userStore = exports.useUserStore as {
+    getState: () => { userLogout: (force: boolean, manual: boolean) => Promise<void> };
+  };
+
+  const logout = userStore.getState().userLogout(false, true);
+  await new Promise(setImmediate);
+  expect(calls).toEqual(["server logout", "sdk logout"]);
+
+  finishSdkLogout();
+  await new Promise(setImmediate);
+  expect(calls).toEqual(["server logout", "sdk logout", "sdk uninit"]);
+
+  finishSdkUninit();
+  await logout;
+  expect(calls).toEqual([
+    "server logout",
+    "sdk logout",
+    "sdk uninit",
+    "manual logout",
+    "clear profile",
+    "clear contacts",
+    "clear conversations",
+    "navigate",
+  ]);
 });
