@@ -45,6 +45,10 @@ export interface GetADDepartmentMembersResp {
   total: number;
 }
 
+export interface GetADMemberByUserIDResp {
+  member?: ADDepartmentMemberInfo;
+}
+
 export interface SearchADMembersReq {
   keyword: string;
   departmentID?: string;
@@ -87,11 +91,11 @@ export const getADDepartmentMembers = async (params: GetADDepartmentMembersReq) 
   );
 };
 
-export const searchADMembers = async (params: SearchADMembersReq) => {
+export const getADMemberByUserID = async (userID: string) => {
   const token = (await getChatToken()) as string;
-  return getRequest().post<SearchADMembersResp>(
-    "/ad/member/search",
-    params,
+  return getRequest().post<GetADMemberByUserIDResp>(
+    "/ad/member/get",
+    { userID },
     {
       headers: {
         token,
@@ -99,6 +103,16 @@ export const searchADMembers = async (params: SearchADMembersReq) => {
       },
     },
   );
+};
+
+export const searchADMembers = async (params: SearchADMembersReq) => {
+  const token = (await getChatToken()) as string;
+  return getRequest().post<SearchADMembersResp>("/ad/member/search", params, {
+    headers: {
+      token,
+      operationID: uuidv4(),
+    },
+  });
 };
 
 export const syncADOrganization = async () => {

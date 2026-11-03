@@ -1,3 +1,4 @@
+import { ApartmentOutlined } from "@ant-design/icons";
 import { CbEvents } from "@openim/wasm-client-sdk";
 import { SessionType } from "@openim/wasm-client-sdk";
 import {
@@ -7,10 +8,8 @@ import {
 } from "@openim/wasm-client-sdk/lib/types/entity";
 import { useLatest } from "ahooks";
 import { Button, Divider, Spin } from "antd";
-import { ApartmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { t } from "i18next";
-import i18n from "@/i18n";
 import {
   FC,
   forwardRef,
@@ -25,12 +24,13 @@ import { useQuery } from "react-query";
 import { useCopyToClipboard } from "react-use";
 
 import { BusinessUserInfo, getBusinessUserInfo } from "@/api/login";
-import { searchADMembers, getADDepartmentList } from "@/api/organization";
+import { getADMemberByUserID } from "@/api/organization";
 import DraggableModalWrap from "@/components/DraggableModalWrap";
 import EditableContent from "@/components/EditableContent";
 import OIMAvatar from "@/components/OIMAvatar";
 import { useConversationToggle } from "@/hooks/useConversationToggle";
 import { OverlayVisibleHandle, useOverlayVisible } from "@/hooks/useOverlayVisible";
+import i18n from "@/i18n";
 import { IMSDK } from "@/layout/MainContentWrap";
 import { useContactStore, useUserStore } from "@/store";
 import { feedbackToast } from "@/utils/common";
@@ -102,80 +102,16 @@ const UserCardModal: ForwardRefRenderFunction<
       console.error("get business user info failed", userID, error);
     }
 
-    // Fetch AD department info for the user
-    // Use account/username as keyword (same as SearchUserOrGroup component)
+    // Query by the OpenIM user ID so a namesake cannot be selected.
     try {
-      const account = (userInfo as any)?.account || userInfo?.nickname || userID;
-      console.log("[UserCard] fetching AD department, keyword:", account);
-      const { data: adData } = await searchADMembers({
-        keyword: account,
-        pagination: { pageNumber: 1, showNumber: 5 },
-      });
-      const adMember = adData.members?.[0];
-      console.log("[UserCard] AD search result:", JSON.stringify({
-        total: adData.total,
-        membersCount: adData.members?.length ?? 0,
-        member: adMember ? {
-          userID: adMember.userID,
-          username: adMember.username,
-          nickname: adMember.nickname,
-          displayName: adMember.displayName,
-          departmentName: adMember.departmentName,
-          departmentID: adMember.departmentID,
-        } : null,
-      }, null, 2));
+      const { data } = await getADMemberByUserID(userID!);
+      const adMember = data.member;
 
-      if (adMember) {
-        // Priority 1: AD returned departmentName directly
-        if (adMember.departmentName) {
-          userInfo = { ...userInfo, departmentName: adMember.departmentName };
-          console.log("[UserCard] set departmentName (from AD field):", userInfo.departmentName);
-        } else if (adMember.departmentID) {
-          // Priority 2: Parse from LDAP DN (ou=部门名,...)
-          const dnMatch = adMember.departmentID.match(/ou=([^,]+)/i);
-          if (dnMatch?.[1]) {
-            userInfo = { ...userInfo, departmentName: dnMatch[1] };
-            console.log("[UserCard] set departmentName (from DN parse):", userInfo.departmentName);
-          } else {
-            // Priority 3: Fallback to getADDepartmentList lookup
-            try {
-              console.log("[UserCard] DN parse failed, trying getADDepartmentList");
-              const { data: deptData } = await getADDepartmentList();
-              const dept = deptData.departments?.find(
-                (d) => d.departmentID === adMember.departmentID,
-              );
-              if (dept?.name) {
-                userInfo = { ...userInfo, departmentName: dept.name };
-                console.log("[UserCard] set departmentName (from dept list):", userInfo.departmentName);
-              }
-            } catch (deptErr) {
-              console.warn("[UserCard] getADDepartmentList failed", deptErr);
-            }
-          }
+      if (adMember?.departmentID) {
+        const dnMatch = adMember.departmentID.match(/ou=([^,]+)/i);
+        if (dnMatch?.[1]) {
+          userInfo = { ...userInfo, departmentName: dnMatch[1] };
         }
-      }
-
-      // If still no departmentName and we haven't tried nickname yet
-      if (!userInfo.departmentName && userInfo?.nickname && userInfo.nickname !== account) {
-        const { data: adData2 } = await searchADMembers({
-          keyword: userInfo.nickname,
-          pagination: { pageNumber: 1, showNumber: 5 },
-        });
-        const adMember2 = adData2.members?.[0];
-        if (adMember2?.departmentName) {
-          userInfo = { ...userInfo, departmentName: adMember2.departmentName };
-          console.log("[UserCard] set departmentName (via nickname):", userInfo.departmentName);
-        } else if (adMember2?.departmentID) {
-          const dnMatch2 = adMember2.departmentID.match(/ou=([^,]+)/i);
-          if (dnMatch2?.[1]) {
-            userInfo = { ...userInfo, departmentName: dnMatch2[1] };
-            console.log("[UserCard] set departmentName (via nickname + DN):", userInfo.departmentName);
-          }
-        }
-      }
-
-      if (!userInfo.departmentName) {
-        console.warn("[UserCard] no department found after all attempts. account:", account, "nickname:", userInfo?.nickname);
       }
     } catch (error) {
       console.warn("fetch AD department info failed", userID, error);
@@ -329,24 +265,24 @@ const UserCardModal: ForwardRefRenderFunction<
                 size={72}
                 src={cardInfo?.faceURL}
                 text={cardInfo?.nickname}
-                className="ring-4 ring-white/25 shadow-lg"
+                className="shadow-lg ring-4 ring-white/25"
               />
             </div>
             {/* Name + userID — overlaps header bottom */}
-            <div className="flex flex-1 flex-col overflow-hidden px-5 -mt-7">
-              <div className="flex items-center mb-1">
-                <div className="ml-2 flex h-[56px] flex-1 flex-col justify-center overflow-hidden rounded-xl bg-white/80 backdrop-blur-sm px-4 shadow-sm">
+            <div className="-mt-7 flex flex-1 flex-col overflow-hidden px-5">
+              <div className="mb-1 flex items-center">
+                <div className="ml-2 flex h-[56px] flex-1 flex-col justify-center overflow-hidden rounded-xl bg-white/80 px-4 shadow-sm backdrop-blur-sm">
                   <div className="flex w-fit max-w-[85%] items-baseline gap-2">
                     <div
-                      className="select-text truncate text-lg font-bold text-[var(--text-primary)] leading-tight"
+                      className="select-text truncate text-lg font-bold leading-tight text-[var(--text-primary)]"
                       title={cardInfo?.nickname}
                     >
                       {cardInfo?.nickname}
                     </div>
                   </div>
-                  <div className="flex items-center mt-0.5">
+                  <div className="mt-0.5 flex items-center">
                     <div
-                      className="cursor-pointer text-[11px] text-[var(--text-tertiary)] hover:text-[var(--primary)] transition-colors"
+                      className="cursor-pointer text-[11px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--primary)]"
                       onClick={() => {
                         copyToClipboard(cardInfo?.userID ?? "");
                         feedbackToast({ msg: t("toast.copySuccess") });
@@ -358,7 +294,7 @@ const UserCardModal: ForwardRefRenderFunction<
                 </div>
               </div>
               {/* Info fields */}
-              <div className="flex-1 overflow-y-auto rounded-xl bg-[var(--bg-body)] p-4 mt-3">
+              <div className="mt-3 flex-1 overflow-y-auto rounded-xl bg-[var(--bg-body)] p-4">
                 <UserCardDataGroup
                   title={t("placeholder.personalInfo")}
                   userID={cardInfo?.userID}
@@ -450,12 +386,13 @@ const UserCardDataGroup: FC<IUserCardDataGroupProps> = ({
       </div>
       <div className="space-y-1">
         {fieldRows.map((fieldRow, idx) => {
-          const isDepartment = fieldRow.title === "部门" || fieldRow.title === "Department";
+          const isDepartment =
+            fieldRow.title === "部门" || fieldRow.title === "Department";
           return (
             <div
               className={`group flex items-center rounded-xl px-3.5 py-2.5 text-[13px] transition-all ${
                 isDepartment
-                  ? "bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 hover:from-blue-100/80 hover:to-indigo-100/60"
+                  ? "bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100/80 hover:to-indigo-100/60 dark:from-blue-950/30 dark:to-indigo-950/20"
                   : "hover:bg-[var(--bg-hover)]"
               }`}
               key={idx}
@@ -478,9 +415,9 @@ const UserCardDataGroup: FC<IUserCardDataGroupProps> = ({
                   onChange={tryUpdateRemark}
                 />
               ) : (
-                <div className="flex-1 select-text font-medium text-[var(--text-primary)] break-all leading-relaxed">
+                <div className="flex-1 select-text break-all font-medium leading-relaxed text-[var(--text-primary)]">
                   {isDepartment && (
-                    <span className="mr-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-[var(--primary)] text-white text-[10px]">
+                    <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[var(--primary)] text-[10px] text-white">
                       <ApartmentOutlined style={{ fontSize: 10 }} />
                     </span>
                   )}
